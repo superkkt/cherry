@@ -8,13 +8,11 @@
 package device
 
 import (
-	"errors"
 	"fmt"
 	"git.sds.co.kr/bosomi.git/socket"
-	"git.sds.co.kr/cherry.git/cherryd/internal/log"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"golang.org/x/net/context"
-	"io"
+	"log"
 	"net"
 	"time"
 )
@@ -23,142 +21,84 @@ const (
 	socketTimeout = 5 * time.Second
 )
 
-var (
-	ErrNoNegotiated = errors.New("no negotiated session")
-)
-
 type Manager struct {
-	log        log.Logger
-	ofp        *openflow.Protocol
-	negotiated bool // Negotiation of protocol version
-	dpid       string
+	log          *log.Logger
+	openflow     *openflow.Transceiver
+	DPID         uint64
+	NumBuffers   uint32
+	NumTables    uint8
+	Capabilities *openflow.Capability
+	Actions      *openflow.Action
+	Ports        []openflow.Port
 }
 
-func NewManager(log log.Logger) *Manager {
+func NewManager(log *log.Logger) *Manager {
 	return &Manager{
 		log: log,
 	}
 }
 
-func isTimeout(err error) bool {
-	type Timeout interface {
-		Timeout() bool
-	}
-
-	if v, ok := err.(Timeout); ok {
-		return v.Timeout()
-	}
-
-	return false
-}
-
 func (r *Manager) handleHelloMessage(msg *openflow.HelloMessage) error {
 	// We only support OF 1.0
 	if msg.Version < 0x01 {
-		r.ofp.SendNegotiationFailedMessage()
-		return fmt.Errorf("unsupported OpenFlow protocol version: %v", msg.Version)
+		fmt.Errorf("unsupported OpenFlow protocol version: 0x%X", msg.Version)
 	}
-	if err := r.ofp.SendFeaturesRequestMessage(); err != nil {
-		return err
-	}
-	r.negotiated = true
 
 	return nil
 }
 
 func (r *Manager) handleErrorMessage(msg *openflow.ErrorMessage) error {
-	e := fmt.Sprintf("error from a device: dpid=%v, type=%v, code=%v, data=%v",
-		r.dpid, msg.Type, msg.Code, msg.Data)
-	r.log.Err(e)
+	r.log.Printf("error from a device: dpid=%v, type=%v, code=%v, data=%v",
+		r.DPID, msg.Type, msg.Code, msg.Data)
 	return nil
 }
 
 func (r *Manager) handleFeaturesReplyMessage(msg *openflow.FeaturesReplyMessage) error {
-	if r.negotiated == false {
-		return ErrNoNegotiated
+	// XXX: debugging
+	r.log.Printf("DPID: %v", msg.DPID)
+	r.log.Printf("# of buffers: %v", msg.NumBuffers)
+	r.log.Printf("# of tables: %v", msg.NumTables)
+	r.log.Printf("Capabilities: %+v", msg.GetCapability())
+	r.log.Printf("Actions: %+v", msg.GetSupportedAction())
+	for _, v := range msg.Ports {
+		r.log.Printf("No: %v, MAC: %v, Name: %v, Port Down?: %v, Link Down?: %v, Current: %+v, Advertised: %+v, Supported: %+v", v.Number, v.MAC, v.Name, v.IsPortDown(), v.IsLinkDown(), v.GetCurrentFeatures(), v.GetAdvertisedFeatures(), v.GetSupportedFeatures())
 	}
 
-	r.log.Debug(fmt.Sprintf("%+v", msg))
-	// TODO
-	return nil
-}
+	r.DPID = msg.DPID
+	r.NumBuffers = msg.NumBuffers
+	r.NumTables = msg.NumTables
+	r.Capabilities = msg.GetCapability()
+	r.Actions = msg.GetSupportedAction()
+	r.Ports = msg.Ports
 
-func (r *Manager) handleMessage(msg interface{}) error {
-	switch v := msg.(type) {
-	case *openflow.HelloMessage:
-		return r.handleHelloMessage(v)
-
-	case *openflow.ErrorMessage:
-		return r.handleErrorMessage(v)
-
-	case *openflow.FeaturesReplyMessage:
-		return r.handleFeaturesReplyMessage(v)
-
-	// TODO: set r.dpid
-
-	default:
-		panic("unsupported message type!")
-	}
+	// Add this device to the device pool
+	add(r.DPID, r)
 
 	return nil
 }
 
 func (r *Manager) Run(ctx context.Context, conn net.Conn) {
-	socket := socket.NewConn(conn, 65536) // Type of length in OpenFlow packet header is uint16
-	r.ofp = openflow.NewProtocol(socket, socketTimeout, socketTimeout)
-	defer r.ofp.Close()
+	socket := socket.NewConn(conn, 65536) // 65536 bytes are max size of a OpenFlow packet
 
-	if err := r.ofp.SendHelloMessage(); err != nil {
-		r.log.Err(fmt.Sprintf("SendHelloMessage: %v", err.Error()))
-		return
+	config := openflow.Config{
+		Log:          r.log,
+		Socket:       socket,
+		ReadTimeout:  socketTimeout,
+		WriteTimeout: socketTimeout,
+		Handlers: openflow.MessageHandler{
+			HelloMessage:         r.handleHelloMessage,
+			ErrorMessage:         r.handleErrorMessage,
+			FeaturesReplyMessage: r.handleFeaturesReplyMessage,
+		},
 	}
 
-	// Reader goroutine
-	receivedMsg := make(chan interface{})
-	go func() {
-		for {
-			msg, err := r.ofp.ReadMessage()
-			if err != nil {
-				switch {
-				case err == io.EOF:
-					r.log.Debug("EOF received")
-					close(receivedMsg)
-					return
-
-				case isTimeout(err):
-					// Ignore timeout error
-					continue
-
-				case err == openflow.ErrUnsupportedMsgType:
-					r.log.Err(fmt.Sprintf("ReadMessage: %v", err.Error()))
-					continue
-
-				default:
-					r.log.Err(fmt.Sprintf("ReadMessage: %v", err.Error()))
-					close(receivedMsg)
-					return
-				}
-			}
-			receivedMsg <- msg
-		}
-	}()
-
-	for {
-		select {
-		case msg, ok := <-receivedMsg:
-			if !ok {
-				return
-			}
-			if err := r.handleMessage(msg); err != nil {
-				r.log.Err(fmt.Sprintf("handleMessage: %v", err.Error()))
-				// Reader goroutine will be finished after it detects socket disconnection
-				return
-			}
-
-		// TODO: add this manager to the device pool with DPID
-
-		case <-ctx.Done():
-			return
-		}
+	of, err := openflow.NewTransceiver(config)
+	if err != nil {
+		r.log.Print(err)
 	}
+	r.openflow = of
+	r.openflow.Run(ctx)
+
+	// Remove this device from the device pool
+	remove(r.DPID)
 }

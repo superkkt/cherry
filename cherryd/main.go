@@ -11,8 +11,8 @@ import (
 	"flag"
 	"fmt"
 	"git.sds.co.kr/cherry.git/cherryd/internal/device"
-	"git.sds.co.kr/cherry.git/cherryd/internal/log"
 	"golang.org/x/net/context"
+	"log"
 	"log/syslog"
 	"net"
 	"os"
@@ -22,8 +22,8 @@ import (
 	"time"
 )
 
-func initSyslog() (log.Logger, error) {
-	log, err := syslog.New(syslog.LOG_ERR|syslog.LOG_DAEMON, "")
+func initSyslog() (*log.Logger, error) {
+	log, err := syslog.NewLogger(syslog.LOG_ERR|syslog.LOG_DAEMON, log.Lshortfile)
 	if err != nil {
 		return nil, err
 	}
@@ -31,7 +31,7 @@ func initSyslog() (log.Logger, error) {
 	return log, nil
 }
 
-func waitSignal(log log.Logger, shutdown context.CancelFunc) {
+func waitSignal(log *log.Logger, shutdown context.CancelFunc) {
 	c := make(chan os.Signal, 5)
 	// All incoming signals will be transferred to the channel
 	signal.Notify(c)
@@ -40,19 +40,19 @@ func waitSignal(log log.Logger, shutdown context.CancelFunc) {
 		s := <-c
 		if s == syscall.SIGTERM || s == syscall.SIGINT {
 			// Graceful shutdown
-			log.Info("Shutting down...")
+			log.Print("Shutting down...")
 			shutdown()
 			time.Sleep(10 * time.Second) // let cancelation propagate
-			log.Info("Halted")
+			log.Print("Halted")
 			os.Exit(0)
 		} else if s == syscall.SIGHUP {
 			// XXX: Do something you need
-			log.Debug("SIGHUP")
+			log.Print("SIGHUP")
 		}
 	}
 }
 
-func listen(ctx context.Context, log log.Logger, config *Config) {
+func listen(ctx context.Context, log *log.Logger, config *Config) {
 	type KeepAliver interface {
 		SetKeepAlive(keepalive bool) error
 		SetKeepAlivePeriod(d time.Duration) error
@@ -60,7 +60,7 @@ func listen(ctx context.Context, log log.Logger, config *Config) {
 
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%v", config.ServerPort))
 	if err != nil {
-		log.Err(fmt.Sprintf("Failed to listen on %v port: %v", config.ServerPort, err))
+		log.Printf("Failed to listen on %v port: %v", config.ServerPort, err)
 		return
 	}
 	defer listener.Close()
@@ -69,7 +69,7 @@ func listen(ctx context.Context, log log.Logger, config *Config) {
 		for {
 			conn, err := listener.Accept()
 			if err != nil {
-				log.Err(fmt.Sprintf("Failed to accept a new connection: %v", err))
+				log.Printf("Failed to accept a new connection: %v", err)
 				continue
 			}
 			c <- conn
@@ -84,12 +84,12 @@ func listen(ctx context.Context, log log.Logger, config *Config) {
 		select {
 		case conn := <-backlog:
 			if v, ok := conn.(KeepAliver); ok {
-				log.Debug("Trying to enable socket keepalive..")
+				log.Print("Trying to enable socket keepalive..")
 				if err := v.SetKeepAlive(true); err == nil {
-					log.Debug("Setting socket keepalive period...")
+					log.Print("Setting socket keepalive period...")
 					v.SetKeepAlivePeriod(time.Duration(30) * time.Second)
 				} else {
-					log.Err(fmt.Sprintf("Failed to enable socket keepalive: %v", err))
+					log.Printf("Failed to enable socket keepalive: %v", err)
 				}
 			}
 
