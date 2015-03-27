@@ -53,7 +53,7 @@ func waitSignal(log log.Logger, shutdown context.CancelFunc) {
 }
 
 func listen(ctx context.Context, log log.Logger, config *Config) {
-	type KeepAlive interface {
+	type KeepAliver interface {
 		SetKeepAlive(keepalive bool) error
 		SetKeepAlivePeriod(d time.Duration) error
 	}
@@ -83,7 +83,7 @@ func listen(ctx context.Context, log log.Logger, config *Config) {
 
 		select {
 		case conn := <-backlog:
-			if v, ok := conn.(KeepAlive); ok {
+			if v, ok := conn.(KeepAliver); ok {
 				log.Debug("Trying to enable socket keepalive..")
 				if err := v.SetKeepAlive(true); err == nil {
 					log.Debug("Setting socket keepalive period...")
@@ -103,7 +103,7 @@ func listen(ctx context.Context, log log.Logger, config *Config) {
 }
 
 func main() {
-	runtime.GOMAXPROCS(runtime.NumCPU())
+	runtime.GOMAXPROCS(runtime.NumCPU() * 2)
 	flag.Parse()
 
 	conf := NewConfig()

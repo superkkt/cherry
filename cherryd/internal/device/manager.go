@@ -8,11 +8,13 @@
 package device
 
 import (
+	"errors"
 	"fmt"
 	"git.sds.co.kr/bosomi.git/socket"
 	"git.sds.co.kr/cherry.git/cherryd/internal/log"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"golang.org/x/net/context"
+	"io"
 	"net"
 	"time"
 )
@@ -21,10 +23,15 @@ const (
 	socketTimeout = 5 * time.Second
 )
 
+var (
+	ErrNoNegotiated = errors.New("no negotiated session")
+)
+
 type Manager struct {
 	log        log.Logger
 	ofp        *openflow.Protocol
 	negotiated bool // Negotiation of protocol version
+	dpid       string
 }
 
 func NewManager(log log.Logger) *Manager {
@@ -48,7 +55,7 @@ func isTimeout(err error) bool {
 func (r *Manager) handleHelloMessage(msg *openflow.HelloMessage) error {
 	// We only support OF 1.0
 	if msg.Version < 0x01 {
-		// TODO: send error code
+		r.ofp.SendNegotiationFailedMessage()
 		return fmt.Errorf("unsupported OpenFlow protocol version: %v", msg.Version)
 	}
 	if err := r.ofp.SendFeaturesRequestMessage(); err != nil {
@@ -59,10 +66,35 @@ func (r *Manager) handleHelloMessage(msg *openflow.HelloMessage) error {
 	return nil
 }
 
+func (r *Manager) handleErrorMessage(msg *openflow.ErrorMessage) error {
+	e := fmt.Sprintf("error from a device: dpid=%v, type=%v, code=%v, data=%v",
+		r.dpid, msg.Type, msg.Code, msg.Data)
+	r.log.Err(e)
+	return nil
+}
+
+func (r *Manager) handleFeaturesReplyMessage(msg *openflow.FeaturesReplyMessage) error {
+	if r.negotiated == false {
+		return ErrNoNegotiated
+	}
+
+	r.log.Debug(fmt.Sprintf("%+v", msg))
+	// TODO
+	return nil
+}
+
 func (r *Manager) handleMessage(msg interface{}) error {
 	switch v := msg.(type) {
 	case *openflow.HelloMessage:
 		return r.handleHelloMessage(v)
+
+	case *openflow.ErrorMessage:
+		return r.handleErrorMessage(v)
+
+	case *openflow.FeaturesReplyMessage:
+		return r.handleFeaturesReplyMessage(v)
+
+	// TODO: set r.dpid
 
 	default:
 		panic("unsupported message type!")
@@ -73,9 +105,9 @@ func (r *Manager) handleMessage(msg interface{}) error {
 
 func (r *Manager) Run(ctx context.Context, conn net.Conn) {
 	socket := socket.NewConn(conn, 65536) // Type of length in OpenFlow packet header is uint16
-	defer socket.Close()
-
 	r.ofp = openflow.NewProtocol(socket, socketTimeout, socketTimeout)
+	defer r.ofp.Close()
+
 	if err := r.ofp.SendHelloMessage(); err != nil {
 		r.log.Err(fmt.Sprintf("SendHelloMessage: %v", err.Error()))
 		return
@@ -88,6 +120,11 @@ func (r *Manager) Run(ctx context.Context, conn net.Conn) {
 			msg, err := r.ofp.ReadMessage()
 			if err != nil {
 				switch {
+				case err == io.EOF:
+					r.log.Debug("EOF received")
+					close(receivedMsg)
+					return
+
 				case isTimeout(err):
 					// Ignore timeout error
 					continue
@@ -114,6 +151,7 @@ func (r *Manager) Run(ctx context.Context, conn net.Conn) {
 			}
 			if err := r.handleMessage(msg); err != nil {
 				r.log.Err(fmt.Sprintf("handleMessage: %v", err.Error()))
+				// Reader goroutine will be finished after it detects socket disconnection
 				return
 			}
 

@@ -39,6 +39,10 @@ func NewProtocol(s *socket.Conn, rt, wt time.Duration) *Protocol {
 	}
 }
 
+func (r *Protocol) Close() error {
+	return r.socket.Close()
+}
+
 func (r *Protocol) send(data encoding.BinaryMarshaler) error {
 	v, err := data.MarshalBinary()
 	if err != nil {
@@ -89,18 +93,41 @@ func (r *Protocol) SendFeaturesRequestMessage() error {
 	return r.send(msg)
 }
 
+func (r *Protocol) SendNegotiationFailedMessage() error {
+	msg := &ErrorMessage{
+		Header: Header{
+			Version: 0x01, // OF1.0
+			Type:    OFPT_ERROR,
+			Length:  0,
+			Xid:     r.getTransactionID(),
+		},
+		Type: OFPET_HELLO_FAILED,
+		Code: OFPHFC_INCOMPATIBLE,
+		Data: []byte("Sorry. We only support OpenFlow 1.0."),
+	}
+	msg.Length = uint16(12 + len(msg.Data))
+
+	return r.send(msg)
+}
+
 func parsePacket(packet []byte) (interface{}, error) {
+	var msg encoding.BinaryUnmarshaler
+
 	switch packet[1] {
 	case OFPT_HELLO:
-		hello := &HelloMessage{}
-		if err := hello.UnmarshalBinary(packet); err != nil {
-			return nil, err
-		}
-		return hello, nil
-
+		msg = &HelloMessage{}
+	case OFPT_ERROR:
+		msg = &ErrorMessage{}
+	case OFPT_FEATURES_REPLY:
+		msg = &FeaturesReplyMessage{}
 	default:
 		return nil, ErrUnsupportedMsgType
 	}
+
+	if err := msg.UnmarshalBinary(packet); err != nil {
+		return nil, err
+	}
+	return msg, nil
 }
 
 func (r *Protocol) ReadMessage() (interface{}, error) {

@@ -7,6 +7,15 @@
 
 package openflow
 
+import (
+	"errors"
+)
+
+var (
+	ErrInvalidPacketLength = errors.New("invalid packet length")
+)
+
+// ofp_type
 const (
 	OFPT_HELLO = iota
 	OFPT_ERROR
@@ -30,4 +39,85 @@ const (
 	OFPT_BARRIER_REPLY
 	OFPT_QUEUE_GET_CONFIG_REQUEST
 	OFPT_QUEUE_GET_CONFIG_REPLY
+)
+
+// ofp_error_type
+const (
+	OFPET_HELLO_FAILED = iota
+	OFPET_BAD_REQUEST
+	OFPET_BAD_ACTION
+	OFPET_FLOW_MOD_FAILED
+	OFPET_PORT_MOD_FAILED
+	OFPET_QUEUE_OP_FAILED
+)
+
+// ofp_hello_failed_code
+const (
+	OFPHFC_INCOMPATIBLE = iota
+	OFPHFC_EPERM
+)
+
+// ofp_bad_request_code
+const (
+	OFPBRC_BAD_VERSION = iota
+	OFPBRC_BAD_TYPE
+	OFPBRC_BAD_STAT
+	OFPBRC_BAD_VENDOR
+	OFPBRC_BAD_SUBTYPE
+	OFPBRC_EPERM
+	OFPBRC_BAD_LEN
+	OFPBRC_BUFFER_EMPTY
+	OFPBRC_BUFFER_UNKNOWN
+)
+
+// ofp_bad_action_code
+const (
+	OFPBAC_BAD_TYPE = iota
+	OFPBAC_BAD_LEN
+	OFPBAC_BAD_VENDOR
+	OFPBAC_BAD_VENDOR_TYPE
+	OFPBAC_BAD_OUT_PORT
+	OFPBAC_BAD_ARGUMENT
+	OFPBAC_EPERM
+	OFPBAC_TOO_MANY
+	OFPBAC_BAD_QUEUE
+)
+
+// ofp_flow_mod_failed_code
+const (
+	OFPFMFC_ALL_TABLES_FULL = iota
+	OFPFMFC_OVERLAP
+	OFPFMFC_EPERM
+	OFPFMFC_BAD_EMERG_TIMEOUT
+	OFPFMFC_BAD_COMMAND
+	OFPFMFC_UNSUPPORTED
+)
+
+// ofp_port_mod_failed_code
+const (
+	FPPMFC_BAD_PORT = iota
+	OFPPMFC_BAD_HW_ADDR
+)
+
+// ofp_queue_op_failed_code
+const (
+	OFPQOFC_BAD_PORT = iota
+	OFPQOFC_BAD_QUEUE
+	OFPQOFC_EPERM
+)
+
+// ofp_port_config
+const (
+	OFPPC_PORT_DOWN    = 1 << 0
+	OFPPC_NO_STP       = 1 << 1
+	OFPPC_NO_RECV      = 1 << 2
+	OFPPC_NO_RECV_STP  = 1 << 3
+	OFPPC_NO_FLOOD     = 1 << 4
+	OFPPC_NO_FWD       = 1 << 5
+	OFPPC_NO_PACKET_IN = 1 << 6
+)
+
+// ofp_port_state
+const (
+	OFPPS_LINK_DOWN = 1 << 0
 )
