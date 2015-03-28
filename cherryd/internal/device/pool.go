@@ -7,6 +7,8 @@
 
 package device
 
+// TODO: This pool should be move to Zookeeper
+
 // Key: DPID, Value: Device Manager
 var Pool map[uint64]*Manager
 

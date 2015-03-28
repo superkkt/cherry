@@ -77,6 +77,16 @@ func (r *Manager) handleFeaturesReplyMessage(msg *openflow.FeaturesReplyMessage)
 	return nil
 }
 
+func (r *Manager) handleEchoRequestMessage(msg *openflow.EchoRequestMessage) error {
+	r.log.Printf("%+v", msg)
+	return nil
+}
+
+func (r *Manager) handleEchoReplyMessage(msg *openflow.EchoReplyMessage) error {
+	r.log.Printf("%+v", msg)
+	return nil
+}
+
 func (r *Manager) Run(ctx context.Context, conn net.Conn) {
 	socket := socket.NewConn(conn, 65536) // 65536 bytes are max size of a OpenFlow packet
 
@@ -89,6 +99,8 @@ func (r *Manager) Run(ctx context.Context, conn net.Conn) {
 			HelloMessage:         r.handleHelloMessage,
 			ErrorMessage:         r.handleErrorMessage,
 			FeaturesReplyMessage: r.handleFeaturesReplyMessage,
+			EchoRequestMessage:   r.handleEchoRequestMessage,
+			EchoReplyMessage:     r.handleEchoReplyMessage,
 		},
 	}
 

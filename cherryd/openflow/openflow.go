@@ -28,6 +28,8 @@ type MessageHandler struct {
 	HelloMessage         func(*HelloMessage) error
 	ErrorMessage         func(*ErrorMessage) error
 	FeaturesReplyMessage func(*FeaturesReplyMessage) error
+	EchoRequestMessage   func(*EchoRequestMessage) error
+	EchoReplyMessage     func(*EchoReplyMessage) error
 }
 
 type Config struct {
@@ -86,7 +88,6 @@ func (r *Transceiver) sendHelloMessage() error {
 		Header{
 			Version: 0x01, // OF1.0
 			Type:    OFPT_HELLO,
-			Length:  8,
 			Xid:     r.getTransactionID(),
 		},
 	}
@@ -99,7 +100,6 @@ func (r *Transceiver) sendFeaturesRequestMessage() error {
 		Header{
 			Version: 0x01, // OF1.0
 			Type:    OFPT_FEATURES_REQUEST,
-			Length:  8,
 			Xid:     r.getTransactionID(),
 		},
 	}
@@ -112,14 +112,12 @@ func (r *Transceiver) sendNegotiationFailedMessage(data string) error {
 		Header: Header{
 			Version: 0x01, // OF1.0
 			Type:    OFPT_ERROR,
-			Length:  0,
 			Xid:     r.getTransactionID(),
 		},
 		Type: OFPET_HELLO_FAILED,
 		Code: OFPHFC_INCOMPATIBLE,
 		Data: []byte(data),
 	}
-	msg.Length = uint16(12 + len(msg.Data))
 
 	return r.send(msg)
 }
@@ -134,6 +132,10 @@ func parsePacket(packet []byte) (interface{}, error) {
 		msg = &ErrorMessage{}
 	case OFPT_FEATURES_REPLY:
 		msg = &FeaturesReplyMessage{}
+	case OFPT_ECHO_REQUEST:
+		msg = &EchoRequestMessage{}
+	case OFPT_ECHO_REPLY:
+		msg = &EchoReplyMessage{}
 	default:
 		return nil, ErrUnsupportedMsgType
 	}
@@ -142,6 +144,57 @@ func parsePacket(packet []byte) (interface{}, error) {
 		return nil, err
 	}
 	return msg, nil
+}
+
+func (r *Transceiver) handleMessage(ctx context.Context, msg interface{}) error {
+	if _, ok := msg.(*HelloMessage); !ok && !r.negotiated {
+		return ErrNoNegotiated
+	}
+
+	switch v := msg.(type) {
+	case *HelloMessage:
+		if r.Handlers.HelloMessage != nil {
+			err := r.Handlers.HelloMessage(v)
+			if err != nil {
+				r.sendNegotiationFailedMessage(err.Error())
+				return err
+			}
+			if err := r.sendFeaturesRequestMessage(); err != nil {
+				return err
+			}
+			go r.pinger(ctx)
+			r.negotiated = true
+		}
+
+	case *ErrorMessage:
+		if r.Handlers.ErrorMessage != nil {
+			return r.Handlers.ErrorMessage(v)
+		}
+
+	case *FeaturesReplyMessage:
+		if r.Handlers.FeaturesReplyMessage != nil {
+			return r.Handlers.FeaturesReplyMessage(v)
+		}
+
+	case *EchoRequestMessage:
+		if r.Handlers.EchoRequestMessage != nil {
+			if err := r.Handlers.EchoRequestMessage(v); err != nil {
+				return err
+			}
+			if err := r.sendEchoReply(v.Data); err != nil {
+			}
+		}
+
+	case *EchoReplyMessage:
+		if r.Handlers.EchoReplyMessage != nil {
+			return r.Handlers.EchoReplyMessage(v)
+		}
+
+	default:
+		panic("unsupported message type!")
+	}
+
+	return nil
 }
 
 func (r *Transceiver) readMessage() (interface{}, error) {
@@ -179,42 +232,55 @@ func isTimeout(err error) bool {
 	return false
 }
 
-func (r *Transceiver) handleMessage(msg interface{}) error {
-	if _, ok := msg.(*HelloMessage); !ok && !r.negotiated {
-		return ErrNoNegotiated
+func (r *Transceiver) sendEchoRequest() error {
+	msg := &EchoRequestMessage{
+		EchoMessage{
+			Header: Header{
+				Version: 0x01, // OF1.0
+				Type:    OFPT_ECHO_REQUEST,
+				Xid:     r.getTransactionID(),
+			},
+			Data: make([]byte, 8),
+		},
+	}
+	timestamp := time.Now().Unix()
+	binary.BigEndian.PutUint64(msg.Data, uint64(timestamp))
+
+	return r.send(msg)
+}
+
+func (r *Transceiver) sendEchoReply(data []byte) error {
+	msg := &EchoRequestMessage{
+		EchoMessage{
+			Header: Header{
+				Version: 0x01, // OF1.0
+				Type:    OFPT_ECHO_REPLY,
+				Xid:     r.getTransactionID(),
+			},
+		},
 	}
 
-	switch v := msg.(type) {
-	case *HelloMessage:
-		if r.Handlers.HelloMessage != nil {
-			err := r.Handlers.HelloMessage(v)
-			if err != nil {
-				r.sendNegotiationFailedMessage(err.Error())
-				return err
-			}
-			if err := r.sendFeaturesRequestMessage(); err != nil {
-				return err
-			}
-			r.negotiated = true
-		}
-
-	case *ErrorMessage:
-		if r.Handlers.ErrorMessage != nil {
-			return r.Handlers.ErrorMessage(v)
-		}
-
-	case *FeaturesReplyMessage:
-		if r.Handlers.FeaturesReplyMessage != nil {
-			return r.Handlers.FeaturesReplyMessage(v)
-		}
-
-	// TODO: set r.dpid
-
-	default:
-		panic("unsupported message type!")
+	if data != nil && len(data) > 0 {
+		msg.Data = make([]byte, len(data))
+		copy(msg.Data, data)
 	}
 
-	return nil
+	return r.send(msg)
+}
+
+func (r *Transceiver) pinger(ctx context.Context) {
+	ticker := time.NewTicker(10 * time.Second)
+
+	for {
+		select {
+		case <-ticker.C:
+			r.sendEchoRequest()
+
+		case <-ctx.Done():
+			ticker.Stop()
+			return
+		}
+	}
 }
 
 func (r *Transceiver) Run(ctx context.Context) {
@@ -256,7 +322,7 @@ func (r *Transceiver) Run(ctx context.Context) {
 			if !ok {
 				return
 			}
-			if err := r.handleMessage(msg); err != nil {
+			if err := r.handleMessage(ctx, msg); err != nil {
 				r.Log.Print(err)
 				// Reader goroutine will be finished after it detects socket disconnection
 				return

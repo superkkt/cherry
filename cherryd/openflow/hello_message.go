@@ -13,6 +13,7 @@ type HelloMessage struct {
 }
 
 func (r *HelloMessage) MarshalBinary() ([]byte, error) {
+	r.Header.Length = 8
 	return r.Header.MarshalBinary()
 }
 

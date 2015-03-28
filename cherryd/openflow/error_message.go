@@ -19,12 +19,18 @@ type ErrorMessage struct {
 }
 
 func (r *ErrorMessage) MarshalBinary() ([]byte, error) {
+	var length uint16 = 12 // header length + type + code
+	if r.Data != nil {
+		length += uint16(len(r.Data))
+	}
+
+	r.Header.Length = length
 	header, err := r.Header.MarshalBinary()
 	if err != nil {
 		return nil, err
 	}
 
-	data := make([]byte, r.Length)
+	data := make([]byte, length)
 	copy(data[0:8], header)
 	binary.BigEndian.PutUint16(data[8:10], r.Type)
 	binary.BigEndian.PutUint16(data[10:12], r.Code)

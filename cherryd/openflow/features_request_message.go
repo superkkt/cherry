@@ -13,6 +13,7 @@ type FeaturesRequestMessage struct {
 }
 
 func (r *FeaturesRequestMessage) MarshalBinary() ([]byte, error) {
+	r.Header.Length = 8
 	return r.Header.MarshalBinary()
 }
 
