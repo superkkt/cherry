@@ -9,8 +9,6 @@ package openflow
 
 import (
 	"encoding/binary"
-	"net"
-	"strings"
 )
 
 type FeaturesReplyMessage struct {
@@ -79,26 +77,6 @@ func (r *FeaturesReplyMessage) GetSupportedAction() *Action {
 	}
 }
 
-func unmarshalPort(data []byte) (Port, error) {
-	if len(data) < 48 {
-		return Port{}, ErrInvalidPacketLength
-	}
-
-	p := Port{}
-	p.Number = binary.BigEndian.Uint16(data[0:2])
-	p.MAC = make(net.HardwareAddr, 6)
-	copy(p.MAC, data[2:8])
-	p.Name = strings.TrimRight(string(data[8:24]), "\x00")
-	p.config = binary.BigEndian.Uint32(data[24:28])
-	p.state = binary.BigEndian.Uint32(data[28:32])
-	p.current = binary.BigEndian.Uint32(data[32:36])
-	p.advertised = binary.BigEndian.Uint32(data[36:40])
-	p.supported = binary.BigEndian.Uint32(data[40:44])
-	p.peer = binary.BigEndian.Uint32(data[44:48])
-
-	return p, nil
-}
-
 func (r *FeaturesReplyMessage) UnmarshalBinary(data []byte) error {
 	header := &Header{}
 	if err := header.UnmarshalBinary(data); err != nil {
@@ -122,11 +100,11 @@ func (r *FeaturesReplyMessage) UnmarshalBinary(data []byte) error {
 	r.Ports = make([]Port, nPorts)
 	for i := uint16(0); i < nPorts; i++ {
 		buf := data[32+i*48:]
-		port, err := unmarshalPort(buf)
-		if err != nil {
+		p := Port{}
+		if err := p.UnmarshalBinary(buf[0:48]); err != nil {
 			return err
 		}
-		r.Ports[i] = port
+		r.Ports[i] = p
 	}
 
 	return nil

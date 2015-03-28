@@ -30,6 +30,7 @@ type MessageHandler struct {
 	FeaturesReplyMessage func(*FeaturesReplyMessage) error
 	EchoRequestMessage   func(*EchoRequestMessage) error
 	EchoReplyMessage     func(*EchoReplyMessage) error
+	PortStatusMessage    func(*PortStatusMessage) error
 }
 
 type Config struct {
@@ -136,6 +137,8 @@ func parsePacket(packet []byte) (interface{}, error) {
 		msg = &EchoRequestMessage{}
 	case OFPT_ECHO_REPLY:
 		msg = &EchoReplyMessage{}
+	case OFPT_PORT_STATUS:
+		msg = &PortStatusMessage{}
 	default:
 		return nil, ErrUnsupportedMsgType
 	}
@@ -151,6 +154,7 @@ func (r *Transceiver) handleMessage(ctx context.Context, msg interface{}) error 
 		return ErrNoNegotiated
 	}
 
+	// FIXME: Try to use reflection to remove these manual callback calls
 	switch v := msg.(type) {
 	case *HelloMessage:
 		if r.Handlers.HelloMessage != nil {
@@ -188,6 +192,11 @@ func (r *Transceiver) handleMessage(ctx context.Context, msg interface{}) error 
 	case *EchoReplyMessage:
 		if r.Handlers.EchoReplyMessage != nil {
 			return r.Handlers.EchoReplyMessage(v)
+		}
+
+	case *PortStatusMessage:
+		if r.Handlers.PortStatusMessage != nil {
+			return r.Handlers.PortStatusMessage(v)
 		}
 
 	default:

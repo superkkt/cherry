@@ -78,11 +78,30 @@ func (r *Manager) handleFeaturesReplyMessage(msg *openflow.FeaturesReplyMessage)
 }
 
 func (r *Manager) handleEchoRequestMessage(msg *openflow.EchoRequestMessage) error {
+	// XXX: debugging
 	r.log.Printf("%+v", msg)
 	return nil
 }
 
 func (r *Manager) handleEchoReplyMessage(msg *openflow.EchoReplyMessage) error {
+	// XXX: debugging
+	r.log.Printf("%+v", msg)
+	return nil
+}
+
+// TODO: Test this function by plug and unplug a port
+func (r *Manager) handlePortStatusMessage(msg *openflow.PortStatusMessage) error {
+	// Update port status
+	for i, v := range r.Ports {
+		if v.Number != msg.Target.Number {
+			continue
+		}
+		r.Ports[i] = msg.Target
+		// XXX: debugging
+		r.log.Printf("Device Port Status: %+v", r.Ports[i])
+	}
+
+	// XXX: debugging
 	r.log.Printf("%+v", msg)
 	return nil
 }
@@ -101,6 +120,7 @@ func (r *Manager) Run(ctx context.Context, conn net.Conn) {
 			FeaturesReplyMessage: r.handleFeaturesReplyMessage,
 			EchoRequestMessage:   r.handleEchoRequestMessage,
 			EchoReplyMessage:     r.handleEchoReplyMessage,
+			PortStatusMessage:    r.handlePortStatusMessage,
 		},
 	}
 

@@ -8,7 +8,9 @@
 package openflow
 
 import (
+	"encoding/binary"
 	"net"
+	"strings"
 )
 
 type Port struct {
@@ -88,4 +90,23 @@ func (r *Port) GetAdvertisedFeatures() *PortFeature {
 
 func (r *Port) GetSupportedFeatures() *PortFeature {
 	return getFeatures(r.supported)
+}
+
+func (r *Port) UnmarshalBinary(data []byte) error {
+	if len(data) < 48 {
+		return ErrInvalidPacketLength
+	}
+
+	r.Number = binary.BigEndian.Uint16(data[0:2])
+	r.MAC = make(net.HardwareAddr, 6)
+	copy(r.MAC, data[2:8])
+	r.Name = strings.TrimRight(string(data[8:24]), "\x00")
+	r.config = binary.BigEndian.Uint32(data[24:28])
+	r.state = binary.BigEndian.Uint32(data[28:32])
+	r.current = binary.BigEndian.Uint32(data[32:36])
+	r.advertised = binary.BigEndian.Uint32(data[36:40])
+	r.supported = binary.BigEndian.Uint32(data[40:44])
+	r.peer = binary.BigEndian.Uint32(data[44:48])
+
+	return nil
 }
