@@ -109,6 +109,14 @@ func (r *Manager) handlePortStatusMessage(msg *openflow.PortStatusMessage) error
 func (r *Manager) handlePacketInMessage(msg *openflow.PacketInMessage) error {
 	// XXX: debugging
 	r.log.Printf("%+v", msg)
+
+	// XXX: test
+	inPort := openflow.PortNumber(msg.InPort)
+	flood := &openflow.FlowActionOutput{Port: openflow.OFPP_ALL}
+	if err := r.SendPacketOut(inPort, []openflow.FlowAction{flood}, msg.Data); err != nil {
+		r.log.Printf("failed to send a packet-out message: %v", err)
+	}
+
 	return nil
 }
 
@@ -177,4 +185,8 @@ func (r *Manager) RemoveFlowRule(match *openflow.FlowMatch) error {
 		Command: openflow.OFPFC_DELETE,
 	}
 	return r.openflow.SendFlowModifyMessage(mod)
+}
+
+func (r *Manager) SendPacketOut(inPort openflow.PortNumber, actions []openflow.FlowAction, packet []byte) error {
+	return r.openflow.SendPacketOutMessage(inPort, actions, packet)
 }

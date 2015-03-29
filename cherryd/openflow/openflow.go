@@ -92,6 +92,22 @@ func (r *Transceiver) SendFlowModifyMessage(msg *FlowModifyMessage) error {
 		Type:    OFPT_FLOW_MOD,
 		Xid:     r.getTransactionID(),
 	}
+
+	return r.send(msg)
+}
+
+func (r *Transceiver) SendPacketOutMessage(inPort PortNumber, actions []FlowAction, packet []byte) error {
+	msg := &PacketOutMessage{
+		Header: Header{
+			Version: 0x01, // OF1.0
+			Type:    OFPT_PACKET_OUT,
+			Xid:     r.getTransactionID(),
+		},
+		InPort:  inPort,
+		Actions: actions,
+		Data:    packet,
+	}
+
 	return r.send(msg)
 }
 
