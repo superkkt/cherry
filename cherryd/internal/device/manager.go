@@ -75,31 +75,63 @@ func (r *Manager) handleFeaturesReplyMessage(msg *openflow.FeaturesReplyMessage)
 	add(r.DPID, r)
 
 	// XXX: test
-	//	mac, err := net.ParseMAC("01:01:01:01:01:01")
-	//	if err != nil {
-	//		panic("Invalid test mac address!")
-	//	}
+	mac, err := net.ParseMAC("01:01:01:01:01:01")
+	if err != nil {
+		panic("Invalid test mac address!")
+	}
 	match := openflow.NewFlowMatch()
 	match.SetInPort(38)
-	//match.SetSrcMAC(mac)
-	//a1 := &openflow.FlowActionSetSrcMAC{MAC: mac}
-	//a2 := &openflow.FlowActionSetDstMAC{MAC: mac}
+	match.SetSrcMAC(mac)
+	a1 := &openflow.FlowActionSetSrcMAC{MAC: mac}
+	a2 := &openflow.FlowActionSetDstMAC{MAC: mac}
 	a3 := &openflow.FlowActionOutput{Port: 35}
-	mod := &openflow.FlowModifyMessage{
+	rule := FlowRule{
 		Match:       match,
+		Actions:     []openflow.FlowAction{a1, a2, a3},
+		IdleTimeout: 10,
+	}
+	if err := r.InstallFlowRule(rule); err != nil {
+		r.log.Printf("failed to send a flow_mod: %v", err)
+	}
+
+	time.Sleep(1 * time.Second)
+
+	if err := r.RemoveFlowRule(openflow.NewFlowMatch()); err != nil {
+		r.log.Printf("failed to remove a flow_mod: %v", err)
+	}
+
+	return nil
+}
+
+type FlowRule struct {
+	Match       *openflow.FlowMatch
+	Actions     []openflow.FlowAction
+	IdleTimeout uint16
+	HardTimeout uint16
+}
+
+// TODO: Should we need to install a barrier after installing a flow rule?
+func (r *Manager) InstallFlowRule(flow FlowRule) error {
+	mod := &openflow.FlowModifyMessage{
+		Match:       flow.Match,
 		Command:     openflow.OFPFC_ADD,
-		IdleTimeout: 5,
+		IdleTimeout: flow.IdleTimeout,
+		HardTimeout: flow.HardTimeout,
 		Flags: openflow.FlowModifyFlag{
 			SendFlowRemoved: true,
 			CheckOverlap:    true,
 		},
-		Actions: []openflow.FlowAction{a3},
+		Actions: flow.Actions,
 	}
-	if err := r.openflow.SendFlowModifyMessage(mod); err != nil {
-		r.log.Printf("failed to send a flow_mod: %v", err)
-	}
+	return r.openflow.SendFlowModifyMessage(mod)
+}
 
-	return nil
+func (r *Manager) RemoveFlowRule(match *openflow.FlowMatch) error {
+	mod := &openflow.FlowModifyMessage{
+		Match:   match,
+		Command: openflow.OFPFC_DELETE,
+	}
+	return r.openflow.SendFlowModifyMessage(mod)
 }
 
 func (r *Manager) handleEchoRequestMessage(msg *openflow.EchoRequestMessage) error {

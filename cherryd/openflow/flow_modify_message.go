@@ -46,7 +46,7 @@ type FlowModifyMessage struct {
 	HardTimeout uint16
 	Priority    uint16
 	bufferID    uint32
-	Port        PortNumber
+	port        PortNumber
 	Flags       FlowModifyFlag
 	Actions     []FlowAction
 }
@@ -85,7 +85,9 @@ func (r *FlowModifyMessage) MarshalBinary() ([]byte, error) {
 	// We don't support buffer id
 	r.bufferID = 0xFFFFFFFF
 	binary.BigEndian.PutUint32(v[64:68], r.bufferID)
-	binary.BigEndian.PutUint16(v[68:70], uint16(r.Port))
+	// We don't support output port constraint
+	r.port = OFPP_NONE
+	binary.BigEndian.PutUint16(v[68:70], uint16(r.port))
 	flags, err := r.Flags.MarshalBinary()
 	if err != nil {
 		return nil, err
