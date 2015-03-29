@@ -8,8 +8,10 @@
 package openflow
 
 // ofp_type
+type PacketType uint8
+
 const (
-	OFPT_HELLO = iota
+	OFPT_HELLO PacketType = iota
 	OFPT_ERROR
 	OFPT_ECHO_REQUEST
 	OFPT_ECHO_REPLY
@@ -34,8 +36,10 @@ const (
 )
 
 // ofp_error_type
+type ErrorType uint16
+
 const (
-	OFPET_HELLO_FAILED = iota
+	OFPET_HELLO_FAILED ErrorType = iota
 	OFPET_BAD_REQUEST
 	OFPET_BAD_ACTION
 	OFPET_FLOW_MOD_FAILED
@@ -43,15 +47,17 @@ const (
 	OFPET_QUEUE_OP_FAILED
 )
 
+type ErrorCode uint16
+
 // ofp_hello_failed_code
 const (
-	OFPHFC_INCOMPATIBLE = iota
+	OFPHFC_INCOMPATIBLE ErrorCode = iota
 	OFPHFC_EPERM
 )
 
 // ofp_bad_request_code
 const (
-	OFPBRC_BAD_VERSION = iota
+	OFPBRC_BAD_VERSION ErrorCode = iota
 	OFPBRC_BAD_TYPE
 	OFPBRC_BAD_STAT
 	OFPBRC_BAD_VENDOR
@@ -64,7 +70,7 @@ const (
 
 // ofp_bad_action_code
 const (
-	OFPBAC_BAD_TYPE = iota
+	OFPBAC_BAD_TYPE ErrorCode = iota
 	OFPBAC_BAD_LEN
 	OFPBAC_BAD_VENDOR
 	OFPBAC_BAD_VENDOR_TYPE
@@ -77,7 +83,7 @@ const (
 
 // ofp_flow_mod_failed_code
 const (
-	OFPFMFC_ALL_TABLES_FULL = iota
+	OFPFMFC_ALL_TABLES_FULL ErrorCode = iota
 	OFPFMFC_OVERLAP
 	OFPFMFC_EPERM
 	OFPFMFC_BAD_EMERG_TIMEOUT
@@ -87,13 +93,13 @@ const (
 
 // ofp_port_mod_failed_code
 const (
-	FPPMFC_BAD_PORT = iota
+	FPPMFC_BAD_PORT ErrorCode = iota
 	OFPPMFC_BAD_HW_ADDR
 )
 
 // ofp_queue_op_failed_code
 const (
-	OFPQOFC_BAD_PORT = iota
+	OFPQOFC_BAD_PORT ErrorCode = iota
 	OFPQOFC_BAD_QUEUE
 	OFPQOFC_EPERM
 )
@@ -143,18 +149,59 @@ const (
 )
 
 // ofp_action_type
+type ActionType uint16
+
 const (
-	OFPAT_OUTPUT       = iota /* Output to switch port. */
-	OFPAT_SET_VLAN_VID        /* Set the 802.1q VLAN id. */
-	OFPAT_SET_VLAN_PCP        /* Set the 802.1q priority. */
-	OFPAT_STRIP_VLAN          /* Strip the 802.1q header. */
-	OFPAT_SET_DL_SRC          /* Ethernet source address. */
-	OFPAT_SET_DL_DST          /* Ethernet destination address. */
-	OFPAT_SET_NW_SRC          /* IP source address. */
-	OFPAT_SET_NW_DST          /* IP destination address. */
-	OFPAT_SET_NW_TOS          /* IP ToS (DSCP field, 6 bits). */
-	OFPAT_SET_TP_SRC          /* TCP/UDP source port. */
-	OFPAT_SET_TP_DST          /* TCP/UDP destination port. */
-	OFPAT_ENQUEUE             /* Output to queue. */
+	OFPAT_OUTPUT       ActionType = iota /* Output to switch port. */
+	OFPAT_SET_VLAN_VID                   /* Set the 802.1q VLAN id. */
+	OFPAT_SET_VLAN_PCP                   /* Set the 802.1q priority. */
+	OFPAT_STRIP_VLAN                     /* Strip the 802.1q header. */
+	OFPAT_SET_DL_SRC                     /* Ethernet source address. */
+	OFPAT_SET_DL_DST                     /* Ethernet destination address. */
+	OFPAT_SET_NW_SRC                     /* IP source address. */
+	OFPAT_SET_NW_DST                     /* IP destination address. */
+	OFPAT_SET_NW_TOS                     /* IP ToS (DSCP field, 6 bits). */
+	OFPAT_SET_TP_SRC                     /* TCP/UDP source port. */
+	OFPAT_SET_TP_DST                     /* TCP/UDP destination port. */
+	OFPAT_ENQUEUE                        /* Output to queue. */
 	OFPAT_VENDOR       = 0xffff
+)
+
+// ofp_flow_wildcards
+const (
+	OFPFW_IN_PORT     = 1 << 0  /* Switch input port. */
+	OFPFW_DL_VLAN     = 1 << 1  /* VLAN id. */
+	OFPFW_DL_SRC      = 1 << 2  /* Ethernet source address. */
+	OFPFW_DL_DST      = 1 << 3  /* Ethernet destination address. */
+	OFPFW_DL_TYPE     = 1 << 4  /* Ethernet frame type. */
+	OFPFW_NW_PROTO    = 1 << 5  /* IP protocol. */
+	OFPFW_TP_SRC      = 1 << 6  /* TCP/UDP source port. */
+	OFPFW_TP_DST      = 1 << 7  /* TCP/UDP destination port. */
+	OFPFW_DL_VLAN_PCP = 1 << 20 /* VLAN priority. */
+	OFPFW_NW_TOS      = 1 << 21 /* IP ToS (DSCP field, 6 bits). */
+)
+
+type FlowModifyCmd uint16
+
+const (
+	OFPFC_ADD           FlowModifyCmd = iota /* New flow. */
+	OFPFC_MODIFY                             /* Modify all matching flows. */
+	OFPFC_MODIFY_STRICT                      /* Modify entry strictly matching wildcards */
+	OFPFC_DELETE                             /* Delete all matching flows. */
+	OFPFC_DELETE_STRICT                      /* Strictly match wildcards and priority. */
+)
+
+type PortChangedReason uint8
+
+const (
+	OFPPR_ADD    PortChangedReason = iota /* The port was added. */
+	OFPPR_DELETE                          /* The port was removed. */
+	OFPPR_MODIFY                          /* Some attribute of the port has changed. */
+)
+
+// ofp_flow_mod_flags
+const (
+	OFPFF_SEND_FLOW_REM = 1 << 0 /* Send flow removed message when flow expires or is deleted. */
+	OFPFF_CHECK_OVERLAP = 1 << 1 /* Check for overlapping entries first. */
+	OFPFF_EMERG         = 1 << 2 /* Remark this is for emergency. */
 )

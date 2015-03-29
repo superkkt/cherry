@@ -84,6 +84,15 @@ func (r *Transceiver) getTransactionID() uint32 {
 	return v
 }
 
+func (r *Transceiver) SendFlowModifyMessage(msg *FlowModifyMessage) error {
+	msg.header = Header{
+		Version: 0x01, // OF1.0
+		Type:    OFPT_FLOW_MOD,
+		Xid:     r.getTransactionID(),
+	}
+	return r.send(msg)
+}
+
 func (r *Transceiver) sendHelloMessage() error {
 	msg := &HelloMessage{
 		Header{
@@ -126,7 +135,7 @@ func (r *Transceiver) sendNegotiationFailedMessage(data string) error {
 func parsePacket(packet []byte) (interface{}, error) {
 	var msg encoding.BinaryUnmarshaler
 
-	switch packet[1] {
+	switch PacketType(packet[1]) {
 	case OFPT_HELLO:
 		msg = &HelloMessage{}
 	case OFPT_ERROR:
@@ -163,6 +172,9 @@ func (r *Transceiver) handleMessage(ctx context.Context, msg interface{}) error 
 				r.sendNegotiationFailedMessage(err.Error())
 				return err
 			}
+
+			// TODO: Set to send whole packet data in PACKET_IN using max_len(?)
+
 			if err := r.sendFeaturesRequestMessage(); err != nil {
 				return err
 			}

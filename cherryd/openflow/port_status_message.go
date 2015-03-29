@@ -9,7 +9,7 @@ package openflow
 
 type PortStatusMessage struct {
 	Header
-	Reason uint8
+	Reason PortChangedReason
 	Target Port
 }
 
@@ -23,7 +23,7 @@ func (r *PortStatusMessage) UnmarshalBinary(data []byte) error {
 	}
 
 	r.Header = *header
-	r.Reason = data[8]
+	r.Reason = PortChangedReason(data[8])
 	if err := r.Target.UnmarshalBinary(data[16:64]); err != nil {
 		return err
 	}

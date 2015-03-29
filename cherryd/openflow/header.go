@@ -13,7 +13,7 @@ import (
 
 type Header struct {
 	Version uint8
-	Type    uint8
+	Type    PacketType
 	Length  uint16
 	Xid     uint32
 }
@@ -21,7 +21,7 @@ type Header struct {
 func (r *Header) MarshalBinary() ([]byte, error) {
 	v := make([]byte, 8)
 	v[0] = r.Version
-	v[1] = r.Type
+	v[1] = uint8(r.Type)
 	binary.BigEndian.PutUint16(v[2:4], r.Length)
 	binary.BigEndian.PutUint32(v[4:8], r.Xid)
 
@@ -34,7 +34,7 @@ func (r *Header) UnmarshalBinary(data []byte) error {
 	}
 
 	r.Version = data[0]
-	r.Type = data[1]
+	r.Type = PacketType(data[1])
 	r.Length = binary.BigEndian.Uint16(data[2:4])
 	r.Xid = binary.BigEndian.Uint32(data[4:8])
 

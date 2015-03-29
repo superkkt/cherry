@@ -74,6 +74,32 @@ func (r *Manager) handleFeaturesReplyMessage(msg *openflow.FeaturesReplyMessage)
 	// Add this device to the device pool
 	add(r.DPID, r)
 
+	// XXX: test
+	match := openflow.NewFlowMatch()
+	match.SetInPort(46)
+
+	mac, err := net.ParseMAC("01:01:01:01:01:01")
+	if err != nil {
+		panic("Invalid test mac address!")
+	}
+	a1 := &openflow.FlowActionSetSrcMAC{MAC: mac}
+	a2 := &openflow.FlowActionSetDstMAC{MAC: mac}
+	// TODO: Check FlowActionOutput problem.. OFPBAC_BAD_OUT_PORT
+	//a2 := &openflow.FlowActionOutput{Port: 15}
+	mod := &openflow.FlowModifyMessage{
+		Match:       match,
+		Command:     openflow.OFPFC_ADD,
+		IdleTimeout: 5,
+		Flags: openflow.FlowModifyFlag{
+			SendFlowRemoved: true,
+			CheckOverlap:    true,
+		},
+		Actions: []openflow.FlowAction{a1, a2},
+	}
+	if err := r.openflow.SendFlowModifyMessage(mod); err != nil {
+		r.log.Printf("failed to send a flow_mod: %v", err)
+	}
+
 	return nil
 }
 
@@ -107,7 +133,7 @@ func (r *Manager) handlePortStatusMessage(msg *openflow.PortStatusMessage) error
 }
 
 func (r *Manager) Run(ctx context.Context, conn net.Conn) {
-	socket := socket.NewConn(conn, 65536) // 65536 bytes are max size of a OpenFlow packet
+	socket := socket.NewConn(conn, 65535) // 65535 bytes are max size of a OpenFlow packet
 
 	config := openflow.Config{
 		Log:          r.log,
