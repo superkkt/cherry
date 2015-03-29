@@ -31,6 +31,8 @@ type MessageHandler struct {
 	EchoRequestMessage   func(*EchoRequestMessage) error
 	EchoReplyMessage     func(*EchoReplyMessage) error
 	PortStatusMessage    func(*PortStatusMessage) error
+	PacketInMessage      func(*PacketInMessage) error
+	FlowRemovedMessage   func(*FlowRemovedMessage) error
 }
 
 type Config struct {
@@ -148,6 +150,10 @@ func parsePacket(packet []byte) (interface{}, error) {
 		msg = &EchoReplyMessage{}
 	case OFPT_PORT_STATUS:
 		msg = &PortStatusMessage{}
+	case OFPT_PACKET_IN:
+		msg = &PacketInMessage{}
+	case OFPT_FLOW_REMOVED:
+		msg = &FlowRemovedMessage{}
 	default:
 		return nil, ErrUnsupportedMsgType
 	}
@@ -209,6 +215,16 @@ func (r *Transceiver) handleMessage(ctx context.Context, msg interface{}) error 
 	case *PortStatusMessage:
 		if r.Handlers.PortStatusMessage != nil {
 			return r.Handlers.PortStatusMessage(v)
+		}
+
+	case *PacketInMessage:
+		if r.Handlers.PacketInMessage != nil {
+			return r.Handlers.PacketInMessage(v)
+		}
+
+	case *FlowRemovedMessage:
+		if r.Handlers.FlowRemovedMessage != nil {
+			return r.Handlers.FlowRemovedMessage(v)
 		}
 
 	default:

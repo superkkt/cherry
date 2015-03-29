@@ -221,3 +221,18 @@ const (
 	OFPP_LOCAL      = 0xfffe /* Local openflow "port". */
 	OFPP_NONE       = 0xffff /* Not associated with a physical port. */
 )
+
+type PacketInReason uint8
+
+const (
+	OFPR_NO_MATCH PacketInReason = iota
+	OFPR_ACTION
+)
+
+type FlowRemovedReason uint8
+
+const (
+	OFPRR_IDLE_TIMEOUT FlowRemovedReason = iota
+	OFPRR_HARD_TIMEOUT
+	OFPRR_DELETE
+)

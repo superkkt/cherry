@@ -74,64 +74,7 @@ func (r *Manager) handleFeaturesReplyMessage(msg *openflow.FeaturesReplyMessage)
 	// Add this device to the device pool
 	add(r.DPID, r)
 
-	// XXX: test
-	mac, err := net.ParseMAC("01:01:01:01:01:01")
-	if err != nil {
-		panic("Invalid test mac address!")
-	}
-	match := openflow.NewFlowMatch()
-	match.SetInPort(38)
-	match.SetSrcMAC(mac)
-	a1 := &openflow.FlowActionSetSrcMAC{MAC: mac}
-	a2 := &openflow.FlowActionSetDstMAC{MAC: mac}
-	a3 := &openflow.FlowActionOutput{Port: 35}
-	rule := FlowRule{
-		Match:       match,
-		Actions:     []openflow.FlowAction{a1, a2, a3},
-		IdleTimeout: 10,
-	}
-	if err := r.InstallFlowRule(rule); err != nil {
-		r.log.Printf("failed to send a flow_mod: %v", err)
-	}
-
-	time.Sleep(1 * time.Second)
-
-	if err := r.RemoveFlowRule(openflow.NewFlowMatch()); err != nil {
-		r.log.Printf("failed to remove a flow_mod: %v", err)
-	}
-
 	return nil
-}
-
-type FlowRule struct {
-	Match       *openflow.FlowMatch
-	Actions     []openflow.FlowAction
-	IdleTimeout uint16
-	HardTimeout uint16
-}
-
-// TODO: Should we need to install a barrier after installing a flow rule?
-func (r *Manager) InstallFlowRule(flow FlowRule) error {
-	mod := &openflow.FlowModifyMessage{
-		Match:       flow.Match,
-		Command:     openflow.OFPFC_ADD,
-		IdleTimeout: flow.IdleTimeout,
-		HardTimeout: flow.HardTimeout,
-		Flags: openflow.FlowModifyFlag{
-			SendFlowRemoved: true,
-			CheckOverlap:    true,
-		},
-		Actions: flow.Actions,
-	}
-	return r.openflow.SendFlowModifyMessage(mod)
-}
-
-func (r *Manager) RemoveFlowRule(match *openflow.FlowMatch) error {
-	mod := &openflow.FlowModifyMessage{
-		Match:   match,
-		Command: openflow.OFPFC_DELETE,
-	}
-	return r.openflow.SendFlowModifyMessage(mod)
 }
 
 func (r *Manager) handleEchoRequestMessage(msg *openflow.EchoRequestMessage) error {
@@ -163,9 +106,20 @@ func (r *Manager) handlePortStatusMessage(msg *openflow.PortStatusMessage) error
 	return nil
 }
 
+func (r *Manager) handlePacketInMessage(msg *openflow.PacketInMessage) error {
+	// XXX: debugging
+	r.log.Printf("%+v", msg)
+	return nil
+}
+
+func (r *Manager) handleFlowRemovedMessage(msg *openflow.FlowRemovedMessage) error {
+	// XXX: debugging
+	r.log.Printf("%+v", msg)
+	return nil
+}
+
 func (r *Manager) Run(ctx context.Context, conn net.Conn) {
 	socket := socket.NewConn(conn, 65535) // 65535 bytes are max size of a OpenFlow packet
-
 	config := openflow.Config{
 		Log:          r.log,
 		Socket:       socket,
@@ -178,6 +132,8 @@ func (r *Manager) Run(ctx context.Context, conn net.Conn) {
 			EchoRequestMessage:   r.handleEchoRequestMessage,
 			EchoReplyMessage:     r.handleEchoReplyMessage,
 			PortStatusMessage:    r.handlePortStatusMessage,
+			PacketInMessage:      r.handlePacketInMessage,
+			FlowRemovedMessage:   r.handleFlowRemovedMessage,
 		},
 	}
 
@@ -190,4 +146,35 @@ func (r *Manager) Run(ctx context.Context, conn net.Conn) {
 
 	// Remove this device from the device pool
 	remove(r.DPID)
+}
+
+type FlowRule struct {
+	Match       *openflow.FlowMatch
+	Actions     []openflow.FlowAction
+	IdleTimeout uint16
+	HardTimeout uint16
+}
+
+// FIXME: Should we need to install a barrier after installing a flow rule?
+func (r *Manager) InstallFlowRule(flow FlowRule) error {
+	mod := &openflow.FlowModifyMessage{
+		Match:       flow.Match,
+		Command:     openflow.OFPFC_ADD,
+		IdleTimeout: flow.IdleTimeout,
+		HardTimeout: flow.HardTimeout,
+		Flags: openflow.FlowModifyFlag{
+			SendFlowRemoved: true,
+			CheckOverlap:    true,
+		},
+		Actions: flow.Actions,
+	}
+	return r.openflow.SendFlowModifyMessage(mod)
+}
+
+func (r *Manager) RemoveFlowRule(match *openflow.FlowMatch) error {
+	mod := &openflow.FlowModifyMessage{
+		Match:   match,
+		Command: openflow.OFPFC_DELETE,
+	}
+	return r.openflow.SendFlowModifyMessage(mod)
 }
