@@ -205,3 +205,19 @@ const (
 	OFPFF_CHECK_OVERLAP = 1 << 1 /* Check for overlapping entries first. */
 	OFPFF_EMERG         = 1 << 2 /* Remark this is for emergency. */
 )
+
+type PortNumber uint16
+
+const (
+	/* Maximum number of physical switch ports. */
+	OFPP_MAX PortNumber = 0xff00
+	/* Fake output "ports". */
+	OFPP_IN_PORT    = 0xfff8 /* Send the packet out the input port. */
+	OFPP_TABLE      = 0xfff9 /* Perform actions in flow table. */
+	OFPP_NORMAL     = 0xfffa /* Process with normal L2/L3 switching. */
+	OFPP_FLOOD      = 0xfffb /* All physical ports except input port and those disabled by STP. */
+	OFPP_ALL        = 0xfffc /* All physical ports except input port. */
+	OFPP_CONTROLLER = 0xfffd /* Send to controller. */
+	OFPP_LOCAL      = 0xfffe /* Local openflow "port". */
+	OFPP_NONE       = 0xffff /* Not associated with a physical port. */
+)

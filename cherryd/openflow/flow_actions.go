@@ -19,7 +19,7 @@ type FlowAction interface {
 }
 
 type FlowActionOutput struct {
-	Port   uint16
+	Port   PortNumber
 	maxLen uint16
 }
 
@@ -28,15 +28,13 @@ func (r *FlowActionOutput) GetActionType() ActionType {
 }
 
 func (r *FlowActionOutput) MarshalBinary() ([]byte, error) {
-	v := make([]byte, 16)
+	v := make([]byte, 8)
 	binary.BigEndian.PutUint16(v[0:2], uint16(OFPAT_OUTPUT))
-	binary.BigEndian.PutUint16(v[2:4], 16)
-	binary.BigEndian.PutUint16(v[8:10], uint16(OFPAT_OUTPUT))
-	binary.BigEndian.PutUint16(v[10:12], 8)
-	binary.BigEndian.PutUint16(v[12:14], r.Port)
+	binary.BigEndian.PutUint16(v[2:4], 8)
+	binary.BigEndian.PutUint16(v[4:6], uint16(r.Port))
 	// We don't support buffer ID and partial PACKET_IN
 	r.maxLen = 65535
-	binary.BigEndian.PutUint16(v[14:16], r.maxLen)
+	binary.BigEndian.PutUint16(v[6:8], r.maxLen)
 
 	return v, nil
 }
@@ -51,13 +49,11 @@ func (r *FlowActionEnqueue) GetActionType() ActionType {
 }
 
 func (r *FlowActionEnqueue) MarshalBinary() ([]byte, error) {
-	v := make([]byte, 24)
+	v := make([]byte, 16)
 	binary.BigEndian.PutUint16(v[0:2], uint16(OFPAT_ENQUEUE))
-	binary.BigEndian.PutUint16(v[2:4], 24)
-	binary.BigEndian.PutUint16(v[8:10], uint16(OFPAT_ENQUEUE))
-	binary.BigEndian.PutUint16(v[10:12], 16)
-	binary.BigEndian.PutUint16(v[12:14], r.Port)
-	binary.BigEndian.PutUint32(v[20:24], r.QueueID)
+	binary.BigEndian.PutUint16(v[2:4], 16)
+	binary.BigEndian.PutUint16(v[4:6], r.Port)
+	binary.BigEndian.PutUint32(v[12:16], r.QueueID)
 
 	return v, nil
 }
@@ -71,12 +67,10 @@ func (r *FlowActionSetVLANID) GetActionType() ActionType {
 }
 
 func (r *FlowActionSetVLANID) MarshalBinary() ([]byte, error) {
-	v := make([]byte, 16)
+	v := make([]byte, 8)
 	binary.BigEndian.PutUint16(v[0:2], uint16(OFPAT_SET_VLAN_VID))
-	binary.BigEndian.PutUint16(v[2:4], 16)
-	binary.BigEndian.PutUint16(v[8:10], uint16(OFPAT_SET_VLAN_VID))
-	binary.BigEndian.PutUint16(v[10:12], 8)
-	binary.BigEndian.PutUint16(v[12:14], r.ID)
+	binary.BigEndian.PutUint16(v[2:4], 8)
+	binary.BigEndian.PutUint16(v[4:6], r.ID)
 
 	return v, nil
 }
@@ -90,12 +84,10 @@ func (r *FlowActionSetVLANPriority) GetActionType() ActionType {
 }
 
 func (r *FlowActionSetVLANPriority) MarshalBinary() ([]byte, error) {
-	v := make([]byte, 16)
+	v := make([]byte, 8)
 	binary.BigEndian.PutUint16(v[0:2], uint16(OFPAT_SET_VLAN_PCP))
-	binary.BigEndian.PutUint16(v[2:4], 16)
-	binary.BigEndian.PutUint16(v[8:10], uint16(OFPAT_SET_VLAN_PCP))
-	binary.BigEndian.PutUint16(v[10:12], 8)
-	v[12] = r.Priority
+	binary.BigEndian.PutUint16(v[2:4], 8)
+	v[4] = r.Priority
 
 	return v, nil
 }
@@ -117,12 +109,10 @@ func (r *FlowActionSetSrcMAC) MarshalBinary() ([]byte, error) {
 }
 
 func marshalMAC(t ActionType, mac net.HardwareAddr) []byte {
-	v := make([]byte, 24)
+	v := make([]byte, 16)
 	binary.BigEndian.PutUint16(v[0:2], uint16(t))
-	binary.BigEndian.PutUint16(v[2:4], 24)
-	binary.BigEndian.PutUint16(v[8:10], uint16(t))
-	binary.BigEndian.PutUint16(v[10:12], 16)
-	copy(v[12:18], mac)
+	binary.BigEndian.PutUint16(v[2:4], 16)
+	copy(v[4:10], mac)
 
 	return v
 }
@@ -160,17 +150,15 @@ func (r *FlowActionSetSrcIP) MarshalBinary() ([]byte, error) {
 }
 
 func marshalIP(t ActionType, ip net.IP) []byte {
-	v := make([]byte, 16)
+	v := make([]byte, 8)
 	binary.BigEndian.PutUint16(v[0:2], uint16(t))
-	binary.BigEndian.PutUint16(v[2:4], 16)
-	binary.BigEndian.PutUint16(v[8:10], uint16(t))
-	binary.BigEndian.PutUint16(v[10:12], 8)
+	binary.BigEndian.PutUint16(v[2:4], 8)
 	// TODO: Test that big-endian representation for IP is correct
 	ipInt, n := binary.Uvarint(ip.To4())
 	if n <= 0 {
 		panic("Invalid IP address!")
 	}
-	binary.BigEndian.PutUint32(v[12:16], uint32(ipInt))
+	binary.BigEndian.PutUint32(v[4:8], uint32(ipInt))
 
 	return v
 }
@@ -200,12 +188,10 @@ func (r *FlowActionSetTOS) GetActionType() ActionType {
 }
 
 func (r *FlowActionSetTOS) MarshalBinary() ([]byte, error) {
-	v := make([]byte, 16)
+	v := make([]byte, 8)
 	binary.BigEndian.PutUint16(v[0:2], uint16(OFPAT_SET_NW_TOS))
-	binary.BigEndian.PutUint16(v[2:4], 16)
-	binary.BigEndian.PutUint16(v[8:10], uint16(OFPAT_SET_NW_TOS))
-	binary.BigEndian.PutUint16(v[10:12], 8)
-	v[12] = r.TOS
+	binary.BigEndian.PutUint16(v[2:4], 8)
+	v[4] = r.TOS
 
 	return v, nil
 }
@@ -223,12 +209,10 @@ func (r *FlowActionSetSrcPort) MarshalBinary() ([]byte, error) {
 }
 
 func marshalPort(t ActionType, port uint16) []byte {
-	v := make([]byte, 16)
+	v := make([]byte, 8)
 	binary.BigEndian.PutUint16(v[0:2], uint16(t))
-	binary.BigEndian.PutUint16(v[2:4], 16)
-	binary.BigEndian.PutUint16(v[8:10], uint16(t))
-	binary.BigEndian.PutUint16(v[10:12], 8)
-	binary.BigEndian.PutUint16(v[12:14], port)
+	binary.BigEndian.PutUint16(v[2:4], 8)
+	binary.BigEndian.PutUint16(v[4:6], port)
 
 	return v
 }

@@ -75,17 +75,16 @@ func (r *Manager) handleFeaturesReplyMessage(msg *openflow.FeaturesReplyMessage)
 	add(r.DPID, r)
 
 	// XXX: test
+	//	mac, err := net.ParseMAC("01:01:01:01:01:01")
+	//	if err != nil {
+	//		panic("Invalid test mac address!")
+	//	}
 	match := openflow.NewFlowMatch()
-	match.SetInPort(46)
-
-	mac, err := net.ParseMAC("01:01:01:01:01:01")
-	if err != nil {
-		panic("Invalid test mac address!")
-	}
-	a1 := &openflow.FlowActionSetSrcMAC{MAC: mac}
-	a2 := &openflow.FlowActionSetDstMAC{MAC: mac}
-	// TODO: Check FlowActionOutput problem.. OFPBAC_BAD_OUT_PORT
-	//a2 := &openflow.FlowActionOutput{Port: 15}
+	match.SetInPort(38)
+	//match.SetSrcMAC(mac)
+	//a1 := &openflow.FlowActionSetSrcMAC{MAC: mac}
+	//a2 := &openflow.FlowActionSetDstMAC{MAC: mac}
+	a3 := &openflow.FlowActionOutput{Port: 35}
 	mod := &openflow.FlowModifyMessage{
 		Match:       match,
 		Command:     openflow.OFPFC_ADD,
@@ -94,7 +93,7 @@ func (r *Manager) handleFeaturesReplyMessage(msg *openflow.FeaturesReplyMessage)
 			SendFlowRemoved: true,
 			CheckOverlap:    true,
 		},
-		Actions: []openflow.FlowAction{a1, a2},
+		Actions: []openflow.FlowAction{a3},
 	}
 	if err := r.openflow.SendFlowModifyMessage(mod); err != nil {
 		r.log.Printf("failed to send a flow_mod: %v", err)

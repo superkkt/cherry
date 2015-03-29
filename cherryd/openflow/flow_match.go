@@ -185,6 +185,24 @@ func (r *FlowMatch) GetInPort() uint16 {
 	return r.inPort
 }
 
+func (r *FlowMatch) SetSrcMAC(mac net.HardwareAddr) {
+	r.srcMAC = mac
+	r.wildcards.SrcMAC = false
+}
+
+func (r *FlowMatch) GetSrcMAC() net.HardwareAddr {
+	return r.srcMAC
+}
+
+func (r *FlowMatch) SetDstMAC(mac net.HardwareAddr) {
+	r.dstMAC = mac
+	r.wildcards.DstMAC = false
+}
+
+func (r *FlowMatch) GetDstMAC() net.HardwareAddr {
+	return r.dstMAC
+}
+
 // TODO: other setters and getters for FlowMatch
 
 func (r *FlowMatch) MarshalBinary() ([]byte, error) {
