@@ -48,91 +48,98 @@ func newFlowWildcardAll() *FlowWildcard {
 	}
 }
 
-func marshalFlowWildcard(w *FlowWildcard) (uint32, error) {
+func (r *FlowWildcard) MarshalBinary() ([]byte, error) {
 	// We only support IPv4 yet
-	if w.SrcIP > 32 || w.DstIP > 32 {
-		return 0, errors.New("invalid IP address wildcard bit count")
+	if r.SrcIP > 32 || r.DstIP > 32 {
+		return nil, errors.New("invalid IP address wildcard bit count")
 	}
 
 	var v uint32 = 0
 
-	if w.InPort {
+	if r.InPort {
 		v = v | OFPFW_IN_PORT
 	}
-	if w.VLANID {
+	if r.VLANID {
 		v = v | OFPFW_DL_VLAN
 	}
-	if w.SrcMAC {
+	if r.SrcMAC {
 		v = v | OFPFW_DL_SRC
 	}
-	if w.DstMAC {
+	if r.DstMAC {
 		v = v | OFPFW_DL_DST
 	}
-	if w.EtherType {
+	if r.EtherType {
 		v = v | OFPFW_DL_TYPE
 	}
-	if w.Protocol {
+	if r.Protocol {
 		v = v | OFPFW_NW_PROTO
 	}
-	if w.SrcPort {
+	if r.SrcPort {
 		v = v | OFPFW_TP_SRC
 	}
-	if w.DstPort {
+	if r.DstPort {
 		v = v | OFPFW_TP_DST
 	}
-	if w.SrcIP > 0 {
-		v = v | (uint32(w.SrcIP) << 8)
+	if r.SrcIP > 0 {
+		v = v | (uint32(r.SrcIP) << 8)
 	}
-	if w.DstIP > 0 {
-		v = v | (uint32(w.DstIP) << 14)
+	if r.DstIP > 0 {
+		v = v | (uint32(r.DstIP) << 14)
 	}
-	if w.VLANPriority {
+	if r.VLANPriority {
 		v = v | OFPFW_DL_VLAN_PCP
 	}
-	if w.TOS {
+	if r.TOS {
 		v = v | OFPFW_NW_TOS
 	}
 
-	return v, nil
+	data := make([]byte, 4)
+	binary.BigEndian.PutUint32(data[0:4], v)
+
+	return data, nil
 }
 
-func unmarshalFlowWildcard(w uint32) *FlowWildcard {
-	v := &FlowWildcard{}
+func (r *FlowWildcard) UnmarshalBinary(data []byte) error {
+	if data == nil || len(data) != 4 {
+		return ErrInvalidPacketLength
+	}
+
+	w := binary.BigEndian.Uint32(data[0:4])
 
 	if w&OFPFW_IN_PORT != 0 {
-		v.InPort = true
+		r.InPort = true
 	}
 	if w&OFPFW_DL_VLAN != 0 {
-		v.VLANID = true
+		r.VLANID = true
 	}
 	if w&OFPFW_DL_SRC != 0 {
-		v.SrcMAC = true
+		r.SrcMAC = true
 	}
 	if w&OFPFW_DL_DST != 0 {
-		v.DstMAC = true
+		r.DstMAC = true
 	}
 	if w&OFPFW_DL_TYPE != 0 {
-		v.EtherType = true
+		r.EtherType = true
 	}
 	if w&OFPFW_NW_PROTO != 0 {
-		v.Protocol = true
+		r.Protocol = true
 	}
 	if w&OFPFW_TP_SRC != 0 {
-		v.SrcPort = true
+		r.SrcPort = true
 	}
 	if w&OFPFW_TP_DST != 0 {
-		v.DstPort = true
+		r.DstPort = true
 	}
-	v.SrcIP = uint8((w & (uint32(0x3F) << 8)) >> 8)
-	v.DstIP = uint8((w & (uint32(0x3F) << 14)) >> 14)
+	r.SrcIP = uint8((w & (uint32(0x3F) << 8)) >> 8)
+	r.DstIP = uint8((w & (uint32(0x3F) << 14)) >> 14)
 	if w&OFPFW_DL_VLAN_PCP != 0 {
-		v.VLANPriority = true
+		r.VLANPriority = true
 	}
 	if w&OFPFW_NW_TOS != 0 {
-		v.TOS = true
+		r.TOS = true
 	}
 
-	return v
+	return nil
 }
 
 type FlowMatch struct {
@@ -224,13 +231,13 @@ func (r *FlowMatch) GetDstIP() (ip net.IP, wildcardBits uint8) {
 // TODO: other setters and getters for FlowMatch
 
 func (r *FlowMatch) MarshalBinary() ([]byte, error) {
-	wildcard, err := marshalFlowWildcard(r.wildcards)
+	wildcard, err := r.wildcards.MarshalBinary()
 	if err != nil {
 		return nil, err
 	}
 
 	data := make([]byte, 40)
-	binary.BigEndian.PutUint32(data[0:4], wildcard)
+	copy(data[0:4], wildcard)
 	binary.BigEndian.PutUint16(data[4:6], r.inPort)
 	copy(data[6:12], r.srcMAC)
 	copy(data[12:18], r.dstMAC)
@@ -255,7 +262,10 @@ func (r *FlowMatch) UnmarshalBinary(data []byte) error {
 		return ErrInvalidPacketLength
 	}
 
-	r.wildcards = unmarshalFlowWildcard(binary.BigEndian.Uint32(data[0:4]))
+	r.wildcards = &FlowWildcard{}
+	if err := r.wildcards.UnmarshalBinary(data[0:4]); err != nil {
+		return err
+	}
 	r.inPort = binary.BigEndian.Uint16(data[4:6])
 	r.srcMAC = make(net.HardwareAddr, 6)
 	copy(r.srcMAC, data[6:12])
@@ -266,6 +276,7 @@ func (r *FlowMatch) UnmarshalBinary(data []byte) error {
 	r.etherType = binary.BigEndian.Uint16(data[22:24])
 	r.tos = data[24]
 	r.protocol = data[25]
+	// data[26:28] = padding
 	// TODO: Test that big-endian representation for IP is correct
 	r.srcIP = net.IPv4(data[28], data[29], data[30], data[31])
 	r.dstIP = net.IPv4(data[32], data[33], data[34], data[35])
