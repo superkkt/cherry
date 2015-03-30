@@ -5,6 +5,9 @@
  * Kitae Kim <superkkt@sds.co.kr>
  */
 
+// Device means an OpenFlow switch, but the word "switch" is usually reserved
+// for conditional statements in most programming languages. So, we use "device"
+// instead of "switch" in this project.
 package device
 
 import (
@@ -38,10 +41,21 @@ func NewManager(log *log.Logger) *Manager {
 	}
 }
 
+// TODO: Add functions than will be called by a plugin application,
+// e.g., GetDeviceDescription(), GetDeviceFeatures(), etc., which calls
+// counterpart functions in the openflow package
+
 func (r *Manager) handleHelloMessage(msg *openflow.HelloMessage) error {
 	// We only support OF 1.0
 	if msg.Version < 0x01 {
 		fmt.Errorf("unsupported OpenFlow protocol version: 0x%X", msg.Version)
+	}
+
+	if err := r.openflow.SendDescStatsRequestMessage(); err != nil {
+		return err
+	}
+	if err := r.openflow.SendFeaturesRequestMessage(); err != nil {
+		return err
 	}
 
 	return nil
@@ -79,13 +93,20 @@ func (r *Manager) handleFeaturesReplyMessage(msg *openflow.FeaturesReplyMessage)
 	match.SetInPort(39)
 	match.SetSrcIP(net.ParseIP("223.130.120.0"), 8)
 	match.SetDstIP(net.ParseIP("223.130.122.0"), 8)
+	a1 := &openflow.FlowActionOutput{Port: 40}
+	a2 := &openflow.FlowActionOutput{Port: 41}
+	a3 := &openflow.FlowActionOutput{Port: 42}
 	rule := FlowRule{
 		Match:       match,
-		IdleTimeout: 5,
+		IdleTimeout: 30,
+		Actions:     []openflow.FlowAction{a1, a2, a3},
 	}
 	//if err := r.RemoveFlowRule(match); err != nil {
 	if err := r.InstallFlowRule(rule); err != nil {
 		r.log.Printf("failed to install a flow rule: %v", err)
+	}
+	if err := r.openflow.SendFlowStatsRequestMessage(openflow.NewFlowMatch()); err != nil {
+		r.log.Printf("failed to send a flow_stats_request: %v", err)
 	}
 
 	return nil
@@ -140,6 +161,30 @@ func (r *Manager) handleFlowRemovedMessage(msg *openflow.FlowRemovedMessage) err
 	return nil
 }
 
+func (r *Manager) handleDescStatsReplyMessage(msg *openflow.DescStatsReplyMessage) error {
+	// XXX: debugging
+	r.log.Printf("%+v", msg)
+	return nil
+}
+
+func (r *Manager) handleFlowStatsReplyMessage(msg *openflow.FlowStatsReplyMessage) error {
+	// XXX: debugging
+	r.log.Printf("%+v", msg)
+	for _, v := range msg.Flows {
+		r.log.Printf("%+v", v)
+		r.log.Printf("%+v", v.Match)
+		r.log.Printf("%+v", v.Match.GetFlowWildcards())
+		srcIP, bits := v.Match.GetSrcIP()
+		r.log.Printf("src_ip: %v, bits: %v", srcIP, bits)
+		dstIP, bits := v.Match.GetDstIP()
+		r.log.Printf("dst_ip: %v, bits: %v", dstIP, bits)
+		for _, a := range v.Actions {
+			r.log.Printf("%+v", a)
+		}
+	}
+	return nil
+}
+
 func (r *Manager) Run(ctx context.Context, conn net.Conn) {
 	socket := socket.NewConn(conn, 65535) // 65535 bytes are max size of a OpenFlow packet
 	config := openflow.Config{
@@ -148,14 +193,16 @@ func (r *Manager) Run(ctx context.Context, conn net.Conn) {
 		ReadTimeout:  socketTimeout,
 		WriteTimeout: socketTimeout,
 		Handlers: openflow.MessageHandler{
-			HelloMessage:         r.handleHelloMessage,
-			ErrorMessage:         r.handleErrorMessage,
-			FeaturesReplyMessage: r.handleFeaturesReplyMessage,
-			EchoRequestMessage:   r.handleEchoRequestMessage,
-			EchoReplyMessage:     r.handleEchoReplyMessage,
-			PortStatusMessage:    r.handlePortStatusMessage,
-			PacketInMessage:      r.handlePacketInMessage,
-			FlowRemovedMessage:   r.handleFlowRemovedMessage,
+			HelloMessage:          r.handleHelloMessage,
+			ErrorMessage:          r.handleErrorMessage,
+			FeaturesReplyMessage:  r.handleFeaturesReplyMessage,
+			EchoRequestMessage:    r.handleEchoRequestMessage,
+			EchoReplyMessage:      r.handleEchoReplyMessage,
+			PortStatusMessage:     r.handlePortStatusMessage,
+			PacketInMessage:       r.handlePacketInMessage,
+			FlowRemovedMessage:    r.handleFlowRemovedMessage,
+			DescStatsReplyMessage: r.handleDescStatsReplyMessage,
+			FlowStatsReplyMessage: r.handleFlowStatsReplyMessage,
 		},
 	}
 

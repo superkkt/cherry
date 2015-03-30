@@ -16,11 +16,12 @@ import (
 type FlowAction interface {
 	GetActionType() ActionType
 	MarshalBinary() ([]byte, error)
+	UnmarshalBinary(data []byte) error
 }
 
 type FlowActionOutput struct {
 	Port   PortNumber
-	maxLen uint16
+	MaxLen uint16
 }
 
 func (r *FlowActionOutput) GetActionType() ActionType {
@@ -33,10 +34,20 @@ func (r *FlowActionOutput) MarshalBinary() ([]byte, error) {
 	binary.BigEndian.PutUint16(v[2:4], 8)
 	binary.BigEndian.PutUint16(v[4:6], uint16(r.Port))
 	// We don't support buffer ID and partial PACKET_IN
-	r.maxLen = 65535
-	binary.BigEndian.PutUint16(v[6:8], r.maxLen)
+	binary.BigEndian.PutUint16(v[6:8], 65535)
 
 	return v, nil
+}
+
+func (r *FlowActionOutput) UnmarshalBinary(data []byte) error {
+	if len(data) < 8 {
+		return ErrInvalidPacketLength
+	}
+
+	r.Port = PortNumber(binary.BigEndian.Uint16(data[4:6]))
+	r.MaxLen = binary.BigEndian.Uint16(data[6:8])
+
+	return nil
 }
 
 type FlowActionEnqueue struct {
@@ -58,6 +69,17 @@ func (r *FlowActionEnqueue) MarshalBinary() ([]byte, error) {
 	return v, nil
 }
 
+func (r *FlowActionEnqueue) UnmarshalBinary(data []byte) error {
+	if len(data) < 16 {
+		return ErrInvalidPacketLength
+	}
+
+	r.Port = binary.BigEndian.Uint16(data[4:6])
+	r.QueueID = binary.BigEndian.Uint32(data[12:16])
+
+	return nil
+}
+
 type FlowActionSetVLANID struct {
 	ID uint16
 }
@@ -73,6 +95,16 @@ func (r *FlowActionSetVLANID) MarshalBinary() ([]byte, error) {
 	binary.BigEndian.PutUint16(v[4:6], r.ID)
 
 	return v, nil
+}
+
+func (r *FlowActionSetVLANID) UnmarshalBinary(data []byte) error {
+	if len(data) < 8 {
+		return ErrInvalidPacketLength
+	}
+
+	r.ID = binary.BigEndian.Uint16(data[4:6])
+
+	return nil
 }
 
 type FlowActionSetVLANPriority struct {
@@ -92,6 +124,38 @@ func (r *FlowActionSetVLANPriority) MarshalBinary() ([]byte, error) {
 	return v, nil
 }
 
+func (r *FlowActionSetVLANPriority) UnmarshalBinary(data []byte) error {
+	if len(data) < 8 {
+		return ErrInvalidPacketLength
+	}
+
+	r.Priority = data[4]
+
+	return nil
+}
+
+type FlowActionStripVLAN struct{}
+
+func (r *FlowActionStripVLAN) GetActionType() ActionType {
+	return OFPAT_STRIP_VLAN
+}
+
+func (r *FlowActionStripVLAN) MarshalBinary() ([]byte, error) {
+	v := make([]byte, 8)
+	binary.BigEndian.PutUint16(v[0:2], uint16(OFPAT_STRIP_VLAN))
+	binary.BigEndian.PutUint16(v[2:4], 8)
+
+	return v, nil
+}
+
+func (r *FlowActionStripVLAN) UnmarshalBinary(data []byte) error {
+	if len(data) < 8 {
+		return ErrInvalidPacketLength
+	}
+
+	return nil
+}
+
 type FlowActionSetSrcMAC struct {
 	MAC net.HardwareAddr
 }
@@ -106,6 +170,18 @@ func (r *FlowActionSetSrcMAC) MarshalBinary() ([]byte, error) {
 	}
 
 	return marshalMAC(OFPAT_SET_DL_SRC, r.MAC), nil
+}
+
+func (r *FlowActionSetSrcMAC) UnmarshalBinary(data []byte) error {
+	if len(data) < 16 {
+		return ErrInvalidPacketLength
+	}
+
+	// FIXME: Is this okay?
+	r.MAC = make([]byte, 6)
+	copy(r.MAC, data[4:10])
+
+	return nil
 }
 
 func marshalMAC(t ActionType, mac net.HardwareAddr) []byte {
@@ -133,6 +209,18 @@ func (r *FlowActionSetDstMAC) MarshalBinary() ([]byte, error) {
 	return marshalMAC(OFPAT_SET_DL_DST, r.MAC), nil
 }
 
+func (r *FlowActionSetDstMAC) UnmarshalBinary(data []byte) error {
+	if len(data) < 16 {
+		return ErrInvalidPacketLength
+	}
+
+	// FIXME: Is this okay?
+	r.MAC = make([]byte, 6)
+	copy(r.MAC, data[4:10])
+
+	return nil
+}
+
 type FlowActionSetSrcIP struct {
 	IP net.IP
 }
@@ -149,16 +237,22 @@ func (r *FlowActionSetSrcIP) MarshalBinary() ([]byte, error) {
 	return marshalIP(OFPAT_SET_NW_SRC, r.IP), nil
 }
 
+func (r *FlowActionSetSrcIP) UnmarshalBinary(data []byte) error {
+	if len(data) < 8 {
+		return ErrInvalidPacketLength
+	}
+
+	r.IP = net.IPv4(data[4], data[5], data[6], data[7])
+
+	return nil
+}
+
 func marshalIP(t ActionType, ip net.IP) []byte {
 	v := make([]byte, 8)
 	binary.BigEndian.PutUint16(v[0:2], uint16(t))
 	binary.BigEndian.PutUint16(v[2:4], 8)
 	// TODO: Test that big-endian representation for IP is correct
-	ipInt, n := binary.Uvarint(ip.To4())
-	if n <= 0 {
-		panic("Invalid IP address!")
-	}
-	binary.BigEndian.PutUint32(v[4:8], uint32(ipInt))
+	copy(v[4:8], []byte(ip.To4()))
 
 	return v
 }
@@ -179,6 +273,16 @@ func (r *FlowActionSetDstIP) MarshalBinary() ([]byte, error) {
 	return marshalIP(OFPAT_SET_NW_DST, r.IP), nil
 }
 
+func (r *FlowActionSetDstIP) UnmarshalBinary(data []byte) error {
+	if len(data) < 8 {
+		return ErrInvalidPacketLength
+	}
+
+	r.IP = net.IPv4(data[4], data[5], data[6], data[7])
+
+	return nil
+}
+
 type FlowActionSetTOS struct {
 	TOS uint8
 }
@@ -196,6 +300,16 @@ func (r *FlowActionSetTOS) MarshalBinary() ([]byte, error) {
 	return v, nil
 }
 
+func (r *FlowActionSetTOS) UnmarshalBinary(data []byte) error {
+	if len(data) < 8 {
+		return ErrInvalidPacketLength
+	}
+
+	r.TOS = data[4]
+
+	return nil
+}
+
 type FlowActionSetSrcPort struct {
 	Port uint16
 }
@@ -206,6 +320,16 @@ func (r *FlowActionSetSrcPort) GetActionType() ActionType {
 
 func (r *FlowActionSetSrcPort) MarshalBinary() ([]byte, error) {
 	return marshalPort(OFPAT_SET_TP_SRC, r.Port), nil
+}
+
+func (r *FlowActionSetSrcPort) UnmarshalBinary(data []byte) error {
+	if len(data) < 8 {
+		return ErrInvalidPacketLength
+	}
+
+	r.Port = binary.BigEndian.Uint16(data[4:6])
+
+	return nil
 }
 
 func marshalPort(t ActionType, port uint16) []byte {
@@ -227,4 +351,14 @@ func (r *FlowActionSetDstPort) GetActionType() ActionType {
 
 func (r *FlowActionSetDstPort) MarshalBinary() ([]byte, error) {
 	return marshalPort(OFPAT_SET_TP_DST, r.Port), nil
+}
+
+func (r *FlowActionSetDstPort) UnmarshalBinary(data []byte) error {
+	if len(data) < 8 {
+		return ErrInvalidPacketLength
+	}
+
+	r.Port = binary.BigEndian.Uint16(data[4:6])
+
+	return nil
 }

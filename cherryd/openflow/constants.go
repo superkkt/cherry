@@ -236,3 +236,15 @@ const (
 	OFPRR_HARD_TIMEOUT
 	OFPRR_DELETE
 )
+
+type StatsType uint16
+
+const (
+	OFPST_DESC StatsType = iota
+	OFPST_FLOW
+	OFPST_AGGREGATE
+	OFPST_TABLE
+	OFPST_PORT
+	OFPST_QUEUE
+	OFPST_VENDOR = 0xffff
+)

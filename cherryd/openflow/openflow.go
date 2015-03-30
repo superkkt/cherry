@@ -5,12 +5,28 @@
  * Kitae Kim <superkkt@sds.co.kr>
  */
 
+// TODO:
+//
+// Check marshaler and unmarshaler codes to remove memory access violations.
+// Following routine does not check data's length, so if data length is smaller
+// than 12 this code will cause panic!
+//
+//	if len(data) != int(header.Length) {
+//		return ErrInvalidPacketLength
+//	}
+//
+//	r.Header = *header
+//	r.Type = StatsType(binary.BigEndian.Uint16(data[8:10]))
+//	r.Flags = binary.BigEndian.Uint16(data[10:12])
+//
+
 package openflow
 
 import (
 	"encoding"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"git.sds.co.kr/bosomi.git/socket"
 	"golang.org/x/net/context"
 	"log"
@@ -23,16 +39,22 @@ var (
 	ErrInvalidPacketLength = errors.New("invalid packet length")
 )
 
+const (
+	DefaultEchoInterval uint = 10 // Second
+)
+
 // The connection will be disconnected if a handler function returns error.
 type MessageHandler struct {
-	HelloMessage         func(*HelloMessage) error
-	ErrorMessage         func(*ErrorMessage) error
-	FeaturesReplyMessage func(*FeaturesReplyMessage) error
-	EchoRequestMessage   func(*EchoRequestMessage) error
-	EchoReplyMessage     func(*EchoReplyMessage) error
-	PortStatusMessage    func(*PortStatusMessage) error
-	PacketInMessage      func(*PacketInMessage) error
-	FlowRemovedMessage   func(*FlowRemovedMessage) error
+	HelloMessage          func(*HelloMessage) error
+	ErrorMessage          func(*ErrorMessage) error
+	FeaturesReplyMessage  func(*FeaturesReplyMessage) error
+	EchoRequestMessage    func(*EchoRequestMessage) error
+	EchoReplyMessage      func(*EchoReplyMessage) error
+	PortStatusMessage     func(*PortStatusMessage) error
+	PacketInMessage       func(*PacketInMessage) error
+	FlowRemovedMessage    func(*FlowRemovedMessage) error
+	DescStatsReplyMessage func(*DescStatsReplyMessage) error
+	FlowStatsReplyMessage func(*FlowStatsReplyMessage) error
 }
 
 type Config struct {
@@ -41,6 +63,7 @@ type Config struct {
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
 	Handlers     MessageHandler
+	EchoInterval uint // Min. = DefaultEchoInterval (Second)
 }
 
 type Transceiver struct {
@@ -111,6 +134,41 @@ func (r *Transceiver) SendPacketOutMessage(inPort PortNumber, actions []FlowActi
 	return r.send(msg)
 }
 
+func (r *Transceiver) SendDescStatsRequestMessage() error {
+	msg := &StatsRequestMessage{
+		Header: Header{
+			Version: 0x01, // OF1.0
+			Type:    OFPT_STATS_REQUEST,
+			Xid:     r.getTransactionID(),
+		},
+		Type: OFPST_DESC,
+	}
+
+	return r.send(msg)
+}
+
+func (r *Transceiver) SendFlowStatsRequestMessage(match *FlowMatch) error {
+	req := FlowStatsRequest{match}
+	reqBin, err := req.MarshalBinary()
+	if err != nil {
+		return err
+	}
+
+	msg := &StatsRequestMessage{
+		Header: Header{
+			Version: 0x01, // OF1.0
+			Type:    OFPT_STATS_REQUEST,
+			Xid:     r.getTransactionID(),
+		},
+		Type: OFPST_FLOW,
+		Body: reqBin,
+	}
+
+	return r.send(msg)
+}
+
+// TODO: Implement functions for OFPST_AGGREGATE, OFPST_TABLE, OFPST_PORT, and OFPST_QUEUE stats requests
+
 func (r *Transceiver) sendHelloMessage() error {
 	msg := &HelloMessage{
 		Header{
@@ -123,7 +181,7 @@ func (r *Transceiver) sendHelloMessage() error {
 	return r.send(msg)
 }
 
-func (r *Transceiver) sendFeaturesRequestMessage() error {
+func (r *Transceiver) SendFeaturesRequestMessage() error {
 	msg := &FeaturesRequestMessage{
 		Header{
 			Version: 0x01, // OF1.0
@@ -150,6 +208,29 @@ func (r *Transceiver) sendNegotiationFailedMessage(data string) error {
 	return r.send(msg)
 }
 
+func parseStatsReplyMessage(packet []byte) (interface{}, error) {
+	reply := &StatsReplyMessage{}
+	if err := reply.UnmarshalBinary(packet); err != nil {
+		return nil, err
+	}
+
+	var msg encoding.BinaryUnmarshaler
+	switch reply.Type {
+	case OFPST_DESC:
+		msg = &DescStatsReplyMessage{}
+	case OFPST_FLOW:
+		msg = &FlowStatsReplyMessage{}
+	default:
+		return nil, fmt.Errorf("unknown stats reply message type: %v", reply.Type)
+	}
+
+	if err := msg.UnmarshalBinary(packet); err != nil {
+		return nil, err
+	}
+
+	return msg, nil
+}
+
 func parsePacket(packet []byte) (interface{}, error) {
 	var msg encoding.BinaryUnmarshaler
 
@@ -170,6 +251,8 @@ func parsePacket(packet []byte) (interface{}, error) {
 		msg = &PacketInMessage{}
 	case OFPT_FLOW_REMOVED:
 		msg = &FlowRemovedMessage{}
+	case OFPT_STATS_REPLY:
+		return parseStatsReplyMessage(packet)
 	default:
 		return nil, ErrUnsupportedMsgType
 	}
@@ -197,23 +280,17 @@ func (r *Transceiver) handleMessage(ctx context.Context, msg interface{}) error 
 
 			// TODO: Set to send whole packet data in PACKET_IN using max_len(?)
 
-			if err := r.sendFeaturesRequestMessage(); err != nil {
-				return err
-			}
 			go r.pinger(ctx)
 			r.negotiated = true
 		}
-
 	case *ErrorMessage:
 		if r.Handlers.ErrorMessage != nil {
 			return r.Handlers.ErrorMessage(v)
 		}
-
 	case *FeaturesReplyMessage:
 		if r.Handlers.FeaturesReplyMessage != nil {
 			return r.Handlers.FeaturesReplyMessage(v)
 		}
-
 	case *EchoRequestMessage:
 		if r.Handlers.EchoRequestMessage != nil {
 			if err := r.Handlers.EchoRequestMessage(v); err != nil {
@@ -222,27 +299,30 @@ func (r *Transceiver) handleMessage(ctx context.Context, msg interface{}) error 
 			if err := r.sendEchoReply(v.Data); err != nil {
 			}
 		}
-
 	case *EchoReplyMessage:
 		if r.Handlers.EchoReplyMessage != nil {
 			return r.Handlers.EchoReplyMessage(v)
 		}
-
 	case *PortStatusMessage:
 		if r.Handlers.PortStatusMessage != nil {
 			return r.Handlers.PortStatusMessage(v)
 		}
-
 	case *PacketInMessage:
 		if r.Handlers.PacketInMessage != nil {
 			return r.Handlers.PacketInMessage(v)
 		}
-
 	case *FlowRemovedMessage:
 		if r.Handlers.FlowRemovedMessage != nil {
 			return r.Handlers.FlowRemovedMessage(v)
 		}
-
+	case *DescStatsReplyMessage:
+		if r.Handlers.DescStatsReplyMessage != nil {
+			return r.Handlers.DescStatsReplyMessage(v)
+		}
+	case *FlowStatsReplyMessage:
+		if r.Handlers.FlowStatsReplyMessage != nil {
+			return r.Handlers.FlowStatsReplyMessage(v)
+		}
 	default:
 		panic("unsupported message type!")
 	}
@@ -321,9 +401,14 @@ func (r *Transceiver) sendEchoReply(data []byte) error {
 	return r.send(msg)
 }
 
+// TODO: Implement to close the connection if we miss several echo replies
 func (r *Transceiver) pinger(ctx context.Context) {
-	ticker := time.NewTicker(10 * time.Second)
+	interval := DefaultEchoInterval
+	if r.Config.EchoInterval > DefaultEchoInterval {
+		interval = r.Config.EchoInterval
+	}
 
+	ticker := time.NewTicker(time.Duration(interval) * time.Second)
 	for {
 		select {
 		case <-ticker.C:
