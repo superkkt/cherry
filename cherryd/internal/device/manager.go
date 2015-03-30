@@ -74,6 +74,20 @@ func (r *Manager) handleFeaturesReplyMessage(msg *openflow.FeaturesReplyMessage)
 	// Add this device to the device pool
 	add(r.DPID, r)
 
+	// XXX: test
+	match := openflow.NewFlowMatch()
+	match.SetInPort(39)
+	match.SetSrcIP(net.ParseIP("223.130.120.0"), 8)
+	match.SetDstIP(net.ParseIP("223.130.122.0"), 8)
+	rule := FlowRule{
+		Match:       match,
+		IdleTimeout: 5,
+	}
+	//if err := r.RemoveFlowRule(match); err != nil {
+	if err := r.InstallFlowRule(rule); err != nil {
+		r.log.Printf("failed to install a flow rule: %v", err)
+	}
+
 	return nil
 }
 

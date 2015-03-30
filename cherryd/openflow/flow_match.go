@@ -203,6 +203,24 @@ func (r *FlowMatch) GetDstMAC() net.HardwareAddr {
 	return r.dstMAC
 }
 
+func (r *FlowMatch) SetSrcIP(ip net.IP, wildcardBits uint8) {
+	r.srcIP = ip
+	r.wildcards.SrcIP = wildcardBits
+}
+
+func (r *FlowMatch) GetSrcIP() (ip net.IP, wildcardBits uint8) {
+	return r.srcIP, r.wildcards.SrcIP
+}
+
+func (r *FlowMatch) SetDstIP(ip net.IP, wildcardBits uint8) {
+	r.dstIP = ip
+	r.wildcards.DstIP = wildcardBits
+}
+
+func (r *FlowMatch) GetDstIP() (ip net.IP, wildcardBits uint8) {
+	return r.dstIP, r.wildcards.DstIP
+}
+
 // TODO: other setters and getters for FlowMatch
 
 func (r *FlowMatch) MarshalBinary() ([]byte, error) {
@@ -224,16 +242,8 @@ func (r *FlowMatch) MarshalBinary() ([]byte, error) {
 	data[25] = r.protocol
 	// data[26:28] = padding
 	// TODO: Test that big-endian representation for IP is correct
-	nwSrc, n := binary.Uvarint(r.srcIP.To4())
-	if n <= 0 {
-		return nil, errors.New("invalid source IP address")
-	}
-	binary.BigEndian.PutUint32(data[28:32], uint32(nwSrc))
-	nwDst, n := binary.Uvarint(r.dstIP.To4())
-	if n <= 0 {
-		return nil, errors.New("invalid destination IP address")
-	}
-	binary.BigEndian.PutUint32(data[32:36], uint32(nwDst))
+	copy(data[28:32], []byte(r.srcIP.To4()))
+	copy(data[32:36], []byte(r.dstIP.To4()))
 	binary.BigEndian.PutUint16(data[36:38], r.srcPort)
 	binary.BigEndian.PutUint16(data[38:40], r.dstPort)
 
@@ -257,10 +267,8 @@ func (r *FlowMatch) UnmarshalBinary(data []byte) error {
 	r.tos = data[24]
 	r.protocol = data[25]
 	// TODO: Test that big-endian representation for IP is correct
-	nwSrc := binary.BigEndian.Uint32(data[28:32])
-	r.srcIP = net.IPv4(byte(nwSrc>>24&0xFF), byte(nwSrc>>16&0xFF), byte(nwSrc>>8&0xFF), byte(nwSrc&0xFF))
-	nwDst := binary.BigEndian.Uint32(data[32:36])
-	r.dstIP = net.IPv4(byte(nwDst>>24&0xFF), byte(nwDst>>16&0xFF), byte(nwDst>>8&0xFF), byte(nwDst&0xFF))
+	r.srcIP = net.IPv4(data[28], data[29], data[30], data[31])
+	r.dstIP = net.IPv4(data[32], data[33], data[34], data[35])
 	r.srcPort = binary.BigEndian.Uint16(data[36:38])
 	r.dstPort = binary.BigEndian.Uint16(data[38:40])
 
