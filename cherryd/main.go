@@ -75,12 +75,11 @@ func listen(ctx context.Context, log *log.Logger, config *Config) {
 			c <- conn
 		}
 	}
+	backlog := make(chan net.Conn)
+	go f(backlog)
 
 	// Infinite loop
 	for {
-		backlog := make(chan net.Conn)
-		go f(backlog)
-
 		select {
 		case conn := <-backlog:
 			if v, ok := conn.(KeepAliver); ok {
