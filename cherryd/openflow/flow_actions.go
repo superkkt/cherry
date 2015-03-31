@@ -177,7 +177,6 @@ func (r *FlowActionSetSrcMAC) UnmarshalBinary(data []byte) error {
 		return ErrInvalidPacketLength
 	}
 
-	// FIXME: Is this okay?
 	r.MAC = make([]byte, 6)
 	copy(r.MAC, data[4:10])
 
@@ -214,7 +213,6 @@ func (r *FlowActionSetDstMAC) UnmarshalBinary(data []byte) error {
 		return ErrInvalidPacketLength
 	}
 
-	// FIXME: Is this okay?
 	r.MAC = make([]byte, 6)
 	copy(r.MAC, data[4:10])
 
@@ -251,7 +249,6 @@ func marshalIP(t ActionType, ip net.IP) []byte {
 	v := make([]byte, 8)
 	binary.BigEndian.PutUint16(v[0:2], uint16(t))
 	binary.BigEndian.PutUint16(v[2:4], 8)
-	// TODO: Test that big-endian representation for IP is correct
 	copy(v[4:8], []byte(ip.To4()))
 
 	return v

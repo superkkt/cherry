@@ -13,6 +13,10 @@ import (
 	"net"
 )
 
+var (
+	zeroMAC net.HardwareAddr
+)
+
 type FlowWildcard struct {
 	InPort    bool /* Switch input port. */
 	VLANID    bool /* VLAN id. */
@@ -29,6 +33,14 @@ type FlowWildcard struct {
 	DstIP        uint8
 	VLANPriority bool /* VLAN priority. */
 	TOS          bool /* IP ToS (DSCP field, 6 bits). */
+}
+
+func init() {
+	mac, err := net.ParseMAC("00:00:00:00:00:00")
+	if err != nil {
+		panic("Invalid initial MAC address!")
+	}
+	zeroMAC = mac
 }
 
 func newFlowWildcardAll() *FlowWildcard {
@@ -158,24 +170,20 @@ type FlowMatch struct {
 	dstPort      uint16
 }
 
-// NewFlowMatch() returns a FlowMatch whose fields are all wildcarded
+// NewFlowMatch returns a FlowMatch whose fields are all wildcarded
 func NewFlowMatch() *FlowMatch {
-	srcMAC, err := net.ParseMAC("00:00:00:00:00:00")
-	if err != nil {
-		panic("Invalid initial MAC address!")
-	}
-	dstMAC, err := net.ParseMAC("00:00:00:00:00:00")
-	if err != nil {
-		panic("Invalid initial MAC address!")
-	}
-
 	return &FlowMatch{
 		wildcards: newFlowWildcardAll(),
-		srcMAC:    srcMAC,
-		dstMAC:    dstMAC,
+		srcMAC:    zeroMAC,
+		dstMAC:    zeroMAC,
 		srcIP:     net.ParseIP("0.0.0.0"),
 		dstIP:     net.ParseIP("0.0.0.0"),
 	}
+}
+
+func (r *FlowMatch) SetWildcardSrcPort() {
+	r.srcPort = 0
+	r.wildcards.SrcPort = true
 }
 
 func (r *FlowMatch) SetSrcPort(p uint16) {
@@ -187,6 +195,11 @@ func (r *FlowMatch) GetSrcPort() uint16 {
 	return r.srcPort
 }
 
+func (r *FlowMatch) SetWildcardDstPort() {
+	r.dstPort = 0
+	r.wildcards.DstPort = true
+}
+
 func (r *FlowMatch) SetDstPort(p uint16) {
 	r.dstPort = p
 	r.wildcards.DstPort = false
@@ -194,6 +207,11 @@ func (r *FlowMatch) SetDstPort(p uint16) {
 
 func (r *FlowMatch) GetDstPort() uint16 {
 	return r.dstPort
+}
+
+func (r *FlowMatch) SetWildcardVLANID() {
+	r.vlanID = 0
+	r.wildcards.VLANID = true
 }
 
 func (r *FlowMatch) SetVLANID(id uint16) {
@@ -205,6 +223,11 @@ func (r *FlowMatch) GetVLANID() uint16 {
 	return r.vlanID
 }
 
+func (r *FlowMatch) SetWildcardVLANPriority() {
+	r.vlanPriority = 0
+	r.wildcards.VLANPriority = true
+}
+
 func (r *FlowMatch) SetVLANPriority(p uint8) {
 	r.vlanPriority = p
 	r.wildcards.VLANPriority = false
@@ -212,6 +235,11 @@ func (r *FlowMatch) SetVLANPriority(p uint8) {
 
 func (r *FlowMatch) GetVLANPriority() uint8 {
 	return r.vlanPriority
+}
+
+func (r *FlowMatch) SetWildcardTOS() {
+	r.tos = 0
+	r.wildcards.TOS = true
 }
 
 func (r *FlowMatch) SetTOS(tos uint8) {
@@ -223,6 +251,11 @@ func (r *FlowMatch) GetTOS() uint8 {
 	return r.tos
 }
 
+func (r *FlowMatch) SetWildcardProtocol() {
+	r.protocol = 0
+	r.wildcards.Protocol = true
+}
+
 func (r *FlowMatch) SetProtocol(p uint8) {
 	r.protocol = p
 	r.wildcards.Protocol = false
@@ -232,9 +265,14 @@ func (r *FlowMatch) GetProtocol() uint8 {
 	return r.protocol
 }
 
-func (r *FlowMatch) GetFlowWildcards() FlowWildcard {
+func (r *FlowMatch) GetFlowWildcards() *FlowWildcard {
 	v := *r.wildcards
-	return v
+	return &v
+}
+
+func (r *FlowMatch) SetWildcardInPort() {
+	r.inPort = 0
+	r.wildcards.InPort = true
 }
 
 func (r *FlowMatch) SetInPort(port uint16) {
@@ -246,26 +284,53 @@ func (r *FlowMatch) GetInPort() uint16 {
 	return r.inPort
 }
 
+func (r *FlowMatch) SetWildcardSrcMAC() {
+	r.srcMAC = zeroMAC
+	r.wildcards.SrcMAC = true
+}
+
 func (r *FlowMatch) SetSrcMAC(mac net.HardwareAddr) {
-	r.srcMAC = mac
+	if mac == nil || len(mac) == 0 {
+		return
+	}
+	r.srcMAC = make([]byte, len(mac))
+	copy(r.srcMAC, mac)
 	r.wildcards.SrcMAC = false
 }
 
 func (r *FlowMatch) GetSrcMAC() net.HardwareAddr {
-	return r.srcMAC
+	v := make([]byte, len(r.srcMAC))
+	copy(v, r.srcMAC)
+	return v
+}
+
+func (r *FlowMatch) SetWildcardDstMAC() {
+	r.dstMAC = zeroMAC
+	r.wildcards.DstMAC = true
 }
 
 func (r *FlowMatch) SetDstMAC(mac net.HardwareAddr) {
-	r.dstMAC = mac
+	if mac == nil || len(mac) == 0 {
+		return
+	}
+	r.dstMAC = make([]byte, len(mac))
+	copy(r.dstMAC, mac)
 	r.wildcards.DstMAC = false
 }
 
 func (r *FlowMatch) GetDstMAC() net.HardwareAddr {
-	return r.dstMAC
+	v := make([]byte, len(r.dstMAC))
+	copy(v, r.dstMAC)
+	return v
 }
 
 func (r *FlowMatch) SetSrcIP(ip *net.IPNet) {
-	r.srcIP = ip.IP
+	if ip == nil || ip.IP == nil || len(ip.IP) == 0 {
+		return
+	}
+
+	r.srcIP = make([]byte, len(ip.IP))
+	copy(r.srcIP, ip.IP)
 
 	netmaskBits, _ := ip.Mask.Size()
 	if netmaskBits >= 32 {
@@ -276,14 +341,22 @@ func (r *FlowMatch) SetSrcIP(ip *net.IPNet) {
 }
 
 func (r *FlowMatch) GetSrcIP() *net.IPNet {
+	ip := make([]byte, len(r.srcIP))
+	copy(ip, r.srcIP)
+
 	return &net.IPNet{
-		IP:   r.srcIP,
+		IP:   ip,
 		Mask: net.CIDRMask(32-int(r.wildcards.SrcIP), 32),
 	}
 }
 
 func (r *FlowMatch) SetDstIP(ip *net.IPNet) {
-	r.dstIP = ip.IP
+	if ip == nil || ip.IP == nil || len(ip.IP) == 0 {
+		return
+	}
+
+	r.dstIP = make([]byte, len(ip.IP))
+	copy(r.dstIP, ip.IP)
 
 	netmaskBits, _ := ip.Mask.Size()
 	if netmaskBits >= 32 {
@@ -294,10 +367,18 @@ func (r *FlowMatch) SetDstIP(ip *net.IPNet) {
 }
 
 func (r *FlowMatch) GetDstIP() *net.IPNet {
+	ip := make([]byte, len(r.dstIP))
+	copy(ip, r.dstIP)
+
 	return &net.IPNet{
-		IP:   r.dstIP,
+		IP:   ip,
 		Mask: net.CIDRMask(32-int(r.wildcards.DstIP), 32),
 	}
+}
+
+func (r *FlowMatch) SetWildcardEtherType() {
+	r.etherType = 0
+	r.wildcards.EtherType = true
 }
 
 func (r *FlowMatch) SetEtherType(t uint16) {
@@ -308,8 +389,6 @@ func (r *FlowMatch) SetEtherType(t uint16) {
 func (r *FlowMatch) GetEtherType() uint16 {
 	return r.etherType
 }
-
-// TODO: other setters and getters for FlowMatch
 
 func (r *FlowMatch) MarshalBinary() ([]byte, error) {
 	wildcard, err := r.wildcards.MarshalBinary()
@@ -329,7 +408,6 @@ func (r *FlowMatch) MarshalBinary() ([]byte, error) {
 	data[24] = r.tos
 	data[25] = r.protocol
 	// data[26:28] = padding
-	// TODO: Test that big-endian representation for IP is correct
 	copy(data[28:32], []byte(r.srcIP.To4()))
 	copy(data[32:36], []byte(r.dstIP.To4()))
 	binary.BigEndian.PutUint16(data[36:38], r.srcPort)
@@ -354,11 +432,11 @@ func (r *FlowMatch) UnmarshalBinary(data []byte) error {
 	copy(r.dstMAC, data[12:18])
 	r.vlanID = binary.BigEndian.Uint16(data[18:20])
 	r.vlanPriority = data[20]
+	// data[21] = padding
 	r.etherType = binary.BigEndian.Uint16(data[22:24])
 	r.tos = data[24]
 	r.protocol = data[25]
 	// data[26:28] = padding
-	// TODO: Test that big-endian representation for IP is correct
 	r.srcIP = net.IPv4(data[28], data[29], data[30], data[31])
 	r.dstIP = net.IPv4(data[32], data[33], data[34], data[35])
 	r.srcPort = binary.BigEndian.Uint16(data[36:38])
