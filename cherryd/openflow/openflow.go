@@ -30,6 +30,7 @@ import (
 	"git.sds.co.kr/bosomi.git/socket"
 	"golang.org/x/net/context"
 	"log"
+	"sync/atomic"
 	"time"
 )
 
@@ -65,7 +66,7 @@ type Config struct {
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
 	Handlers     MessageHandler
-	EchoInterval uint // Min. = DefaultEchoInterval (Second)
+	EchoInterval uint // Minimum = DefaultEchoInterval (Second)
 }
 
 type Transceiver struct {
@@ -106,9 +107,8 @@ func (r *Transceiver) send(data encoding.BinaryMarshaler) error {
 }
 
 func (r *Transceiver) getTransactionID() uint32 {
-	v := r.xid
-	r.xid++
-	return v
+	// xid will be started from 1, not 0.
+	return atomic.AddUint32(&r.xid, 1)
 }
 
 func (r *Transceiver) SendFlowModifyMessage(msg *FlowModifyMessage) error {
