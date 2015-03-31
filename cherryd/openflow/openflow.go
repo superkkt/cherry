@@ -281,6 +281,9 @@ func (r *Transceiver) handleMessage(ctx context.Context, msg interface{}) error 
 	// FIXME: Try to use reflection to remove these manual callback calls
 	switch v := msg.(type) {
 	case *HelloMessage:
+		if r.negotiated {
+			return errors.New("duplicated hello message")
+		}
 		if r.Handlers.HelloMessage != nil {
 			err := r.Handlers.HelloMessage(v)
 			if err != nil {
@@ -289,10 +292,9 @@ func (r *Transceiver) handleMessage(ctx context.Context, msg interface{}) error 
 			}
 
 			// TODO: Set to send whole packet data in PACKET_IN using max_len(?)
-
-			go r.pinger(ctx)
-			r.negotiated = true
 		}
+		r.negotiated = true
+		go r.pinger(ctx)
 	case *ErrorMessage:
 		if r.Handlers.ErrorMessage != nil {
 			return r.Handlers.ErrorMessage(v)
@@ -306,8 +308,9 @@ func (r *Transceiver) handleMessage(ctx context.Context, msg interface{}) error 
 			if err := r.Handlers.EchoRequestMessage(v); err != nil {
 				return err
 			}
-			if err := r.sendEchoReply(v.Data); err != nil {
-			}
+		}
+		if err := r.sendEchoReply(v.Data); err != nil {
+			return err
 		}
 	case *EchoReplyMessage:
 		if r.Handlers.EchoReplyMessage != nil {
