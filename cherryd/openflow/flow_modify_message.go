@@ -60,7 +60,7 @@ func (r *FlowModifyMessage) MarshalBinary() ([]byte, error) {
 		}
 		actions = append(actions, buf...)
 	}
-	if len(actions) > 65535-72 {
+	if len(actions) > 0xFFFF-72 {
 		return nil, errors.New("too many flow modification actions")
 	}
 

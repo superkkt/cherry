@@ -34,7 +34,7 @@ func (r *FlowActionOutput) MarshalBinary() ([]byte, error) {
 	binary.BigEndian.PutUint16(v[2:4], 8)
 	binary.BigEndian.PutUint16(v[4:6], uint16(r.Port))
 	// We don't support buffer ID and partial PACKET_IN
-	binary.BigEndian.PutUint16(v[6:8], 65535)
+	binary.BigEndian.PutUint16(v[6:8], 0xFFFF)
 
 	return v, nil
 }

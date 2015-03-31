@@ -148,6 +148,9 @@ func (r *Manager) handleFeaturesReplyMessage(msg *openflow.FeaturesReplyMessage)
 	if err := r.openflow.SendFlowStatsRequestMessage(openflow.NewFlowMatch()); err != nil {
 		r.log.Printf("failed to send a flow_stats_request: %v", err)
 	}
+	if err := r.openflow.SendGetConfigRequestMessage(); err != nil {
+		r.log.Printf("failed to send a get_config_request: %v", err)
+	}
 
 	return nil
 }
@@ -225,8 +228,14 @@ func (r *Manager) handleFlowStatsReplyMessage(msg *openflow.FlowStatsReplyMessag
 	return nil
 }
 
+func (r *Manager) handleGetConfigReplyMessage(msg *openflow.GetConfigReplyMessage) error {
+	// XXX: debugging
+	r.log.Printf("%+v", msg)
+	return nil
+}
+
 func (r *Manager) Run(ctx context.Context, conn net.Conn) {
-	socket := socket.NewConn(conn, 65535) // 65535 bytes are max size of a OpenFlow packet
+	socket := socket.NewConn(conn, 0xFFFF) // max size of a OpenFlow packet
 	config := openflow.Config{
 		Log:          r.log,
 		Socket:       socket,
@@ -243,6 +252,7 @@ func (r *Manager) Run(ctx context.Context, conn net.Conn) {
 			FlowRemovedMessage:    r.handleFlowRemovedMessage,
 			DescStatsReplyMessage: r.handleDescStatsReplyMessage,
 			FlowStatsReplyMessage: r.handleFlowStatsReplyMessage,
+			GetConfigReplyMessage: r.handleGetConfigReplyMessage,
 		},
 	}
 

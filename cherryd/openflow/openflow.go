@@ -55,6 +55,7 @@ type MessageHandler struct {
 	FlowRemovedMessage    func(*FlowRemovedMessage) error
 	DescStatsReplyMessage func(*DescStatsReplyMessage) error
 	FlowStatsReplyMessage func(*FlowStatsReplyMessage) error
+	GetConfigReplyMessage func(*GetConfigReplyMessage) error
 }
 
 type Config struct {
@@ -169,6 +170,34 @@ func (r *Transceiver) SendFlowStatsRequestMessage(match *FlowMatch) error {
 
 // TODO: Implement functions for OFPST_AGGREGATE, OFPST_TABLE, OFPST_PORT, and OFPST_QUEUE stats requests
 
+func (r *Transceiver) SendSetConfigMessage(flag ConfigFlag, missSendLen uint16) error {
+	msg := &SetConfigMessage{
+		ConfigMessage{
+			Header: Header{
+				Version: 0x01, // OF1.0
+				Type:    OFPT_SET_CONFIG,
+				Xid:     r.getTransactionID(),
+			},
+			Flags:       flag,
+			MissSendLen: missSendLen,
+		},
+	}
+
+	return r.send(msg)
+}
+
+func (r *Transceiver) SendGetConfigRequestMessage() error {
+	msg := &GetConfigRequestMessage{
+		Header: Header{
+			Version: 0x01, // OF1.0
+			Type:    OFPT_GET_CONFIG_REQUEST,
+			Xid:     r.getTransactionID(),
+		},
+	}
+
+	return r.send(msg)
+}
+
 func (r *Transceiver) sendHelloMessage() error {
 	msg := &HelloMessage{
 		Header{
@@ -255,11 +284,10 @@ func parsePacket(packet []byte) (interface{}, error) {
 		return parseStatsReplyMessage(packet)
 	case OFPT_QUEUE_GET_CONFIG_REPLY:
 		return nil, nil // We don't support OFPT_QUEUE_GET_CONFIG_REPLY
+	case OFPT_GET_CONFIG_REPLY:
+		msg = &GetConfigReplyMessage{}
 
 	// TODO: Implement these messages
-	//         OFPT_GET_CONFIG_REQUEST
-	//         OFPT_GET_CONFIG_REPLY
-	//         OFPT_SET_CONFIG
 	//         OFPT_BARRIER_REQUEST
 	//         OFPT_BARRIER_REPLY
 
@@ -285,13 +313,14 @@ func (r *Transceiver) handleMessage(ctx context.Context, msg interface{}) error 
 			return errors.New("duplicated hello message")
 		}
 		if r.Handlers.HelloMessage != nil {
-			err := r.Handlers.HelloMessage(v)
-			if err != nil {
+			if err := r.Handlers.HelloMessage(v); err != nil {
 				r.sendNegotiationFailedMessage(err.Error())
 				return err
 			}
-
-			// TODO: Set to send whole packet data in PACKET_IN using max_len(?)
+		}
+		// Set to send whole packet data in PACKET_IN
+		if err := r.SendSetConfigMessage(OFPC_FRAG_NORMAL, 0xFFFF); err != nil {
+			return err
 		}
 		r.negotiated = true
 		go r.pinger(ctx)
@@ -335,6 +364,10 @@ func (r *Transceiver) handleMessage(ctx context.Context, msg interface{}) error 
 	case *FlowStatsReplyMessage:
 		if r.Handlers.FlowStatsReplyMessage != nil {
 			return r.Handlers.FlowStatsReplyMessage(v)
+		}
+	case *GetConfigReplyMessage:
+		if r.Handlers.GetConfigReplyMessage != nil {
+			return r.Handlers.GetConfigReplyMessage(v)
 		}
 	default:
 		panic("unsupported message type!")

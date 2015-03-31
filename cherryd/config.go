@@ -44,7 +44,7 @@ func (c *Config) readDefaultConfig(readConfigData *goconf.ConfigFile) error {
 	var err error
 
 	c.ServerPort, err = readConfigData.GetInt("default", "server_port")
-	if err != nil || c.ServerPort <= 0 || c.ServerPort > 65535 {
+	if err != nil || c.ServerPort <= 0 || c.ServerPort > 0xFFFF {
 		return errors.New("invalid server port value")
 	}
 

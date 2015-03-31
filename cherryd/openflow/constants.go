@@ -248,3 +248,12 @@ const (
 	OFPST_QUEUE
 	OFPST_VENDOR = 0xffff
 )
+
+type ConfigFlag uint16
+
+const (
+	OFPC_FRAG_NORMAL ConfigFlag = iota
+	OFPC_FRAG_DROP
+	OFPC_FRAG_REASM
+	OFPC_FRAG_MASK
+)

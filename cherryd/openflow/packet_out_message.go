@@ -32,12 +32,12 @@ func (r *PacketOutMessage) MarshalBinary() ([]byte, error) {
 
 	var dataLength uint16 = 0
 	if r.Data != nil {
-		if len(r.Data) > 65535-16 {
+		if len(r.Data) > 0xFFFF-16 {
 			return nil, errors.New("too long packet data in a packet-out message")
 		}
 		dataLength = uint16(len(r.Data))
 	}
-	if len(actions) > int(65535-16-dataLength) {
+	if len(actions) > int(0xFFFF-16-dataLength) {
 		return nil, errors.New("too many packet-out actions")
 	}
 
