@@ -63,13 +63,25 @@ func NewManager(log *log.Logger) *Manager {
 func (r *Manager) handleHelloMessage(msg *openflow.HelloMessage) error {
 	// We only support OF 1.0
 	if msg.Version < 0x01 {
-		fmt.Errorf("unsupported OpenFlow protocol version: 0x%X", msg.Version)
+		err := fmt.Errorf("unsupported OpenFlow protocol version: 0x%X", msg.Version)
+		r.openflow.SendNegotiationFailedMessage(err.Error())
+		return err
 	}
 
+	if err := r.openflow.SendHelloMessage(); err != nil {
+		return err
+	}
+	// Set to send whole packet data in PACKET_IN
+	if err := r.openflow.SendSetConfigMessage(openflow.OFPC_FRAG_NORMAL, 0xFFFF); err != nil {
+		return err
+	}
 	if err := r.openflow.SendDescStatsRequestMessage(); err != nil {
 		return err
 	}
 	if err := r.openflow.SendFeaturesRequestMessage(); err != nil {
+		return err
+	}
+	if err := r.openflow.SendBarrierRequestMessage(); err != nil {
 		return err
 	}
 

@@ -212,7 +212,7 @@ func (r *Transceiver) SendBarrierRequestMessage() error {
 	return r.send(msg)
 }
 
-func (r *Transceiver) sendHelloMessage() error {
+func (r *Transceiver) SendHelloMessage() error {
 	msg := &HelloMessage{
 		Header{
 			Version: 0x01, // OF1.0
@@ -252,7 +252,7 @@ func (r *Transceiver) SendPortModificationMessage(num uint16, mac net.HardwareAd
 	return r.send(msg)
 }
 
-func (r *Transceiver) sendNegotiationFailedMessage(data string) error {
+func (r *Transceiver) SendNegotiationFailedMessage(data string) error {
 	msg := &ErrorMessage{
 		Header: Header{
 			Version: 0x01, // OF1.0
@@ -341,13 +341,8 @@ func (r *Transceiver) handleMessage(ctx context.Context, msg interface{}) error 
 		}
 		if r.Handlers.HelloMessage != nil {
 			if err := r.Handlers.HelloMessage(v); err != nil {
-				r.sendNegotiationFailedMessage(err.Error())
 				return err
 			}
-		}
-		// Set to send whole packet data in PACKET_IN
-		if err := r.SendSetConfigMessage(OFPC_FRAG_NORMAL, 0xFFFF); err != nil {
-			return err
 		}
 		r.negotiated = true
 		go r.pinger(ctx)
@@ -490,7 +485,6 @@ func (r *Transceiver) pinger(ctx context.Context) {
 		select {
 		case <-ticker.C:
 			r.sendEchoRequest()
-
 		case <-ctx.Done():
 			ticker.Stop()
 			return
@@ -500,11 +494,8 @@ func (r *Transceiver) pinger(ctx context.Context) {
 
 func (r *Transceiver) Run(ctx context.Context) {
 	defer r.Socket.Close()
-
-	if err := r.sendHelloMessage(); err != nil {
-		r.Log.Print(err)
-		return
-	}
+	childContext, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	// Reader goroutine
 	receivedMsg := make(chan interface{})
@@ -516,11 +507,9 @@ func (r *Transceiver) Run(ctx context.Context) {
 				case isTimeout(err):
 					// Ignore timeout error
 					continue
-
 				case err == ErrUnsupportedMsgType:
 					r.Log.Print(err)
 					continue
-
 				default:
 					r.Log.Print(err)
 					close(receivedMsg)
@@ -541,14 +530,10 @@ func (r *Transceiver) Run(ctx context.Context) {
 			if !ok {
 				return
 			}
-			if err := r.handleMessage(ctx, msg); err != nil {
+			if err := r.handleMessage(childContext, msg); err != nil {
 				r.Log.Print(err)
-				// Reader goroutine will be finished after it detects socket disconnection
 				return
 			}
-
-		// TODO: add this manager to the device pool with DPID
-
 		case <-ctx.Done():
 			return
 		}
