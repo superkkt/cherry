@@ -41,6 +41,21 @@ func NewManager(log *log.Logger) *Manager {
 	}
 }
 
+// TODO: 네트워크 토폴리지를 그려서 특정 호스트의 위치를 식별하거나, 또는
+// 스위치간의 연결 링크를 식별해서 broadcast storm이 발생하지 않도록 하는 루틴을
+// 여기 device 패키지에서 구현한다. 꼭 manager 내부에 있을 필요는 없을것 같고..
+// LLDP 패킷을 잘 활용해서 구현하면 될 것 같다. 스위치가 처음 연결되거나 포트가
+// 추가되는 경우 LLDP를 보내서 해당 패킷이 다른 스위치의 PACKET_IN으로 들어오지
+// 않는지 조사하는 방식이다. 이렇게 스위치간 링크를 찾아내면 해당 포트들의 설정에
+// FLOOD시 해당 포트를 포함하지 않도록 셋팅하고 쓰면 된다. 만약 스위치가 FLOOD를
+// 지원하지 않는다면? 그럼 OUTPUT_PORT에 해당 링크와 연결된 포트를 제외한 모든
+// 포트를 나열해서 PACKET_OUT하면 될려나?
+// 아무튼 한 가지 중요한 점은 여기서 설명한 기능은 OpenFlow 고유의 기능이 아니다.
+// 따라서 이 기능들이 openflow 패키지 안에 구현되어서는 안된다. OF10, OF13 등은
+// 통신 프로토콜일뿐 그 위에 올라오는 device 패키지 같은 곳에서 이런 기능을 구현해야 한다.
+// 토폴로지 그리고 spanning-tree 만들어서 루프 제거하는 방법은 그래프 라이브러리를
+// 활용하면 된다. https://github.com/gyuho/goraph
+
 // TODO: Add functions than will be called by a plugin application,
 // e.g., GetDeviceDescription(), GetDeviceFeatures(), etc., which calls
 // counterpart functions in the openflow package
@@ -90,9 +105,18 @@ func (r *Manager) handleFeaturesReplyMessage(msg *openflow.FeaturesReplyMessage)
 
 	// XXX: test
 	match := openflow.NewFlowMatch()
+	match.SetEtherType(openflow.IPv4)
 	match.SetInPort(39)
-	match.SetSrcIP(net.ParseIP("223.130.120.0"), 8)
-	match.SetDstIP(net.ParseIP("223.130.122.0"), 8)
+	_, srcIP, err := net.ParseCIDR("223.130.120.0/24")
+	if err != nil {
+		panic("invalid test IP address")
+	}
+	_, dstIP, err := net.ParseCIDR("223.130.122.0/24")
+	if err != nil {
+		panic("invalid test IP address")
+	}
+	match.SetSrcIP(srcIP)
+	match.SetDstIP(dstIP)
 	a1 := &openflow.FlowActionOutput{Port: 40}
 	a2 := &openflow.FlowActionOutput{Port: 41}
 	a3 := &openflow.FlowActionOutput{Port: 42}
@@ -174,10 +198,10 @@ func (r *Manager) handleFlowStatsReplyMessage(msg *openflow.FlowStatsReplyMessag
 		r.log.Printf("%+v", v)
 		r.log.Printf("%+v", v.Match)
 		r.log.Printf("%+v", v.Match.GetFlowWildcards())
-		srcIP, bits := v.Match.GetSrcIP()
-		r.log.Printf("src_ip: %v, bits: %v", srcIP, bits)
-		dstIP, bits := v.Match.GetDstIP()
-		r.log.Printf("dst_ip: %v, bits: %v", dstIP, bits)
+		srcIP := v.Match.GetSrcIP()
+		r.log.Printf("src_ip: %v", srcIP)
+		dstIP := v.Match.GetDstIP()
+		r.log.Printf("dst_ip: %v", dstIP)
 		for _, a := range v.Actions {
 			r.log.Printf("%+v", a)
 		}

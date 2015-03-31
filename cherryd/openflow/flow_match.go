@@ -149,7 +149,7 @@ type FlowMatch struct {
 	dstMAC       net.HardwareAddr
 	vlanID       uint16
 	vlanPriority uint8
-	etherType    uint16
+	etherType    EtherType
 	tos          uint8
 	protocol     uint8
 	srcIP        net.IP
@@ -210,22 +210,49 @@ func (r *FlowMatch) GetDstMAC() net.HardwareAddr {
 	return r.dstMAC
 }
 
-func (r *FlowMatch) SetSrcIP(ip net.IP, wildcardBits uint8) {
-	r.srcIP = ip
-	r.wildcards.SrcIP = wildcardBits
+func (r *FlowMatch) SetSrcIP(ip *net.IPNet) {
+	r.srcIP = ip.IP
+
+	netmaskBits, _ := ip.Mask.Size()
+	if netmaskBits >= 32 {
+		r.wildcards.SrcIP = 0
+	} else {
+		r.wildcards.SrcIP = uint8(32 - netmaskBits)
+	}
 }
 
-func (r *FlowMatch) GetSrcIP() (ip net.IP, wildcardBits uint8) {
-	return r.srcIP, r.wildcards.SrcIP
+func (r *FlowMatch) GetSrcIP() *net.IPNet {
+	return &net.IPNet{
+		IP:   r.srcIP,
+		Mask: net.CIDRMask(32-int(r.wildcards.SrcIP), 32),
+	}
 }
 
-func (r *FlowMatch) SetDstIP(ip net.IP, wildcardBits uint8) {
-	r.dstIP = ip
-	r.wildcards.DstIP = wildcardBits
+func (r *FlowMatch) SetDstIP(ip *net.IPNet) {
+	r.dstIP = ip.IP
+
+	netmaskBits, _ := ip.Mask.Size()
+	if netmaskBits >= 32 {
+		r.wildcards.DstIP = 0
+	} else {
+		r.wildcards.DstIP = uint8(32 - netmaskBits)
+	}
 }
 
-func (r *FlowMatch) GetDstIP() (ip net.IP, wildcardBits uint8) {
-	return r.dstIP, r.wildcards.DstIP
+func (r *FlowMatch) GetDstIP() *net.IPNet {
+	return &net.IPNet{
+		IP:   r.dstIP,
+		Mask: net.CIDRMask(32-int(r.wildcards.DstIP), 32),
+	}
+}
+
+func (r *FlowMatch) SetEtherType(t EtherType) {
+	r.etherType = t
+	r.wildcards.EtherType = false
+}
+
+func (r *FlowMatch) GetEtherType() EtherType {
+	return r.etherType
 }
 
 // TODO: other setters and getters for FlowMatch
@@ -244,7 +271,7 @@ func (r *FlowMatch) MarshalBinary() ([]byte, error) {
 	binary.BigEndian.PutUint16(data[18:20], r.vlanID)
 	data[20] = r.vlanPriority
 	// data[21] = padding
-	binary.BigEndian.PutUint16(data[22:24], r.etherType)
+	binary.BigEndian.PutUint16(data[22:24], uint16(r.etherType))
 	data[24] = r.tos
 	data[25] = r.protocol
 	// data[26:28] = padding
@@ -273,7 +300,7 @@ func (r *FlowMatch) UnmarshalBinary(data []byte) error {
 	copy(r.dstMAC, data[12:18])
 	r.vlanID = binary.BigEndian.Uint16(data[18:20])
 	r.vlanPriority = data[20]
-	r.etherType = binary.BigEndian.Uint16(data[22:24])
+	r.etherType = EtherType(binary.BigEndian.Uint16(data[22:24]))
 	r.tos = data[24]
 	r.protocol = data[25]
 	// data[26:28] = padding
