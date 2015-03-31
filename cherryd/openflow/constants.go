@@ -248,14 +248,3 @@ const (
 	OFPST_QUEUE
 	OFPST_VENDOR = 0xffff
 )
-
-type EtherType uint16
-
-// http://en.wikipedia.org/wiki/EtherType
-const (
-	IPv4       EtherType = 0x0800
-	ARP                  = 0x0806
-	IPv6                 = 0x86DD
-	JumboFrame           = 0x8870
-	LLDP                 = 0x88CC
-)

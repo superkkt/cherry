@@ -253,6 +253,16 @@ func parsePacket(packet []byte) (interface{}, error) {
 		msg = &FlowRemovedMessage{}
 	case OFPT_STATS_REPLY:
 		return parseStatsReplyMessage(packet)
+	case OFPT_QUEUE_GET_CONFIG_REPLY:
+		return nil, nil // We don't support OFPT_QUEUE_GET_CONFIG_REPLY
+
+	// TODO: Implement these messages
+	//         OFPT_GET_CONFIG_REQUEST
+	//         OFPT_GET_CONFIG_REPLY
+	//         OFPT_SET_CONFIG
+	//         OFPT_BARRIER_REQUEST
+	//         OFPT_BARRIER_REPLY
+
 	default:
 		return nil, ErrUnsupportedMsgType
 	}
@@ -449,6 +459,10 @@ func (r *Transceiver) Run(ctx context.Context) {
 					close(receivedMsg)
 					return
 				}
+			}
+			// msg can be nil if the received packet is one that we do not support
+			if msg == nil {
+				continue
 			}
 			receivedMsg <- msg
 		}

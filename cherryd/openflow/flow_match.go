@@ -149,7 +149,7 @@ type FlowMatch struct {
 	dstMAC       net.HardwareAddr
 	vlanID       uint16
 	vlanPriority uint8
-	etherType    EtherType
+	etherType    uint16
 	tos          uint8
 	protocol     uint8
 	srcIP        net.IP
@@ -176,6 +176,60 @@ func NewFlowMatch() *FlowMatch {
 		srcIP:     net.ParseIP("0.0.0.0"),
 		dstIP:     net.ParseIP("0.0.0.0"),
 	}
+}
+
+func (r *FlowMatch) SetSrcPort(p uint16) {
+	r.srcPort = p
+	r.wildcards.SrcPort = false
+}
+
+func (r *FlowMatch) GetSrcPort() uint16 {
+	return r.srcPort
+}
+
+func (r *FlowMatch) SetDstPort(p uint16) {
+	r.dstPort = p
+	r.wildcards.DstPort = false
+}
+
+func (r *FlowMatch) GetDstPort() uint16 {
+	return r.dstPort
+}
+
+func (r *FlowMatch) SetVLANID(id uint16) {
+	r.vlanID = id
+	r.wildcards.VLANID = false
+}
+
+func (r *FlowMatch) GetVLANID() uint16 {
+	return r.vlanID
+}
+
+func (r *FlowMatch) SetVLANPriority(p uint8) {
+	r.vlanPriority = p
+	r.wildcards.VLANPriority = false
+}
+
+func (r *FlowMatch) GetVLANPriority() uint8 {
+	return r.vlanPriority
+}
+
+func (r *FlowMatch) SetTOS(tos uint8) {
+	r.tos = tos
+	r.wildcards.TOS = false
+}
+
+func (r *FlowMatch) GetTOS() uint8 {
+	return r.tos
+}
+
+func (r *FlowMatch) SetProtocol(p uint8) {
+	r.protocol = p
+	r.wildcards.Protocol = false
+}
+
+func (r *FlowMatch) GetProtocol() uint8 {
+	return r.protocol
 }
 
 func (r *FlowMatch) GetFlowWildcards() FlowWildcard {
@@ -246,12 +300,12 @@ func (r *FlowMatch) GetDstIP() *net.IPNet {
 	}
 }
 
-func (r *FlowMatch) SetEtherType(t EtherType) {
+func (r *FlowMatch) SetEtherType(t uint16) {
 	r.etherType = t
 	r.wildcards.EtherType = false
 }
 
-func (r *FlowMatch) GetEtherType() EtherType {
+func (r *FlowMatch) GetEtherType() uint16 {
 	return r.etherType
 }
 
@@ -271,7 +325,7 @@ func (r *FlowMatch) MarshalBinary() ([]byte, error) {
 	binary.BigEndian.PutUint16(data[18:20], r.vlanID)
 	data[20] = r.vlanPriority
 	// data[21] = padding
-	binary.BigEndian.PutUint16(data[22:24], uint16(r.etherType))
+	binary.BigEndian.PutUint16(data[22:24], r.etherType)
 	data[24] = r.tos
 	data[25] = r.protocol
 	// data[26:28] = padding
@@ -300,7 +354,7 @@ func (r *FlowMatch) UnmarshalBinary(data []byte) error {
 	copy(r.dstMAC, data[12:18])
 	r.vlanID = binary.BigEndian.Uint16(data[18:20])
 	r.vlanPriority = data[20]
-	r.etherType = EtherType(binary.BigEndian.Uint16(data[22:24]))
+	r.etherType = binary.BigEndian.Uint16(data[22:24])
 	r.tos = data[24]
 	r.protocol = data[25]
 	// data[26:28] = padding

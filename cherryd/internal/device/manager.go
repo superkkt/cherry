@@ -105,8 +105,9 @@ func (r *Manager) handleFeaturesReplyMessage(msg *openflow.FeaturesReplyMessage)
 
 	// XXX: test
 	match := openflow.NewFlowMatch()
-	match.SetEtherType(openflow.IPv4)
+	match.SetEtherType(0x0800) // IPv4
 	match.SetInPort(39)
+	match.SetProtocol(0x06) // TCP
 	_, srcIP, err := net.ParseCIDR("223.130.120.0/24")
 	if err != nil {
 		panic("invalid test IP address")
@@ -117,6 +118,21 @@ func (r *Manager) handleFeaturesReplyMessage(msg *openflow.FeaturesReplyMessage)
 	}
 	match.SetSrcIP(srcIP)
 	match.SetDstIP(dstIP)
+	srcMAC, err := net.ParseMAC("00:01:02:03:04:05")
+	if err != nil {
+		panic("Invalid test MAC address!")
+	}
+	dstMAC, err := net.ParseMAC("05:04:03:02:01:00")
+	if err != nil {
+		panic("Invalid test MAC address!")
+	}
+	match.SetSrcMAC(srcMAC)
+	match.SetDstMAC(dstMAC)
+	match.SetSrcPort(80)
+	match.SetDstPort(110)
+	match.SetVLANID(1)
+	match.SetVLANPriority(1)
+	match.SetTOS(32)
 	a1 := &openflow.FlowActionOutput{Port: 40}
 	a2 := &openflow.FlowActionOutput{Port: 41}
 	a3 := &openflow.FlowActionOutput{Port: 42}
@@ -171,8 +187,8 @@ func (r *Manager) handlePacketInMessage(msg *openflow.PacketInMessage) error {
 
 	// XXX: test
 	inPort := openflow.PortNumber(msg.InPort)
-	flood := &openflow.FlowActionOutput{Port: openflow.OFPP_ALL}
-	if err := r.SendPacketOut(inPort, []openflow.FlowAction{flood}, msg.Data); err != nil {
+	actions := []openflow.FlowAction{&openflow.FlowActionOutput{Port: openflow.OFPP_FLOOD}}
+	if err := r.SendPacketOut(inPort, actions, msg.Data); err != nil {
 		r.log.Printf("failed to send a packet-out message: %v", err)
 	}
 
