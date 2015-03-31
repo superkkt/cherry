@@ -30,6 +30,7 @@ import (
 	"git.sds.co.kr/bosomi.git/socket"
 	"golang.org/x/net/context"
 	"log"
+	"net"
 	"sync/atomic"
 	"time"
 )
@@ -230,6 +231,22 @@ func (r *Transceiver) SendFeaturesRequestMessage() error {
 			Type:    OFPT_FEATURES_REQUEST,
 			Xid:     r.getTransactionID(),
 		},
+	}
+
+	return r.send(msg)
+}
+
+func (r *Transceiver) SendPortModificationMessage(num uint16, mac net.HardwareAddr, config PortConfig, advertise PortFeature) error {
+	msg := &PortModificationMessage{
+		Header: Header{
+			Version: 0x01, // OF1.0
+			Type:    OFPT_PORT_MOD,
+			Xid:     r.getTransactionID(),
+		},
+		Number:    num,
+		MAC:       mac,
+		Config:    config,
+		Advertise: advertise,
 	}
 
 	return r.send(msg)

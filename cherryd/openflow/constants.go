@@ -105,35 +105,46 @@ const (
 )
 
 // ofp_port_config
+type PortConfig uint32
+
 const (
-	OFPPC_PORT_DOWN    = 1 << 0
-	OFPPC_NO_STP       = 1 << 1
-	OFPPC_NO_RECV      = 1 << 2
-	OFPPC_NO_RECV_STP  = 1 << 3
-	OFPPC_NO_FLOOD     = 1 << 4
-	OFPPC_NO_FWD       = 1 << 5
-	OFPPC_NO_PACKET_IN = 1 << 6
+	OFPPC_PORT_DOWN    PortConfig = 1 << 0
+	OFPPC_NO_STP                  = 1 << 1
+	OFPPC_NO_RECV                 = 1 << 2
+	OFPPC_NO_RECV_STP             = 1 << 3
+	OFPPC_NO_FLOOD                = 1 << 4
+	OFPPC_NO_FWD                  = 1 << 5
+	OFPPC_NO_PACKET_IN            = 1 << 6
 )
 
 // ofp_port_state
+type PortState uint32
+
 const (
-	OFPPS_LINK_DOWN = 1 << 0
+	OFPPS_LINK_DOWN   PortState = 1 << 0
+	OFPPS_STP_LISTEN            = 0 << 8 /* Not learning or relaying frames. */
+	OFPPS_STP_LEARN             = 1 << 8 /* Learning but not relaying frames. */
+	OFPPS_STP_FORWARD           = 2 << 8 /* Learning and relaying frames. */
+	OFPPS_STP_BLOCK             = 3 << 8 /* Not part of spanning tree. */
+	OFPPS_STP_MASK              = 3 << 8 /* Bit mask for OFPPS_STP_* values. */
 )
+
+type PortFeature uint32
 
 // ofp_port_features
 const (
-	OFPPF_10MB_HD    = 1 << 0  /* 10 Mb half-duplex rate support. */
-	OFPPF_10MB_FD    = 1 << 1  /* 10 Mb full-duplex rate support. */
-	OFPPF_100MB_HD   = 1 << 2  /* 100 Mb half-duplex rate support. */
-	OFPPF_100MB_FD   = 1 << 3  /* 100 Mb full-duplex rate support. */
-	OFPPF_1GB_HD     = 1 << 4  /* 1 Gb half-duplex rate support. */
-	OFPPF_1GB_FD     = 1 << 5  /* 1 Gb full-duplex rate support. */
-	OFPPF_10GB_FD    = 1 << 6  /* 10 Gb full-duplex rate support. */
-	OFPPF_COPPER     = 1 << 7  /* Copper medium. */
-	OFPPF_FIBER      = 1 << 8  /* Fiber medium. */
-	OFPPF_AUTONEG    = 1 << 9  /* Auto-negotiation. */
-	OFPPF_PAUSE      = 1 << 10 /* Pause. */
-	OFPPF_PAUSE_ASYM = 1 << 11 /* Asymmetric pause. */
+	OFPPF_10MB_HD    PortFeature = 1 << 0  /* 10 Mb half-duplex rate support. */
+	OFPPF_10MB_FD                = 1 << 1  /* 10 Mb full-duplex rate support. */
+	OFPPF_100MB_HD               = 1 << 2  /* 100 Mb half-duplex rate support. */
+	OFPPF_100MB_FD               = 1 << 3  /* 100 Mb full-duplex rate support. */
+	OFPPF_1GB_HD                 = 1 << 4  /* 1 Gb half-duplex rate support. */
+	OFPPF_1GB_FD                 = 1 << 5  /* 1 Gb full-duplex rate support. */
+	OFPPF_10GB_FD                = 1 << 6  /* 10 Gb full-duplex rate support. */
+	OFPPF_COPPER                 = 1 << 7  /* Copper medium. */
+	OFPPF_FIBER                  = 1 << 8  /* Fiber medium. */
+	OFPPF_AUTONEG                = 1 << 9  /* Auto-negotiation. */
+	OFPPF_PAUSE                  = 1 << 10 /* Pause. */
+	OFPPF_PAUSE_ASYM             = 1 << 11 /* Asymmetric pause. */
 )
 
 // ofp_capabilities

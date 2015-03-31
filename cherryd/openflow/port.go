@@ -18,19 +18,19 @@ type Port struct {
 	MAC    net.HardwareAddr
 	Name   string
 	// Bitmap of OFPPC_* flags
-	config uint32
+	Config PortConfig
 	// Bitmap of OFPPS_* flags
-	state uint32
+	State PortState
 	//
 	//  Bitmaps of OFPPF_* that describe features. All bits zeroed if unsupported or unavailable.
 	//
-	current    uint32
-	advertised uint32
-	supported  uint32
-	peer       uint32
+	Current    PortFeature
+	Advertised PortFeature
+	Supported  PortFeature
+	Peer       PortFeature
 }
 
-type PortFeature struct {
+type PortFeatureState struct {
 	OFPPF_10MB_HD    bool
 	OFPPF_10MB_FD    bool
 	OFPPF_100MB_HD   bool
@@ -47,7 +47,7 @@ type PortFeature struct {
 
 // Whether it is administratively down
 func (r *Port) IsPortDown() bool {
-	if r.config&OFPPC_PORT_DOWN != 0 {
+	if r.Config&OFPPC_PORT_DOWN != 0 {
 		return true
 	}
 
@@ -56,15 +56,19 @@ func (r *Port) IsPortDown() bool {
 
 // Whether physical link is present
 func (r *Port) IsLinkDown() bool {
-	if r.state&OFPPS_LINK_DOWN != 0 {
+	if r.State&OFPPS_LINK_DOWN != 0 {
 		return true
 	}
 
 	return false
 }
 
-func getFeatures(v uint32) *PortFeature {
-	return &PortFeature{
+// TODO:
+// Implement functions to return states such as OFPPS_STP_LISTEN, OFPPS_STP_LEARN,
+// OFPPS_STP_FORWARD and OFPPS_STP_BLOCK.
+
+func getFeatures(v PortFeature) *PortFeatureState {
+	return &PortFeatureState{
 		OFPPF_10MB_HD:    v&OFPPF_10MB_HD != 0,
 		OFPPF_10MB_FD:    v&OFPPF_10MB_FD != 0,
 		OFPPF_100MB_HD:   v&OFPPF_100MB_HD != 0,
@@ -80,16 +84,16 @@ func getFeatures(v uint32) *PortFeature {
 	}
 }
 
-func (r *Port) GetCurrentFeatures() *PortFeature {
-	return getFeatures(r.current)
+func (r *Port) GetCurrentFeatures() *PortFeatureState {
+	return getFeatures(r.Current)
 }
 
-func (r *Port) GetAdvertisedFeatures() *PortFeature {
-	return getFeatures(r.advertised)
+func (r *Port) GetAdvertisedFeatures() *PortFeatureState {
+	return getFeatures(r.Advertised)
 }
 
-func (r *Port) GetSupportedFeatures() *PortFeature {
-	return getFeatures(r.supported)
+func (r *Port) GetSupportedFeatures() *PortFeatureState {
+	return getFeatures(r.Supported)
 }
 
 func (r *Port) UnmarshalBinary(data []byte) error {
@@ -101,12 +105,12 @@ func (r *Port) UnmarshalBinary(data []byte) error {
 	r.MAC = make(net.HardwareAddr, 6)
 	copy(r.MAC, data[2:8])
 	r.Name = strings.TrimRight(string(data[8:24]), "\x00")
-	r.config = binary.BigEndian.Uint32(data[24:28])
-	r.state = binary.BigEndian.Uint32(data[28:32])
-	r.current = binary.BigEndian.Uint32(data[32:36])
-	r.advertised = binary.BigEndian.Uint32(data[36:40])
-	r.supported = binary.BigEndian.Uint32(data[40:44])
-	r.peer = binary.BigEndian.Uint32(data[44:48])
+	r.Config = PortConfig(binary.BigEndian.Uint32(data[24:28]))
+	r.State = PortState(binary.BigEndian.Uint32(data[28:32]))
+	r.Current = PortFeature(binary.BigEndian.Uint32(data[32:36]))
+	r.Advertised = PortFeature(binary.BigEndian.Uint32(data[36:40]))
+	r.Supported = PortFeature(binary.BigEndian.Uint32(data[40:44]))
+	r.Peer = PortFeature(binary.BigEndian.Uint32(data[44:48]))
 
 	return nil
 }

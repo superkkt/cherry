@@ -83,6 +83,22 @@ func (r *Manager) handleErrorMessage(msg *openflow.ErrorMessage) error {
 }
 
 func (r *Manager) handleFeaturesReplyMessage(msg *openflow.FeaturesReplyMessage) error {
+	r.DPID = msg.DPID
+	r.NumBuffers = msg.NumBuffers
+	r.NumTables = msg.NumTables
+	r.Capabilities = msg.GetCapability()
+	r.Actions = msg.GetSupportedAction()
+	r.Ports = msg.Ports
+	// Add this device to the device pool
+	add(r.DPID, r)
+	for _, v := range msg.Ports {
+		c := v.Config | openflow.OFPPC_NO_STP
+		err := r.openflow.SendPortModificationMessage(v.Number, v.MAC, c, v.Advertised)
+		if err != nil {
+			return err
+		}
+	}
+
 	// XXX: debugging
 	r.log.Printf("DPID: %v", msg.DPID)
 	r.log.Printf("# of buffers: %v", msg.NumBuffers)
@@ -92,17 +108,6 @@ func (r *Manager) handleFeaturesReplyMessage(msg *openflow.FeaturesReplyMessage)
 	for _, v := range msg.Ports {
 		r.log.Printf("No: %v, MAC: %v, Name: %v, Port Down?: %v, Link Down?: %v, Current: %+v, Advertised: %+v, Supported: %+v", v.Number, v.MAC, v.Name, v.IsPortDown(), v.IsLinkDown(), v.GetCurrentFeatures(), v.GetAdvertisedFeatures(), v.GetSupportedFeatures())
 	}
-
-	r.DPID = msg.DPID
-	r.NumBuffers = msg.NumBuffers
-	r.NumTables = msg.NumTables
-	r.Capabilities = msg.GetCapability()
-	r.Actions = msg.GetSupportedAction()
-	r.Ports = msg.Ports
-
-	// Add this device to the device pool
-	add(r.DPID, r)
-
 	// XXX: test
 	match := openflow.NewFlowMatch()
 	match.SetEtherType(0x0800) // IPv4
