@@ -56,6 +56,7 @@ type MessageHandler struct {
 	DescStatsReplyMessage func(*DescStatsReplyMessage) error
 	FlowStatsReplyMessage func(*FlowStatsReplyMessage) error
 	GetConfigReplyMessage func(*GetConfigReplyMessage) error
+	BarrierReplyMessage   func(*BarrierReplyMessage) error
 }
 
 type Config struct {
@@ -198,6 +199,18 @@ func (r *Transceiver) SendGetConfigRequestMessage() error {
 	return r.send(msg)
 }
 
+func (r *Transceiver) SendBarrierRequestMessage() error {
+	msg := &BarrierRequestMessage{
+		Header: Header{
+			Version: 0x01, // OF1.0
+			Type:    OFPT_BARRIER_REQUEST,
+			Xid:     r.getTransactionID(),
+		},
+	}
+
+	return r.send(msg)
+}
+
 func (r *Transceiver) sendHelloMessage() error {
 	msg := &HelloMessage{
 		Header{
@@ -286,11 +299,8 @@ func parsePacket(packet []byte) (interface{}, error) {
 		return nil, nil // We don't support OFPT_QUEUE_GET_CONFIG_REPLY
 	case OFPT_GET_CONFIG_REPLY:
 		msg = &GetConfigReplyMessage{}
-
-	// TODO: Implement these messages
-	//         OFPT_BARRIER_REQUEST
-	//         OFPT_BARRIER_REPLY
-
+	case OFPT_BARRIER_REPLY:
+		msg = &BarrierReplyMessage{}
 	default:
 		return nil, ErrUnsupportedMsgType
 	}
@@ -368,6 +378,10 @@ func (r *Transceiver) handleMessage(ctx context.Context, msg interface{}) error 
 	case *GetConfigReplyMessage:
 		if r.Handlers.GetConfigReplyMessage != nil {
 			return r.Handlers.GetConfigReplyMessage(v)
+		}
+	case *BarrierReplyMessage:
+		if r.Handlers.BarrierReplyMessage != nil {
+			return r.Handlers.BarrierReplyMessage(v)
 		}
 	default:
 		panic("unsupported message type!")

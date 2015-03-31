@@ -151,6 +151,9 @@ func (r *Manager) handleFeaturesReplyMessage(msg *openflow.FeaturesReplyMessage)
 	if err := r.openflow.SendGetConfigRequestMessage(); err != nil {
 		r.log.Printf("failed to send a get_config_request: %v", err)
 	}
+	if err := r.openflow.SendBarrierRequestMessage(); err != nil {
+		r.log.Printf("failed to send a barrier_request: %v", err)
+	}
 
 	return nil
 }
@@ -234,6 +237,12 @@ func (r *Manager) handleGetConfigReplyMessage(msg *openflow.GetConfigReplyMessag
 	return nil
 }
 
+func (r *Manager) handleBarrierReplyMessage(msg *openflow.BarrierReplyMessage) error {
+	// XXX: debugging
+	r.log.Printf("%+v", msg)
+	return nil
+}
+
 func (r *Manager) Run(ctx context.Context, conn net.Conn) {
 	socket := socket.NewConn(conn, 0xFFFF) // max size of a OpenFlow packet
 	config := openflow.Config{
@@ -253,6 +262,7 @@ func (r *Manager) Run(ctx context.Context, conn net.Conn) {
 			DescStatsReplyMessage: r.handleDescStatsReplyMessage,
 			FlowStatsReplyMessage: r.handleFlowStatsReplyMessage,
 			GetConfigReplyMessage: r.handleGetConfigReplyMessage,
+			BarrierReplyMessage:   r.handleBarrierReplyMessage,
 		},
 	}
 
