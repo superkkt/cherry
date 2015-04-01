@@ -212,7 +212,7 @@ func (r *Transceiver) SendBarrierRequestMessage() error {
 	return r.send(msg)
 }
 
-func (r *Transceiver) SendHelloMessage() error {
+func (r *Transceiver) sendHelloMessage() error {
 	msg := &HelloMessage{
 		Header{
 			Version: 0x01, // OF1.0
@@ -343,6 +343,13 @@ func (r *Transceiver) handleMessage(ctx context.Context, msg interface{}) error 
 			if err := r.Handlers.HelloMessage(v); err != nil {
 				return err
 			}
+		}
+		// Set to send whole packet data in PACKET_IN
+		if err := r.SendSetConfigMessage(OFPC_FRAG_NORMAL, 0xFFFF); err != nil {
+			return err
+		}
+		if err := r.SendFeaturesRequestMessage(); err != nil {
+			return err
 		}
 		r.negotiated = true
 		go r.pinger(ctx)
@@ -494,8 +501,11 @@ func (r *Transceiver) pinger(ctx context.Context) {
 
 func (r *Transceiver) Run(ctx context.Context) {
 	defer r.Socket.Close()
-	childContext, cancel := context.WithCancel(ctx)
-	defer cancel()
+
+	if err := r.sendHelloMessage(); err != nil {
+		r.Log.Printf("failed to send hello message: %v", err)
+		return
+	}
 
 	// Reader goroutine
 	receivedMsg := make(chan interface{})
@@ -524,6 +534,8 @@ func (r *Transceiver) Run(ctx context.Context) {
 		}
 	}()
 
+	childContext, cancel := context.WithCancel(ctx)
+	defer cancel()
 	for {
 		select {
 		case msg, ok := <-receivedMsg:

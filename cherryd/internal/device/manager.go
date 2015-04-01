@@ -68,23 +68,6 @@ func (r *Manager) handleHelloMessage(msg *openflow.HelloMessage) error {
 		return err
 	}
 
-	if err := r.openflow.SendHelloMessage(); err != nil {
-		return err
-	}
-	// Set to send whole packet data in PACKET_IN
-	if err := r.openflow.SendSetConfigMessage(openflow.OFPC_FRAG_NORMAL, 0xFFFF); err != nil {
-		return err
-	}
-	if err := r.openflow.SendDescStatsRequestMessage(); err != nil {
-		return err
-	}
-	if err := r.openflow.SendFeaturesRequestMessage(); err != nil {
-		return err
-	}
-	if err := r.openflow.SendBarrierRequestMessage(); err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -95,6 +78,17 @@ func (r *Manager) handleErrorMessage(msg *openflow.ErrorMessage) error {
 }
 
 func (r *Manager) handleFeaturesReplyMessage(msg *openflow.FeaturesReplyMessage) error {
+	// Disable STP on all ports
+	for _, v := range msg.Ports {
+		c := v.Config | openflow.OFPPC_NO_STP
+		err := r.openflow.SendPortModificationMessage(v.Number, v.MAC, c, v.Advertised)
+		if err != nil {
+			return err
+		}
+	}
+	if err := r.openflow.SendBarrierRequestMessage(); err != nil {
+		return err
+	}
 	r.DPID = msg.DPID
 	r.NumBuffers = msg.NumBuffers
 	r.NumTables = msg.NumTables
@@ -103,13 +97,6 @@ func (r *Manager) handleFeaturesReplyMessage(msg *openflow.FeaturesReplyMessage)
 	r.Ports = msg.Ports
 	// Add this device to the device pool
 	add(r.DPID, r)
-	for _, v := range msg.Ports {
-		c := v.Config | openflow.OFPPC_NO_STP
-		err := r.openflow.SendPortModificationMessage(v.Number, v.MAC, c, v.Advertised)
-		if err != nil {
-			return err
-		}
-	}
 
 	// XXX: debugging
 	r.log.Printf("DPID: %v", msg.DPID)
@@ -120,56 +107,56 @@ func (r *Manager) handleFeaturesReplyMessage(msg *openflow.FeaturesReplyMessage)
 	for _, v := range msg.Ports {
 		r.log.Printf("No: %v, MAC: %v, Name: %v, Port Down?: %v, Link Down?: %v, Current: %+v, Advertised: %+v, Supported: %+v", v.Number, v.MAC, v.Name, v.IsPortDown(), v.IsLinkDown(), v.GetCurrentFeatures(), v.GetAdvertisedFeatures(), v.GetSupportedFeatures())
 	}
+
 	// XXX: test
-	match := openflow.NewFlowMatch()
-	match.SetEtherType(0x0800) // IPv4
-	match.SetInPort(39)
-	match.SetProtocol(0x06) // TCP
-	_, srcIP, err := net.ParseCIDR("223.130.120.0/24")
-	if err != nil {
-		panic("invalid test IP address")
-	}
-	_, dstIP, err := net.ParseCIDR("223.130.122.0/24")
-	if err != nil {
-		panic("invalid test IP address")
-	}
-	match.SetSrcIP(srcIP)
-	match.SetDstIP(dstIP)
-	srcMAC, err := net.ParseMAC("00:01:02:03:04:05")
-	if err != nil {
-		panic("Invalid test MAC address!")
-	}
-	dstMAC, err := net.ParseMAC("05:04:03:02:01:00")
-	if err != nil {
-		panic("Invalid test MAC address!")
-	}
-	match.SetSrcMAC(srcMAC)
-	match.SetDstMAC(dstMAC)
-	match.SetSrcPort(80)
-	match.SetDstPort(110)
-	match.SetVLANID(1)
-	match.SetVLANPriority(1)
-	match.SetTOS(32)
-	a1 := &openflow.FlowActionOutput{Port: 40}
-	a2 := &openflow.FlowActionOutput{Port: 41}
-	a3 := &openflow.FlowActionOutput{Port: 42}
-	rule := FlowRule{
-		Match:       match,
-		IdleTimeout: 30,
-		Actions:     []openflow.FlowAction{a1, a2, a3},
-	}
-	//if err := r.RemoveFlowRule(match); err != nil {
-	if err := r.InstallFlowRule(rule); err != nil {
-		r.log.Printf("failed to install a flow rule: %v", err)
-	}
-	if err := r.openflow.SendFlowStatsRequestMessage(openflow.NewFlowMatch()); err != nil {
-		r.log.Printf("failed to send a flow_stats_request: %v", err)
-	}
-	if err := r.openflow.SendGetConfigRequestMessage(); err != nil {
-		r.log.Printf("failed to send a get_config_request: %v", err)
-	}
-	if err := r.openflow.SendBarrierRequestMessage(); err != nil {
-		r.log.Printf("failed to send a barrier_request: %v", err)
+	{
+		match := openflow.NewFlowMatch()
+		match.SetEtherType(0x0800) // IPv4
+		match.SetInPort(39)
+		match.SetProtocol(0x06) // TCP
+		_, srcIP, err := net.ParseCIDR("223.130.120.0/24")
+		if err != nil {
+			panic("invalid test IP address")
+		}
+		_, dstIP, err := net.ParseCIDR("223.130.122.0/24")
+		if err != nil {
+			panic("invalid test IP address")
+		}
+		match.SetSrcIP(srcIP)
+		match.SetDstIP(dstIP)
+		srcMAC, err := net.ParseMAC("00:01:02:03:04:05")
+		if err != nil {
+			panic("Invalid test MAC address!")
+		}
+		dstMAC, err := net.ParseMAC("05:04:03:02:01:00")
+		if err != nil {
+			panic("Invalid test MAC address!")
+		}
+		match.SetSrcMAC(srcMAC)
+		match.SetDstMAC(dstMAC)
+		match.SetSrcPort(80)
+		match.SetDstPort(110)
+		match.SetVLANID(1)
+		match.SetVLANPriority(1)
+		match.SetTOS(32)
+		a1 := &openflow.FlowActionOutput{Port: 40}
+		a2 := &openflow.FlowActionOutput{Port: 41}
+		a3 := &openflow.FlowActionOutput{Port: 42}
+		rule := FlowRule{
+			Match:       match,
+			IdleTimeout: 30,
+			Actions:     []openflow.FlowAction{a1, a2, a3},
+		}
+		//if err := r.RemoveFlowRule(match); err != nil {
+		if err := r.InstallFlowRule(rule); err != nil {
+			r.log.Printf("failed to install a flow rule: %v", err)
+		}
+		if err := r.openflow.SendFlowStatsRequestMessage(openflow.NewFlowMatch()); err != nil {
+			r.log.Printf("failed to send a flow_stats_request: %v", err)
+		}
+		if err := r.openflow.SendGetConfigRequestMessage(); err != nil {
+			r.log.Printf("failed to send a get_config_request: %v", err)
+		}
 	}
 
 	return nil
