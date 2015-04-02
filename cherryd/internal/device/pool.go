@@ -7,23 +7,55 @@
 
 package device
 
+import (
+	"sync"
+)
+
 // TODO: This pool should be move to Zookeeper
 
-// Key: DPID, Value: Device Manager
-var Pool map[uint64]*Manager
+var Pool *DevicePool
+
+type DevicePool struct {
+	mutex sync.Mutex
+	// map(key=DPID, value=map(key=AuxID, value=Manager))
+	pool map[uint64]map[uint8]*Manager
+}
 
 func init() {
-	Pool = make(map[uint64]*Manager)
+	Pool = &DevicePool{pool: make(map[uint64]map[uint8]*Manager)}
 }
 
-func add(dpid uint64, device *Manager) {
-	Pool[dpid] = device
+func (r *DevicePool) add(dpid uint64, auxID uint8, manager *Manager) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	m, ok := r.pool[dpid]
+	if ok {
+		m[auxID] = manager
+		return
+	}
+	m = make(map[uint8]*Manager)
+	m[auxID] = manager
+	r.pool[dpid] = m
 }
 
-func remove(dpid uint64) {
-	delete(Pool, dpid)
+func (r *DevicePool) remove(dpid uint64, auxID uint8) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	m, ok := r.pool[dpid]
+	if !ok {
+		return
+	}
+	delete(m, auxID)
+	if len(m) == 0 {
+		delete(r.pool, dpid)
+	}
 }
 
-func Search(dpid uint64) *Manager {
-	return Pool[dpid]
+func (r *DevicePool) Search(dpid uint64) map[uint8]*Manager {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	return r.pool[dpid]
 }

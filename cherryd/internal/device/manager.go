@@ -28,11 +28,13 @@ type Manager struct {
 	log          *log.Logger
 	openflow     *openflow.Transceiver
 	DPID         uint64
+	AuxID        uint8 // Auxiliary ID
 	NumBuffers   uint32
 	NumTables    uint8
 	Capabilities *openflow.Capability
 	Actions      *openflow.Action
 	Ports        map[uint16]openflow.Port // Port number is the key
+	cancel       context.CancelFunc
 }
 
 func NewManager(log *log.Logger) *Manager {
@@ -99,7 +101,7 @@ func (r *Manager) handleFeaturesReplyMessage(msg *openflow.FeaturesReplyMessage)
 		r.Ports[v.Number] = v
 	}
 	// Add this device to the device pool
-	add(r.DPID, r)
+	Pool.add(r.DPID, r.AuxID, r)
 
 	// XXX: debugging
 	r.log.Printf("DPID: %v", msg.DPID)
@@ -271,10 +273,35 @@ func (r *Manager) Run(ctx context.Context, conn net.Conn) {
 		r.log.Print(err)
 	}
 	r.openflow = of
-	r.openflow.Run(ctx)
+
+	childContext, cancel := context.WithCancel(ctx)
+	r.cancel = cancel
+	r.openflow.Run(childContext)
 
 	// Remove this device from the device pool
-	remove(r.DPID)
+	Pool.remove(r.DPID, r.AuxID)
+	// Cancel all manger aux connections if we were the main connection
+	if r.AuxID == 0 {
+		cancelManagers(r.DPID)
+	}
+}
+
+func cancelManagers(dpid uint64) {
+	managers := Pool.Search(dpid)
+	if managers == nil {
+		return
+	}
+
+	for _, v := range managers {
+		// The manager will be removed from the pool by the manager itself
+		v.Cancel()
+	}
+}
+
+func (r *Manager) Cancel() {
+	if r.cancel != nil {
+		r.cancel()
+	}
 }
 
 type FlowRule struct {
