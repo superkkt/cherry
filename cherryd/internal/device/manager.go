@@ -11,6 +11,7 @@
 package device
 
 import (
+	"errors"
 	"fmt"
 	"git.sds.co.kr/bosomi.git/socket"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
@@ -18,6 +19,10 @@ import (
 	"log"
 	"net"
 	"time"
+)
+
+var (
+	ErrDisconnected = errors.New("use of disconnected manager")
 )
 
 const (
@@ -66,9 +71,7 @@ func NewManager(log *log.Logger) *Manager {
 func (r *Manager) handleHelloMessage(msg *openflow.HelloMessage) error {
 	// We only support OF 1.0
 	if msg.Version < 0x01 {
-		err := fmt.Errorf("unsupported OpenFlow protocol version: 0x%X", msg.Version)
-		r.openflow.SendNegotiationFailedMessage(err.Error())
-		return err
+		return fmt.Errorf("unsupported OpenFlow protocol version: 0x%X", msg.Version)
 	}
 
 	return nil
@@ -271,12 +274,15 @@ func (r *Manager) Run(ctx context.Context, conn net.Conn) {
 	of, err := openflow.NewTransceiver(config)
 	if err != nil {
 		r.log.Print(err)
+		return
 	}
 	r.openflow = of
 
 	childContext, cancel := context.WithCancel(ctx)
 	r.cancel = cancel
 	r.openflow.Run(childContext)
+	// Reset after the switch is disconnected
+	r.openflow = nil
 
 	// Remove this device from the device pool
 	Pool.remove(r.DPID, r.AuxID)
@@ -313,6 +319,10 @@ type FlowRule struct {
 
 // FIXME: Should we need to install a barrier after installing a flow rule?
 func (r *Manager) InstallFlowRule(flow FlowRule) error {
+	if r.openflow == nil {
+		return ErrDisconnected
+	}
+
 	mod := &openflow.FlowModifyMessage{
 		Match:       flow.Match,
 		Command:     openflow.OFPFC_ADD,
@@ -328,6 +338,10 @@ func (r *Manager) InstallFlowRule(flow FlowRule) error {
 }
 
 func (r *Manager) RemoveFlowRule(match *openflow.FlowMatch) error {
+	if r.openflow == nil {
+		return ErrDisconnected
+	}
+
 	mod := &openflow.FlowModifyMessage{
 		Match:   match,
 		Command: openflow.OFPFC_DELETE,
@@ -336,5 +350,9 @@ func (r *Manager) RemoveFlowRule(match *openflow.FlowMatch) error {
 }
 
 func (r *Manager) SendPacketOut(inPort openflow.PortNumber, actions []openflow.FlowAction, packet []byte) error {
+	if r.openflow == nil {
+		return ErrDisconnected
+	}
+
 	return r.openflow.SendPacketOutMessage(inPort, actions, packet)
 }

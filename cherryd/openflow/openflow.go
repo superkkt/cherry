@@ -252,7 +252,7 @@ func (r *Transceiver) SendPortModificationMessage(num uint16, mac net.HardwareAd
 	return r.send(msg)
 }
 
-func (r *Transceiver) SendNegotiationFailedMessage(data string) error {
+func (r *Transceiver) sendNegotiationFailedMessage(data string) error {
 	msg := &ErrorMessage{
 		Header: Header{
 			Version: 0x01, // OF1.0
@@ -341,6 +341,7 @@ func (r *Transceiver) handleMessage(ctx context.Context, msg interface{}) error 
 		}
 		if r.Handlers.HelloMessage != nil {
 			if err := r.Handlers.HelloMessage(v); err != nil {
+				r.sendNegotiationFailedMessage(err.Error())
 				return err
 			}
 		}
