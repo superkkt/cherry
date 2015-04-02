@@ -32,12 +32,13 @@ type Manager struct {
 	NumTables    uint8
 	Capabilities *openflow.Capability
 	Actions      *openflow.Action
-	Ports        []openflow.Port
+	Ports        map[uint16]openflow.Port // Port number is the key
 }
 
 func NewManager(log *log.Logger) *Manager {
 	return &Manager{
-		log: log,
+		log:   log,
+		Ports: make(map[uint16]openflow.Port),
 	}
 }
 
@@ -94,7 +95,9 @@ func (r *Manager) handleFeaturesReplyMessage(msg *openflow.FeaturesReplyMessage)
 	r.NumTables = msg.NumTables
 	r.Capabilities = msg.GetCapability()
 	r.Actions = msg.GetSupportedAction()
-	r.Ports = msg.Ports
+	for _, v := range msg.Ports {
+		r.Ports[v.Number] = v
+	}
 	// Add this device to the device pool
 	add(r.DPID, r)
 
@@ -177,14 +180,7 @@ func (r *Manager) handleEchoReplyMessage(msg *openflow.EchoReplyMessage) error {
 // TODO: Test this function by plug and unplug a port
 func (r *Manager) handlePortStatusMessage(msg *openflow.PortStatusMessage) error {
 	// Update port status
-	for i, v := range r.Ports {
-		if v.Number != msg.Target.Number {
-			continue
-		}
-		r.Ports[i] = msg.Target
-		// XXX: debugging
-		r.log.Printf("Device Port Status: %+v", r.Ports[i])
-	}
+	r.Ports[msg.Target.Number] = msg.Target
 
 	// XXX: debugging
 	r.log.Printf("%+v", msg)
