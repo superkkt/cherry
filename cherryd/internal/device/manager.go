@@ -284,12 +284,12 @@ func (r *Manager) Run(ctx context.Context, conn net.Conn) {
 	// Reset after the switch is disconnected
 	r.openflow = nil
 
-	// Remove this device from the device pool
-	Pool.remove(r.DPID, r.AuxID)
 	// Cancel all manger aux connections if we were the main connection
 	if r.AuxID == 0 {
 		cancelManagers(r.DPID)
 	}
+	// Remove this device from the device pool
+	Pool.remove(r.DPID, r.AuxID)
 }
 
 func cancelManagers(dpid uint64) {
