@@ -10,7 +10,11 @@ package main
 import (
 	"flag"
 	"fmt"
-	"git.sds.co.kr/cherry.git/cherryd/internal/device"
+	// TODO: Remove these testing imports
+	//	"git.sds.co.kr/cherry.git/cherryd/internal/device"
+	_ "git.sds.co.kr/cherry.git/cherryd/openflow"
+	_ "git.sds.co.kr/cherry.git/cherryd/openflow/of10"
+	_ "git.sds.co.kr/cherry.git/cherryd/openflow/of13"
 	"golang.org/x/net/context"
 	"log"
 	"log/syslog"
@@ -92,8 +96,8 @@ func listen(ctx context.Context, log *log.Logger, config *Config) {
 				}
 			}
 
-			manager := device.NewManager(log)
-			go manager.Run(ctx, conn)
+			//			manager := device.NewManager(log)
+			//			go manager.Run(ctx, conn)
 
 		case <-ctx.Done():
 			return
