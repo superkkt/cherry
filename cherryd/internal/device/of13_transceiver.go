@@ -18,6 +18,7 @@ import (
 type OF13Transceiver struct {
 	BaseTransceiver
 	version uint8
+	auxID   uint8
 }
 
 func NewOF13Transceiver(stream *openflow.Stream, log Logger) *OF13Transceiver {
@@ -45,6 +46,9 @@ func (r *OF13Transceiver) handleFeaturesReply(msg openflow.Message) error {
 	if !ok {
 		panic("unexpected message structure type!")
 	}
+	r.device = addTransceiver(reply.DPID, uint(reply.AuxID), r)
+	// TODO: set device's nBuffers and nTables
+	r.auxID = reply.AuxID
 
 	r.log.Printf("FeaturesReply: %+v", reply)
 
@@ -72,7 +76,18 @@ func (r *OF13Transceiver) handleMessage(msg openflow.Message) error {
 	return nil
 }
 
+func (r *OF13Transceiver) cleanup() {
+	if r.device == nil {
+		return
+	}
+
+	if r.device.RemoveTransceiver(uint(r.auxID)) == 0 {
+		Pool.remove(r.device.dpid)
+	}
+}
+
 func (r *OF13Transceiver) Run(ctx context.Context) {
+	defer r.cleanup()
 	r.stream.SetReadTimeout(1 * time.Second)
 	r.stream.SetWriteTimeout(5 * time.Second)
 
@@ -84,6 +99,7 @@ func (r *OF13Transceiver) Run(ctx context.Context) {
 		r.log.Printf("Failed to send features_request message: %v", err)
 		return
 	}
+	// TODO: send barrier
 
 	go r.pinger(ctx)
 

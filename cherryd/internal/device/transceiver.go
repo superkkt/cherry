@@ -25,6 +25,7 @@ type BaseTransceiver struct {
 	stream *openflow.Stream
 	log    Logger
 	xid    uint32
+	device *Device
 }
 
 func (r *BaseTransceiver) getTransactionID() uint32 {
@@ -101,4 +102,18 @@ func NewTransceiver(conn net.Conn, log Logger) (Transceiver, error) {
 	} else {
 		return NewOF13Transceiver(stream, log), nil
 	}
+}
+
+func addTransceiver(dpid uint64, auxID uint, t Transceiver) *Device {
+	v := Pool.Get(dpid)
+	if v != nil {
+		v.AddTransceiver(auxID, t)
+		return v
+	}
+
+	v = newDevice(dpid)
+	v.AddTransceiver(auxID, t)
+	Pool.add(dpid, v)
+
+	return v
 }

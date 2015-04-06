@@ -41,13 +41,15 @@ func (r *OF10Transceiver) sendFeaturesRequest() error {
 }
 
 func (r *OF10Transceiver) handleFeaturesReply(msg openflow.Message) error {
-	m, ok := msg.(*of10.FeaturesReply)
+	reply, ok := msg.(*of10.FeaturesReply)
 	if !ok {
 		panic("unexpected message structure type!")
 	}
+	r.device = addTransceiver(reply.DPID, 0, r)
+	// TODO: set device's nBuffers and nTables
 
 	// XXX: debugging
-	r.log.Printf("FeaturesReply: %+v", m)
+	r.log.Printf("FeaturesReply: %+v", reply)
 
 	return nil
 }
@@ -71,7 +73,18 @@ func (r *OF10Transceiver) handleMessage(msg openflow.Message) error {
 	}
 }
 
+func (r *OF10Transceiver) cleanup() {
+	if r.device == nil {
+		return
+	}
+
+	if r.device.RemoveTransceiver(0) == 0 {
+		Pool.remove(r.device.dpid)
+	}
+}
+
 func (r *OF10Transceiver) Run(ctx context.Context) {
+	defer r.cleanup()
 	r.stream.SetReadTimeout(1 * time.Second)
 	r.stream.SetWriteTimeout(5 * time.Second)
 
@@ -83,6 +96,7 @@ func (r *OF10Transceiver) Run(ctx context.Context) {
 		r.log.Printf("Failed to send features_request message: %v", err)
 		return
 	}
+	// TODO: send barrier
 
 	go r.pinger(ctx)
 
