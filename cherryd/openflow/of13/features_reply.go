@@ -36,7 +36,7 @@ func (r *FeaturesReply) Header() openflow.Header {
 }
 
 func (r *FeaturesReply) MarshalBinary() ([]byte, error) {
-	return nil, openflow.ErrInvalidMarshaling
+	return nil, openflow.ErrUnsupportedMarshaling
 }
 
 func getCapability(capabilities uint32) Capability {

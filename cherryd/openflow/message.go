@@ -10,15 +10,6 @@ package openflow
 import (
 	"encoding"
 	"encoding/binary"
-	"errors"
-)
-
-var (
-	ErrInvalidPacketLength = errors.New("invalid packet length")
-	ErrUnsupportedVersion  = errors.New("unsupported protocol version")
-	ErrInvalidMarshaling   = errors.New("invalid marshaling")
-	ErrInvalidUnmarshaling = errors.New("invalid unmarshaling")
-	ErrUnsupportedMessage  = errors.New("unsupported message type")
 )
 
 var messageParser map[uint8]func([]byte) (Message, error)
@@ -75,7 +66,7 @@ func RegisterParser(version uint8, parser func([]byte) (Message, error)) {
 
 // TODO: set deadline before passing conn to this function
 func ReadMessage(stream *Stream) (Message, error) {
-	header, err := stream.peek(8) // peek ofp_header
+	header, err := stream.Peek(8) // peek ofp_header
 	if err != nil {
 		return nil, err
 	}
@@ -83,26 +74,42 @@ func ReadMessage(stream *Stream) (Message, error) {
 	if length < 8 {
 		return nil, ErrInvalidPacketLength
 	}
-	packet, err := stream.readN(int(length))
+	packet, err := stream.ReadN(int(length))
 	if err != nil {
 		return nil, err
 	}
 
+	switch packet[1] {
 	// OFPT_HELLO
-	if packet[1] == 0 {
+	case 0x0:
 		v := new(Hello)
 		if err := v.UnmarshalBinary(packet); err != nil {
 			return nil, err
 		}
 		return v, nil
+	// OFPT_ECHO_REQUEST
+	case 0x2:
+		v := new(EchoRequest)
+		if err := v.UnmarshalBinary(packet); err != nil {
+			return nil, err
+		}
+		return v, nil
+	// OFPT_ECHO_REPLY
+	case 0x3:
+		v := new(EchoReply)
+		if err := v.UnmarshalBinary(packet); err != nil {
+			return nil, err
+		}
+		return v, nil
+	// All other message types
+	default:
+		// Find a message parser for the message version
+		parser, ok := messageParser[packet[0]]
+		if !ok {
+			return nil, ErrUnsupportedVersion
+		}
+		return parser(packet)
 	}
-
-	parser, ok := messageParser[packet[0]]
-	if !ok {
-		return nil, ErrUnsupportedVersion
-	}
-
-	return parser(packet)
 }
 
 // TODO: set deadline before passing conn to this function
@@ -112,7 +119,7 @@ func WriteMessage(stream *Stream, msg Message) error {
 		return err
 	}
 
-	_, err = stream.write(v)
+	_, err = stream.Write(v)
 	if err != nil {
 		return err
 	}

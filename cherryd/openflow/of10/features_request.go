@@ -20,6 +20,7 @@ func NewFeaturesRequest(xid uint32) *FeaturesRequest {
 		header: openflow.Header{
 			Version: openflow.Ver10,
 			Type:    OFPT_FEATURES_REQUEST,
+			Length:  8,
 			XID:     xid,
 		},
 	}
@@ -34,5 +35,5 @@ func (r *FeaturesRequest) MarshalBinary() ([]byte, error) {
 }
 
 func (r *FeaturesRequest) UnmarshalBinary(data []byte) error {
-	return openflow.ErrInvalidUnmarshaling
+	return openflow.ErrUnsupportedUnmarshaling
 }

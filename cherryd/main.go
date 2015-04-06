@@ -10,11 +10,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	// TODO: Remove these testing imports
-	//	"git.sds.co.kr/cherry.git/cherryd/internal/device"
-	_ "git.sds.co.kr/cherry.git/cherryd/openflow"
-	_ "git.sds.co.kr/cherry.git/cherryd/openflow/of10"
-	_ "git.sds.co.kr/cherry.git/cherryd/openflow/of13"
+	"git.sds.co.kr/cherry.git/cherryd/internal/device"
 	"golang.org/x/net/context"
 	"log"
 	"log/syslog"
@@ -96,9 +92,15 @@ func listen(ctx context.Context, log *log.Logger, config *Config) {
 				}
 			}
 
-			//			manager := device.NewManager(log)
-			//			go manager.Run(ctx, conn)
-
+			go func() {
+				defer conn.Close()
+				transceiver, err := device.NewTransceiver(conn, log)
+				if err != nil {
+					log.Printf("Failed to create a new transceiver: %v", err)
+					return
+				}
+				transceiver.Run(ctx)
+			}()
 		case <-ctx.Done():
 			return
 		}

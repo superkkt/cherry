@@ -16,6 +16,7 @@ func NewHello(version uint8, xid uint32) *Hello {
 		header: Header{
 			Version: version,
 			Type:    0, // OFPT_HELLO
+			Length:  8,
 			XID:     xid,
 		},
 	}

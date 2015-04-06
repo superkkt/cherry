@@ -15,8 +15,10 @@ import (
 
 // Stream is a buffered socket connection.
 type Stream struct {
-	conn   net.Conn
-	reader *bufio.Reader
+	conn         net.Conn
+	reader       *bufio.Reader
+	readTimeout  time.Duration
+	writeTimeout time.Duration
 }
 
 // NewStream returns a new buffered connection. conn is an already connected connection.
@@ -28,25 +30,43 @@ func NewStream(conn net.Conn) *Stream {
 	}
 }
 
-// setDeadline is a wrapper function of net.Conn.SetDeadline().
-func (r *Stream) setDeadline(deadline time.Time) {
-	r.conn.SetDeadline(deadline)
+func (r *Stream) SetReadTimeout(t time.Duration) {
+	r.readTimeout = t
 }
 
-// read is a wrapper function of bufio.Reader.Read().
-func (r *Stream) read(p []byte) (n int, err error) {
+func (r *Stream) SetWriteTimeout(t time.Duration) {
+	r.writeTimeout = t
+}
+
+// Read is a wrapper function of bufio.Reader.Read().
+func (r *Stream) Read(p []byte) (n int, err error) {
+	if r.readTimeout > 0 {
+		r.conn.SetReadDeadline(time.Now().Add(r.readTimeout))
+		defer r.conn.SetReadDeadline(time.Time{})
+	}
+
 	return r.reader.Read(p)
 }
 
-// peek is a wrapper function of bufio.Reader.Peek().
-func (r *Stream) peek(n int) (p []byte, err error) {
+// Peek is a wrapper function of bufio.Reader.Peek().
+func (r *Stream) Peek(n int) (p []byte, err error) {
+	if r.readTimeout > 0 {
+		r.conn.SetReadDeadline(time.Now().Add(r.readTimeout))
+		defer r.conn.SetReadDeadline(time.Time{})
+	}
+
 	return r.reader.Peek(n)
 }
 
-// readN reads exactly n bytes from this socket. It returns non-nil error
+// ReadN reads exactly n bytes from this socket. It returns non-nil error
 // if len(p) < n, and the data, whose length is len(p) bytes long, still remains in the
 // socket buffer.
-func (r *Stream) readN(n int) (p []byte, err error) {
+func (r *Stream) ReadN(n int) (p []byte, err error) {
+	if r.readTimeout > 0 {
+		r.conn.SetReadDeadline(time.Now().Add(r.readTimeout))
+		defer r.conn.SetReadDeadline(time.Time{})
+	}
+
 	p = make([]byte, n)
 	if _, err = r.reader.Peek(n); err != nil {
 		return nil, err
@@ -62,12 +82,17 @@ func (r *Stream) readN(n int) (p []byte, err error) {
 	return p, nil
 }
 
-// write is a wrapper function of net.Conn.Write().
-func (r *Stream) write(p []byte) (n int, err error) {
+// Write is a wrapper function of net.Conn.Write().
+func (r *Stream) Write(p []byte) (n int, err error) {
+	if r.writeTimeout > 0 {
+		r.conn.SetWriteDeadline(time.Now().Add(r.writeTimeout))
+		defer r.conn.SetWriteDeadline(time.Time{})
+	}
+
 	return r.conn.Write(p)
 }
 
-// shutdown is a wrapper function of net.Conn.Close().
-func (r *Stream) shutdown() error {
+// Close is a wrapper function of net.Conn.Close().
+func (r *Stream) Close() error {
 	return r.conn.Close()
 }
