@@ -59,3 +59,10 @@ const (
 	OFPC_QUEUE_STATS  = 1 << 6 /* Queue statistics. */
 	OFPC_PORT_BLOCKED = 1 << 8 /* Switch will block looping ports. */
 )
+
+const (
+	OFPC_FRAG_NORMAL = iota /* No special handling for fragments. */
+	OFPC_FRAG_DROP          /* Drop fragments. */
+	OFPC_FRAG_REASM         /* Reassemble (only if OFPC_IP_REASM set). */
+	OFPC_FRAG_MASK
+)

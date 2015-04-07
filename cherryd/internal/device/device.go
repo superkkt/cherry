@@ -12,65 +12,65 @@ import (
 )
 
 type Device struct {
-	mutex    sync.Mutex
-	dpid     uint64
-	nBuffers uint
-	nTables  uint
+	mutex      sync.Mutex
+	DPID       uint64
+	NumBuffers uint
+	NumTables  uint
 	//ports      map[uint]Port
 	transceivers map[uint]Transceiver
 }
 
 func newDevice(dpid uint64) *Device {
 	return &Device{
-		dpid: dpid,
+		DPID: dpid,
 		// ports: make(map[uint]Port),
 		transceivers: make(map[uint]Transceiver),
 	}
 }
 
-//func (r *Device) SetPort(id uint, p Port) {
+//func (r *Device) setPort(id uint, p Port) {
 //	r.mutex.Lock()
 //	defer r.mutex.Unlock()
 //	r.ports[id] = p
 //}
 //
-//func (r *Device) Port(id uint) (Port, bool) {
+//func (r *Device) Port(id uint) (p Port, ok bool) {
 //	r.mutex.Lock()
 //	defer r.mutex.Unlock()
-//	return r.ports[id]
+//	p, ok = r.ports[id]
+//	return
 //}
 
-func (r *Device) AddTransceiver(id uint, t Transceiver) {
+func (r *Device) addTransceiver(id uint, t Transceiver) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	r.transceivers[id] = t
 }
 
-func (r *Device) RemoveTransceiver(id uint) int {
+// removeTransceiver returns the number of remaining transceivers after removing.
+func (r *Device) removeTransceiver(id uint) int {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	delete(r.transceivers, id)
 	return len(r.transceivers)
 }
 
-func (r *Device) Transceiver(id uint) (t Transceiver, ok bool) {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-	t, ok = r.transceivers[id]
-	return
-}
-
-func (r *Device) FirstTransceiver() (t Transceiver, ok bool) {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	if len(r.transceivers) == 0 {
-		return nil, false
+func (r *Device) getTransceiver() Transceiver {
+	for _, v := range r.transceivers {
+		// Return the first transceiver
+		return v
 	}
 
-	for _, t = range r.transceivers {
-		break
-	}
-
-	return t, true
+	panic("empty transceiver in a device!")
 }
+
+func (r *Device) SetBarrier() error {
+	t := r.getTransceiver()
+	return t.sendBarrierRequest()
+}
+
+// TODO: Add exposed functions to provide OpenFlow funtionality to plugins.
+// func (r *Device) InstallFlowRule(...) {
+// 	select a transceiver
+//	send a flow rule to this device through the transceiver
+// }

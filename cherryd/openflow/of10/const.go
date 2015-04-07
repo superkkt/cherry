@@ -58,3 +58,10 @@ const (
 	OFPC_QUEUE_STATS  = 1 << 6 /* Queue statistics. */
 	OFPC_ARP_MATCH_IP = 1 << 7 /* Match IP addresses in ARP pkts. */
 )
+
+const (
+	OFPC_FRAG_NORMAL = iota /* No special handling for fragments. */
+	OFPC_FRAG_DROP          /* Drop fragments. */
+	OFPC_FRAG_REASM         /* Reassemble (only if OFPC_IP_REASM set). */
+	OFPC_FRAG_MASK
+)

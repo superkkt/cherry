@@ -41,3 +41,15 @@ func (r *DevicePool) Get(dpid uint64) *Device {
 	defer r.mutex.Unlock()
 	return r.pool[dpid]
 }
+
+func findDevice(dpid uint64) *Device {
+	v := Pool.Get(dpid)
+	if v != nil {
+		return v
+	}
+
+	v = newDevice(dpid)
+	Pool.add(dpid, v)
+
+	return v
+}

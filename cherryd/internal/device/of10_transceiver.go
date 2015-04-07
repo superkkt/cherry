@@ -40,16 +40,44 @@ func (r *OF10Transceiver) sendFeaturesRequest() error {
 	return openflow.WriteMessage(r.stream, feature)
 }
 
+func (r *OF10Transceiver) sendBarrierRequest() error {
+	barrier := of10.NewBarrierRequest(r.getTransactionID())
+	return openflow.WriteMessage(r.stream, barrier)
+}
+
+func (r *OF10Transceiver) sendSetConfig(flags, missSendLen uint16) error {
+	msg := of10.NewSetConfig(r.getTransactionID(), flags, missSendLen)
+	return openflow.WriteMessage(r.stream, msg)
+}
+
 func (r *OF10Transceiver) handleFeaturesReply(msg openflow.Message) error {
 	reply, ok := msg.(*of10.FeaturesReply)
 	if !ok {
 		panic("unexpected message structure type!")
 	}
-	r.device = addTransceiver(reply.DPID, 0, r)
-	// TODO: set device's nBuffers and nTables
+	r.device = findDevice(reply.DPID)
+	r.device.NumBuffers = uint(reply.NumBuffers)
+	r.device.NumTables = uint(reply.NumTables)
+	r.device.addTransceiver(0, r)
 
 	// XXX: debugging
 	r.log.Printf("FeaturesReply: %+v", reply)
+	getconfig := of10.NewGetConfigRequest(r.getTransactionID())
+	if err := openflow.WriteMessage(r.stream, getconfig); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r *OF10Transceiver) handleGetConfigReply(msg openflow.Message) error {
+	reply, ok := msg.(*of10.GetConfigReply)
+	if !ok {
+		panic("unexpected message structure type!")
+	}
+
+	// XXX: debugging
+	r.log.Printf("GetConfigReply: %+v", reply)
 
 	return nil
 }
@@ -67,6 +95,8 @@ func (r *OF10Transceiver) handleMessage(msg openflow.Message) error {
 		return r.handleEchoReply(msg)
 	case of10.OFPT_FEATURES_REPLY:
 		return r.handleFeaturesReply(msg)
+	case of10.OFPT_GET_CONFIG_REPLY:
+		return r.handleGetConfigReply(msg)
 	default:
 		r.log.Printf("Unsupported message type: version=%v, type=%v", header.Version, header.Type)
 		return nil
@@ -78,8 +108,8 @@ func (r *OF10Transceiver) cleanup() {
 		return
 	}
 
-	if r.device.RemoveTransceiver(0) == 0 {
-		Pool.remove(r.device.dpid)
+	if r.device.removeTransceiver(0) == 0 {
+		Pool.remove(r.device.DPID)
 	}
 }
 
@@ -96,9 +126,16 @@ func (r *OF10Transceiver) Run(ctx context.Context) {
 		r.log.Printf("Failed to send features_request message: %v", err)
 		return
 	}
-	// TODO: send barrier
+	if err := r.sendSetConfig(of10.OFPC_FRAG_NORMAL, 0xFFFF); err != nil {
+		r.log.Printf("Failed to send set_config message: %v", err)
+		return
+	}
+	if err := r.sendBarrierRequest(); err != nil {
+		r.log.Printf("Failed to send barrier_request: %v", err)
+		return
+	}
 
-	go r.pinger(ctx)
+	go r.pinger(ctx, r.version)
 
 	// Reader goroutine
 	receivedMsg := make(chan openflow.Message)

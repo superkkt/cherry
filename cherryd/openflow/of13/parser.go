@@ -26,6 +26,8 @@ func ParseMessage(data []byte) (openflow.Message, error) {
 	switch header.Type {
 	case OFPT_FEATURES_REPLY:
 		msg = new(FeaturesReply)
+	case OFPT_GET_CONFIG_REPLY:
+		msg = new(GetConfigReply)
 	default:
 		return nil, openflow.ErrUnsupportedMessage
 	}

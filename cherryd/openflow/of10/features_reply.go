@@ -90,7 +90,7 @@ func (r *FeaturesReply) UnmarshalBinary(data []byte) error {
 	if err := r.header.UnmarshalBinary(data); err != nil {
 		return err
 	}
-	if len(data) < int(r.header.Length) {
+	if r.header.Length < 32 || len(data) < int(r.header.Length) {
 		return openflow.ErrInvalidPacketLength
 	}
 

@@ -8,6 +8,7 @@
 package device
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
@@ -19,6 +20,7 @@ import (
 
 type Transceiver interface {
 	Run(context.Context)
+	sendBarrierRequest() error
 }
 
 type BaseTransceiver struct {
@@ -41,7 +43,7 @@ func (r *BaseTransceiver) handleEchoRequest(msg openflow.Message) error {
 	header := m.Header()
 	reply := openflow.NewEchoReply(header.Version, header.XID, m.Data)
 	if err := openflow.WriteMessage(r.stream, reply); err != nil {
-		return fmt.Errorf("failed to send echo reply message: %v", err)
+		return fmt.Errorf("failed to send echo reply_message: %v", err)
 	}
 
 	// XXX: debugging
@@ -56,24 +58,38 @@ func (r *BaseTransceiver) handleEchoReply(msg openflow.Message) error {
 		panic("unexpected message structure type!")
 	}
 
+	if m.Data == nil || len(m.Data) != 8 {
+		return errors.New("Invalid echo reply data")
+	}
+	timestamp := int64(binary.BigEndian.Uint64(m.Data))
+	latency := time.Now().UnixNano() - timestamp
+
 	// XXX: debugging
-	r.log.Printf("EchoReply: %+v", m)
+	r.log.Printf("EchoReply: latency=%vms", latency/1000/1000)
 
 	return nil
 }
 
-func (r *BaseTransceiver) sendEchoRequest() error {
-	// TODO: implement this function
+func (r *BaseTransceiver) sendEchoRequest(version uint8) error {
+	data := make([]byte, 8)
+	timestamp := time.Now().UnixNano()
+	binary.BigEndian.PutUint64(data, uint64(timestamp))
+
+	echo := openflow.NewEchoRequest(version, r.getTransactionID(), data)
+	if err := openflow.WriteMessage(r.stream, echo); err != nil {
+		return fmt.Errorf("failed to send echo_request message: %v", err)
+	}
+
 	return nil
 }
 
 // TODO: Implement to close the connection if we miss several echo replies
-func (r *BaseTransceiver) pinger(ctx context.Context) {
+func (r *BaseTransceiver) pinger(ctx context.Context, version uint8) {
 	ticker := time.NewTicker(time.Duration(15) * time.Second)
 	for {
 		select {
 		case <-ticker.C:
-			if err := r.sendEchoRequest(); err != nil {
+			if err := r.sendEchoRequest(version); err != nil {
 				r.log.Printf("failed to send echo request: %v", err)
 			}
 		case <-ctx.Done():
@@ -102,18 +118,4 @@ func NewTransceiver(conn net.Conn, log Logger) (Transceiver, error) {
 	} else {
 		return NewOF13Transceiver(stream, log), nil
 	}
-}
-
-func addTransceiver(dpid uint64, auxID uint, t Transceiver) *Device {
-	v := Pool.Get(dpid)
-	if v != nil {
-		v.AddTransceiver(auxID, t)
-		return v
-	}
-
-	v = newDevice(dpid)
-	v.AddTransceiver(auxID, t)
-	Pool.add(dpid, v)
-
-	return v
 }

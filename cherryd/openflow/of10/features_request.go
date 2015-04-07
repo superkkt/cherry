@@ -20,7 +20,6 @@ func NewFeaturesRequest(xid uint32) *FeaturesRequest {
 		header: openflow.Header{
 			Version: openflow.Ver10,
 			Type:    OFPT_FEATURES_REQUEST,
-			Length:  8,
 			XID:     xid,
 		},
 	}
@@ -31,6 +30,7 @@ func (r *FeaturesRequest) Header() openflow.Header {
 }
 
 func (r *FeaturesRequest) MarshalBinary() ([]byte, error) {
+	r.header.Length = 8
 	return r.header.MarshalBinary()
 }
 
