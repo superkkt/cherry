@@ -17,17 +17,16 @@ import (
 
 type OF13Transceiver struct {
 	BaseTransceiver
-	version uint8
-	auxID   uint8
+	auxID uint8
 }
 
 func NewOF13Transceiver(stream *openflow.Stream, log Logger) *OF13Transceiver {
 	return &OF13Transceiver{
 		BaseTransceiver: BaseTransceiver{
-			stream: stream,
-			log:    log,
+			stream:  stream,
+			log:     log,
+			version: openflow.Ver13,
 		},
-		version: openflow.Ver13,
 	}
 }
 
@@ -81,6 +80,12 @@ func (r *OF13Transceiver) handleGetConfigReply(msg *of13.GetConfigReply) error {
 }
 
 func (r *OF13Transceiver) handleDescriptionReply(msg *of13.DescriptionReply) error {
+	r.device.Manufacturer = msg.Manufacturer
+	r.device.Hardware = msg.Hardware
+	r.device.Software = msg.Software
+	r.device.Serial = msg.Serial
+	r.device.Description = msg.Description
+
 	// XXX: debugging
 	r.log.Printf("DescriptionReply: %+v", msg)
 

@@ -24,10 +24,11 @@ type Transceiver interface {
 }
 
 type BaseTransceiver struct {
-	stream *openflow.Stream
-	log    Logger
-	xid    uint32
-	device *Device
+	stream  *openflow.Stream
+	log     Logger
+	xid     uint32
+	device  *Device
+	version uint8
 }
 
 func (r *BaseTransceiver) getTransactionID() uint32 {

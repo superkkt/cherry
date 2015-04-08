@@ -124,7 +124,6 @@ func main() {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-
 	go waitSignal(log, cancel)
 	listen(ctx, log, conf)
 }

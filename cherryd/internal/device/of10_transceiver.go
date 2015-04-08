@@ -17,16 +17,15 @@ import (
 
 type OF10Transceiver struct {
 	BaseTransceiver
-	version uint8
 }
 
 func NewOF10Transceiver(stream *openflow.Stream, log Logger) *OF10Transceiver {
 	return &OF10Transceiver{
 		BaseTransceiver: BaseTransceiver{
-			stream: stream,
-			log:    log,
+			stream:  stream,
+			log:     log,
+			version: openflow.Ver10,
 		},
-		version: openflow.Ver10,
 	}
 }
 
@@ -79,6 +78,12 @@ func (r *OF10Transceiver) handleGetConfigReply(msg *of10.GetConfigReply) error {
 }
 
 func (r *OF10Transceiver) handleDescriptionReply(msg *of10.DescriptionReply) error {
+	r.device.Manufacturer = msg.Manufacturer
+	r.device.Hardware = msg.Hardware
+	r.device.Software = msg.Software
+	r.device.Serial = msg.Serial
+	r.device.Description = msg.Description
+
 	// XXX: debugging
 	r.log.Printf("DescriptionReply: %+v", msg)
 
