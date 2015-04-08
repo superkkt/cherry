@@ -8,6 +8,7 @@
 package of13
 
 import (
+	"encoding/binary"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 )
 
@@ -28,6 +29,13 @@ func ParseMessage(data []byte) (openflow.Message, error) {
 		msg = new(FeaturesReply)
 	case OFPT_GET_CONFIG_REPLY:
 		msg = new(GetConfigReply)
+	case OFPT_MULTIPART_REPLY:
+		switch binary.BigEndian.Uint16(data[8:10]) {
+		case OFPMP_DESC:
+			msg = new(DescriptionReply)
+		default:
+			return nil, openflow.ErrUnsupportedMessage
+		}
 	default:
 		return nil, openflow.ErrUnsupportedMessage
 	}

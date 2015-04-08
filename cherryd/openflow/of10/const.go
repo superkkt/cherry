@@ -65,3 +65,35 @@ const (
 	OFPC_FRAG_REASM         /* Reassemble (only if OFPC_IP_REASM set). */
 	OFPC_FRAG_MASK
 )
+
+const (
+	/* Description of this OpenFlow switch.
+	 * The request body is empty.
+	 * The reply body is struct ofp_desc_stats. */
+	OFPST_DESC = iota
+	/* Individual flow statistics.
+	 * The request body is struct ofp_flow_stats_request.
+	 * The reply body is an array of struct ofp_flow_stats. */
+	OFPST_FLOW
+	/* Aggregate flow statistics.
+	 * The request body is struct ofp_aggregate_stats_request.
+	 * The reply body is struct ofp_aggregate_stats_reply. */
+	OFPST_AGGREGATE
+	/* Flow table statistics.
+	 * The request body is empty.
+	 * The reply body is an array of struct ofp_table_stats. */
+	OFPST_TABLE
+	/* Physical port statistics.
+	 * The request body is struct ofp_port_stats_request.
+	 * The reply body is an array of struct ofp_port_stats. */
+	OFPST_PORT
+	/* Queue statistics for a port
+	 * The request body defines the port
+	 * The reply body is an array of struct ofp_queue_stats */
+	OFPST_QUEUE
+	/* Vendor extension.
+	 * The request and reply bodies begin with a 32-bit vendor ID, which takes
+	 * the same form as in "struct ofp_vendor_header". The request and reply
+	 * bodies are otherwise vendor-defined. */
+	OFPST_VENDOR = 0xffff
+)

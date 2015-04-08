@@ -66,3 +66,70 @@ const (
 	OFPC_FRAG_REASM         /* Reassemble (only if OFPC_IP_REASM set). */
 	OFPC_FRAG_MASK
 )
+
+const (
+	/* Description of this OpenFlow switch.
+	 * The request body is empty.
+	 * The reply body is struct ofp_desc. */
+	OFPMP_DESC = 0
+	/* Individual flow statistics.
+	 * The request body is struct ofp_flow_stats_request.
+	 * The reply body is an array of struct ofp_flow_stats. */
+	OFPMP_FLOW = 1
+	/* Aggregate flow statistics.
+	 * The request body is struct ofp_aggregate_stats_request.
+	 * The reply body is struct ofp_aggregate_stats_reply. */
+	OFPMP_AGGREGATE = 2
+	/* Flow table statistics.
+	 * The request body is empty.
+	 * The reply body is an array of struct ofp_table_stats. */
+	OFPMP_TABLE = 3
+	/* Port statistics.
+	 * The request body is struct ofp_port_stats_request.
+	 * The reply body is an array of struct ofp_port_stats. */
+	OFPMP_PORT_STATS = 4
+	/* Queue statistics for a port
+	 * The request body is struct ofp_queue_stats_request.
+	 * The reply body is an array of struct ofp_queue_stats */
+	OFPMP_QUEUE = 5
+	/* Group counter statistics.
+	 * The request body is struct ofp_group_stats_request.
+	 * The reply is an array of struct ofp_group_stats. */
+	OFPMP_GROUP = 6
+	/* Group description.
+	 * The request body is empty.
+	 * The reply body is an array of struct ofp_group_desc_stats. */
+	OFPMP_GROUP_DESC = 7
+	/* Group features.
+	 * The request body is empty.
+	 * The reply body is struct ofp_group_features. */
+	OFPMP_GROUP_FEATURES = 8
+	/* Meter statistics.
+	 * The request body is struct ofp_meter_multipart_requests.
+	 * The reply body is an array of struct ofp_meter_stats. */
+	OFPMP_METER = 9
+	/* Meter configuration.
+	 * The request body is struct ofp_meter_multipart_requests.
+	 * The reply body is an array of struct ofp_meter_config. */
+	OFPMP_METER_CONFIG = 10
+	/* Meter features.
+	 * The request body is empty.
+	 * The reply body is struct ofp_meter_features. */
+	OFPMP_METER_FEATURES = 11
+	/* Table features.
+	 * The request body is either empty or contains an array of
+	 * struct ofp_table_features containing the controller's
+	 * desired view of the switch. If the switch is unable to
+	 * set the specified view an error is returned.
+	 * The reply body is an array of struct ofp_table_features. */
+	OFPMP_TABLE_FEATURES = 12
+	/* Port description.
+	 * The request body is empty.
+	 * The reply body is an array of struct ofp_port. */
+	OFPMP_PORT_DESC = 13
+	/* Experimenter extension.
+	 * The request and reply bodies begin with
+	 * struct ofp_experimenter_multipart_header.
+	 * The request and reply bodies are otherwise experimenter-defined. */
+	OFPMP_EXPERIMENTER = 0xffff
+)

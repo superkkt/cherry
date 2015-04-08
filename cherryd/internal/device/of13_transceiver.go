@@ -51,19 +51,20 @@ func (r *OF13Transceiver) sendSetConfig(flags, missSendLen uint16) error {
 	return openflow.WriteMessage(r.stream, msg)
 }
 
-func (r *OF13Transceiver) handleFeaturesReply(msg openflow.Message) error {
-	reply, ok := msg.(*of13.FeaturesReply)
-	if !ok {
-		panic("unexpected message structure type!")
-	}
-	r.device = findDevice(reply.DPID)
-	r.device.NumBuffers = uint(reply.NumBuffers)
-	r.device.NumTables = uint(reply.NumTables)
-	r.device.addTransceiver(uint(reply.AuxID), r)
-	r.auxID = reply.AuxID
+func (r *OF13Transceiver) sendDescriptionRequest() error {
+	msg := of13.NewDescriptionRequest(r.getTransactionID())
+	return openflow.WriteMessage(r.stream, msg)
+}
+
+func (r *OF13Transceiver) handleFeaturesReply(msg *of13.FeaturesReply) error {
+	r.device = findDevice(msg.DPID)
+	r.device.NumBuffers = uint(msg.NumBuffers)
+	r.device.NumTables = uint(msg.NumTables)
+	r.device.addTransceiver(uint(msg.AuxID), r)
+	r.auxID = msg.AuxID
 
 	// XXX: debugging
-	r.log.Printf("FeaturesReply: %+v", reply)
+	r.log.Printf("FeaturesReply: %+v", msg)
 	getconfig := of13.NewGetConfigRequest(r.getTransactionID())
 	if err := openflow.WriteMessage(r.stream, getconfig); err != nil {
 		return err
@@ -72,14 +73,16 @@ func (r *OF13Transceiver) handleFeaturesReply(msg openflow.Message) error {
 	return nil
 }
 
-func (r *OF13Transceiver) handleGetConfigReply(msg openflow.Message) error {
-	reply, ok := msg.(*of13.GetConfigReply)
-	if !ok {
-		panic("unexpected message structure type!")
-	}
-
+func (r *OF13Transceiver) handleGetConfigReply(msg *of13.GetConfigReply) error {
 	// XXX: debugging
-	r.log.Printf("GetConfigReply: %+v", reply)
+	r.log.Printf("GetConfigReply: %+v", msg)
+
+	return nil
+}
+
+func (r *OF13Transceiver) handleDescriptionReply(msg *of13.DescriptionReply) error {
+	// XXX: debugging
+	r.log.Printf("DescriptionReply: %+v", msg)
 
 	return nil
 }
@@ -90,15 +93,17 @@ func (r *OF13Transceiver) handleMessage(msg openflow.Message) error {
 		return errors.New("unexpected openflow protocol version!")
 	}
 
-	switch header.Type {
-	case of13.OFPT_ECHO_REQUEST:
-		return r.handleEchoRequest(msg)
-	case of13.OFPT_ECHO_REPLY:
-		return r.handleEchoReply(msg)
-	case of13.OFPT_FEATURES_REPLY:
-		return r.handleFeaturesReply(msg)
-	case of13.OFPT_GET_CONFIG_REPLY:
-		return r.handleGetConfigReply(msg)
+	switch v := msg.(type) {
+	case *openflow.EchoRequest:
+		return r.handleEchoRequest(v)
+	case *openflow.EchoReply:
+		return r.handleEchoReply(v)
+	case *of13.FeaturesReply:
+		return r.handleFeaturesReply(v)
+	case *of13.GetConfigReply:
+		return r.handleGetConfigReply(v)
+	case *of13.DescriptionReply:
+		return r.handleDescriptionReply(v)
 	default:
 		r.log.Printf("Unsupported message type: version=%v, type=%v", header.Version, header.Type)
 		return nil
@@ -126,12 +131,16 @@ func (r *OF13Transceiver) Run(ctx context.Context) {
 		r.log.Printf("Failed to send hello message: %v", err)
 		return
 	}
+	if err := r.sendSetConfig(of13.OFPC_FRAG_NORMAL, 0xFFFF); err != nil {
+		r.log.Printf("Failed to send set_config message: %v", err)
+		return
+	}
 	if err := r.sendFeaturesRequest(); err != nil {
 		r.log.Printf("Failed to send features_request message: %v", err)
 		return
 	}
-	if err := r.sendSetConfig(of13.OFPC_FRAG_NORMAL, 0xFFFF); err != nil {
-		r.log.Printf("Failed to send set_config message: %v", err)
+	if err := r.sendDescriptionRequest(); err != nil {
+		r.log.Printf("Failed to send description_request message: %v", err)
 		return
 	}
 	if err := r.sendBarrierRequest(); err != nil {

@@ -35,33 +35,24 @@ func (r *BaseTransceiver) getTransactionID() uint32 {
 	return atomic.AddUint32(&r.xid, 1)
 }
 
-func (r *BaseTransceiver) handleEchoRequest(msg openflow.Message) error {
-	m, ok := msg.(*openflow.EchoRequest)
-	if !ok {
-		panic("unexpected message structure type!")
-	}
-	header := m.Header()
-	reply := openflow.NewEchoReply(header.Version, header.XID, m.Data)
+func (r *BaseTransceiver) handleEchoRequest(msg *openflow.EchoRequest) error {
+	header := msg.Header()
+	reply := openflow.NewEchoReply(header.Version, header.XID, msg.Data)
 	if err := openflow.WriteMessage(r.stream, reply); err != nil {
 		return fmt.Errorf("failed to send echo reply_message: %v", err)
 	}
 
 	// XXX: debugging
-	r.log.Printf("EchoRequest: %+v", m)
+	r.log.Printf("EchoRequest: %+v", msg)
 
 	return nil
 }
 
-func (r *BaseTransceiver) handleEchoReply(msg openflow.Message) error {
-	m, ok := msg.(*openflow.EchoReply)
-	if !ok {
-		panic("unexpected message structure type!")
-	}
-
-	if m.Data == nil || len(m.Data) != 8 {
+func (r *BaseTransceiver) handleEchoReply(msg *openflow.EchoReply) error {
+	if msg.Data == nil || len(msg.Data) != 8 {
 		return errors.New("Invalid echo reply data")
 	}
-	timestamp := int64(binary.BigEndian.Uint64(m.Data))
+	timestamp := int64(binary.BigEndian.Uint64(msg.Data))
 	latency := time.Now().UnixNano() - timestamp
 
 	// XXX: debugging

@@ -18,6 +18,11 @@ type Device struct {
 	NumTables  uint
 	//ports      map[uint]Port
 	transceivers map[uint]Transceiver
+	Manufacturer string
+	Hardware     string
+	Software     string
+	Serial       string
+	Description  string
 }
 
 func newDevice(dpid uint64) *Device {
