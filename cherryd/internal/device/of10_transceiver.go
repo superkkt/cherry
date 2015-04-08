@@ -9,6 +9,7 @@ package device
 
 import (
 	"errors"
+	"fmt"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"git.sds.co.kr/cherry.git/cherryd/openflow/of10"
 	"golang.org/x/net/context"
@@ -123,32 +124,34 @@ func (r *OF10Transceiver) cleanup() {
 	}
 }
 
+func (r *OF10Transceiver) init() error {
+	if err := r.sendHello(); err != nil {
+		return fmt.Errorf("failed to send hello message: %v", err)
+	}
+	if err := r.sendSetConfig(of10.OFPC_FRAG_NORMAL, 0xFFFF); err != nil {
+		return fmt.Errorf("failed to send set_config message: %v", err)
+	}
+	if err := r.sendFeaturesRequest(); err != nil {
+		return fmt.Errorf("failed to send features_request message: %v", err)
+	}
+	if err := r.sendDescriptionRequest(); err != nil {
+		return fmt.Errorf("failed to send description_request message: %v", err)
+	}
+	if err := r.sendBarrierRequest(); err != nil {
+		return fmt.Errorf("failed to send barrier_request: %v", err)
+	}
+
+	return nil
+}
+
 func (r *OF10Transceiver) Run(ctx context.Context) {
 	defer r.cleanup()
 	r.stream.SetReadTimeout(1 * time.Second)
 	r.stream.SetWriteTimeout(5 * time.Second)
-
-	if err := r.sendHello(); err != nil {
-		r.log.Printf("Failed to send hello message: %v", err)
+	if err := r.init(); err != nil {
+		r.log.Printf("init: %v", err)
 		return
 	}
-	if err := r.sendSetConfig(of10.OFPC_FRAG_NORMAL, 0xFFFF); err != nil {
-		r.log.Printf("Failed to send set_config message: %v", err)
-		return
-	}
-	if err := r.sendFeaturesRequest(); err != nil {
-		r.log.Printf("Failed to send features_request message: %v", err)
-		return
-	}
-	if err := r.sendDescriptionRequest(); err != nil {
-		r.log.Printf("Failed to send features_request message: %v", err)
-		return
-	}
-	if err := r.sendBarrierRequest(); err != nil {
-		r.log.Printf("Failed to send barrier_request: %v", err)
-		return
-	}
-
 	go r.pinger(ctx, r.version)
 
 	// Reader goroutine
