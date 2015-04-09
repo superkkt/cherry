@@ -134,6 +134,21 @@ func (r *OF13Transceiver) handleError(msg *openflow.Error) error {
 	return nil
 }
 
+func (r *OF13Transceiver) handlePortStatus(msg *of13.PortStatus) error {
+	if r.device == nil {
+		r.log.Print("PortStatus is received, but we don't have a switch device yet!")
+		return nil
+	}
+	r.device.setPort(msg.Port.Number(), msg.Port)
+
+	// XXX: debugging
+	{
+		r.log.Printf("PortStatus: %+v, Port: %+v", msg, *msg.Port)
+	}
+
+	return nil
+}
+
 func (r *OF13Transceiver) handleMessage(msg openflow.Message) error {
 	header := msg.Header()
 	if header.Version != r.version {
@@ -155,6 +170,8 @@ func (r *OF13Transceiver) handleMessage(msg openflow.Message) error {
 		return r.handleDescriptionReply(v)
 	case *of13.PortDescriptionReply:
 		return r.handlePortDescriptionReply(v)
+	case *of13.PortStatus:
+		return r.handlePortStatus(v)
 	default:
 		r.log.Printf("Unsupported message type: version=%v, type=%v", header.Version, header.Type)
 		return nil

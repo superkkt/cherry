@@ -38,6 +38,8 @@ func ParseMessage(data []byte) (openflow.Message, error) {
 		default:
 			return nil, openflow.ErrUnsupportedMessage
 		}
+	case OFPT_PORT_STATUS:
+		msg = new(PortStatus)
 	default:
 		return nil, openflow.ErrUnsupportedMessage
 	}
