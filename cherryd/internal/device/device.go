@@ -8,15 +8,16 @@
 package device
 
 import (
+	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"sync"
 )
 
 type Device struct {
-	mutex      sync.Mutex
-	DPID       uint64
-	NumBuffers uint
-	NumTables  uint
-	//ports      map[uint]Port
+	mutex        sync.Mutex
+	DPID         uint64
+	NumBuffers   uint
+	NumTables    uint
+	ports        map[uint]openflow.Port
 	transceivers map[uint]Transceiver
 	Manufacturer string
 	Hardware     string
@@ -27,24 +28,24 @@ type Device struct {
 
 func newDevice(dpid uint64) *Device {
 	return &Device{
-		DPID: dpid,
-		// ports: make(map[uint]Port),
+		DPID:         dpid,
+		ports:        make(map[uint]openflow.Port),
 		transceivers: make(map[uint]Transceiver),
 	}
 }
 
-//func (r *Device) setPort(id uint, p Port) {
-//	r.mutex.Lock()
-//	defer r.mutex.Unlock()
-//	r.ports[id] = p
-//}
-//
-//func (r *Device) Port(id uint) (p Port, ok bool) {
-//	r.mutex.Lock()
-//	defer r.mutex.Unlock()
-//	p, ok = r.ports[id]
-//	return
-//}
+func (r *Device) setPort(id uint, p openflow.Port) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	r.ports[id] = p
+}
+
+func (r *Device) Port(id uint) (p openflow.Port, ok bool) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	p, ok = r.ports[id]
+	return
+}
 
 func (r *Device) addTransceiver(id uint, t Transceiver) {
 	r.mutex.Lock()

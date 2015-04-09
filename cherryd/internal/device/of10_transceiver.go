@@ -61,11 +61,22 @@ func (r *OF10Transceiver) handleFeaturesReply(msg *of10.FeaturesReply) error {
 	r.device.NumTables = uint(msg.NumTables)
 	r.device.addTransceiver(0, r)
 
+	if msg.Capabilities.OFPC_STP == true {
+		// TODO: Disable STP on all ports
+	}
+	for _, v := range msg.Ports {
+		r.device.setPort(uint(v.Number()), v)
+		// XXX: debugging
+		r.log.Printf("Port: %+v", v)
+	}
+
 	// XXX: debugging
-	r.log.Printf("FeaturesReply: %+v", msg)
-	getconfig := of10.NewGetConfigRequest(r.getTransactionID())
-	if err := openflow.WriteMessage(r.stream, getconfig); err != nil {
-		return err
+	{
+		r.log.Printf("FeaturesReply: %+v", msg)
+		getconfig := of10.NewGetConfigRequest(r.getTransactionID())
+		if err := openflow.WriteMessage(r.stream, getconfig); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -73,7 +84,9 @@ func (r *OF10Transceiver) handleFeaturesReply(msg *of10.FeaturesReply) error {
 
 func (r *OF10Transceiver) handleGetConfigReply(msg *of10.GetConfigReply) error {
 	// XXX: debugging
-	r.log.Printf("GetConfigReply: %+v", msg)
+	{
+		r.log.Printf("GetConfigReply: %+v", msg)
+	}
 
 	return nil
 }
@@ -86,7 +99,9 @@ func (r *OF10Transceiver) handleDescriptionReply(msg *of10.DescriptionReply) err
 	r.device.Description = msg.Description
 
 	// XXX: debugging
-	r.log.Printf("DescriptionReply: %+v", msg)
+	{
+		r.log.Printf("DescriptionReply: %+v", msg)
+	}
 
 	return nil
 }

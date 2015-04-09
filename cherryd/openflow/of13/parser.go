@@ -33,6 +33,8 @@ func ParseMessage(data []byte) (openflow.Message, error) {
 		switch binary.BigEndian.Uint16(data[8:10]) {
 		case OFPMP_DESC:
 			msg = new(DescriptionReply)
+		case OFPMP_PORT_DESC:
+			msg = new(PortDescriptionReply)
 		default:
 			return nil, openflow.ErrUnsupportedMessage
 		}

@@ -133,3 +133,35 @@ const (
 	 * The request and reply bodies are otherwise experimenter-defined. */
 	OFPMP_EXPERIMENTER = 0xffff
 )
+
+const (
+	OFPPC_PORT_DOWN    = 1 << 0 /* Port is administratively down. */
+	OFPPC_NO_RECV      = 1 << 2
+	OFPPC_NO_FWD       = 1 << 5
+	OFPPC_NO_PACKET_IN = 1 << 6
+)
+
+const (
+	OFPPS_LINK_DOWN = 1 << 0 /* No physical link present. */
+	OFPPS_BLOCKED   = 1 << 1
+	OFPPS_LIVE      = 1 << 2
+)
+
+const (
+	OFPPF_10MB_HD    = 1 << 0
+	OFPPF_10MB_FD    = 1 << 1
+	OFPPF_100MB_HD   = 1 << 2
+	OFPPF_100MB_FD   = 1 << 3
+	OFPPF_1GB_HD     = 1 << 4
+	OFPPF_1GB_FD     = 1 << 5
+	OFPPF_10GB_FD    = 1 << 6
+	OFPPF_40GB_FD    = 1 << 7
+	OFPPF_100GB_FD   = 1 << 8
+	OFPPF_1TB_FD     = 1 << 9
+	OFPPF_OTHER      = 1 << 10
+	OFPPF_COPPER     = 1 << 11
+	OFPPF_FIBER      = 1 << 12
+	OFPPF_AUTONEG    = 1 << 13
+	OFPPF_PAUSE      = 1 << 14
+	OFPPF_PAUSE_ASYM = 1 << 15
+)

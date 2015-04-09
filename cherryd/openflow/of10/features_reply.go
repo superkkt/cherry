@@ -19,7 +19,7 @@ type FeaturesReply struct {
 	NumTables    uint8
 	Capabilities Capability
 	Actions      Action
-	//Ports        []Port // TODO: enable this field
+	Ports        []*Port
 }
 
 type Capability struct {
@@ -100,20 +100,18 @@ func (r *FeaturesReply) UnmarshalBinary(data []byte) error {
 	r.Capabilities = getCapability(binary.BigEndian.Uint32(data[24:28]))
 	r.Actions = getSupportedAction(binary.BigEndian.Uint32(data[28:32]))
 
-	// TODO: enable this routine
-	//	nPorts := (header.Length - 32) / 48
-	//	if nPorts == 0 {
-	//		return nil
-	//	}
-	//	r.Ports = make([]Port, nPorts)
-	//	for i := uint16(0); i < nPorts; i++ {
-	//		buf := data[32+i*48:]
-	//		p := Port{}
-	//		if err := p.UnmarshalBinary(buf[0:48]); err != nil {
-	//			return err
-	//		}
-	//		r.Ports[i] = p
-	//	}
+	nPorts := (r.header.Length - 32) / 48
+	if nPorts == 0 {
+		return nil
+	}
+	r.Ports = make([]*Port, nPorts)
+	for i := uint16(0); i < nPorts; i++ {
+		buf := data[32+i*48:]
+		r.Ports[i] = new(Port)
+		if err := r.Ports[i].UnmarshalBinary(buf[0:48]); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }

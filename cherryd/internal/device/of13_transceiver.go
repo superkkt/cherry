@@ -56,6 +56,11 @@ func (r *OF13Transceiver) sendDescriptionRequest() error {
 	return openflow.WriteMessage(r.stream, msg)
 }
 
+func (r *OF13Transceiver) sendPortDescriptionRequest() error {
+	msg := of13.NewPortDescriptionRequest(r.getTransactionID())
+	return openflow.WriteMessage(r.stream, msg)
+}
+
 func (r *OF13Transceiver) handleFeaturesReply(msg *of13.FeaturesReply) error {
 	r.device = findDevice(msg.DPID)
 	r.device.NumBuffers = uint(msg.NumBuffers)
@@ -64,10 +69,12 @@ func (r *OF13Transceiver) handleFeaturesReply(msg *of13.FeaturesReply) error {
 	r.auxID = msg.AuxID
 
 	// XXX: debugging
-	r.log.Printf("FeaturesReply: %+v", msg)
-	getconfig := of13.NewGetConfigRequest(r.getTransactionID())
-	if err := openflow.WriteMessage(r.stream, getconfig); err != nil {
-		return err
+	{
+		r.log.Printf("FeaturesReply: %+v", msg)
+		getconfig := of13.NewGetConfigRequest(r.getTransactionID())
+		if err := openflow.WriteMessage(r.stream, getconfig); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -75,7 +82,9 @@ func (r *OF13Transceiver) handleFeaturesReply(msg *of13.FeaturesReply) error {
 
 func (r *OF13Transceiver) handleGetConfigReply(msg *of13.GetConfigReply) error {
 	// XXX: debugging
-	r.log.Printf("GetConfigReply: %+v", msg)
+	{
+		r.log.Printf("GetConfigReply: %+v", msg)
+	}
 
 	return nil
 }
@@ -88,7 +97,30 @@ func (r *OF13Transceiver) handleDescriptionReply(msg *of13.DescriptionReply) err
 	r.device.Description = msg.Description
 
 	// XXX: debugging
-	r.log.Printf("DescriptionReply: %+v", msg)
+	{
+		r.log.Printf("DescriptionReply: %+v", msg)
+	}
+
+	return nil
+}
+
+func (r *OF13Transceiver) handlePortDescriptionReply(msg *of13.PortDescriptionReply) error {
+	if r.device == nil {
+		r.log.Printf("we got port_description_reply before description_reply!")
+		time.Sleep(5 * time.Second)
+		// Resend port description request
+		return r.sendPortDescriptionRequest()
+	}
+	for _, v := range msg.Ports {
+		r.device.setPort(uint(v.Number()), v)
+		// XXX: debugging
+		r.log.Printf("Port: %+v", v)
+	}
+
+	// XXX: debugging
+	{
+		r.log.Printf("PortDescriptionReply: %+v", msg)
+	}
 
 	return nil
 }
@@ -110,6 +142,8 @@ func (r *OF13Transceiver) handleMessage(msg openflow.Message) error {
 		return r.handleGetConfigReply(v)
 	case *of13.DescriptionReply:
 		return r.handleDescriptionReply(v)
+	case *of13.PortDescriptionReply:
+		return r.handlePortDescriptionReply(v)
 	default:
 		r.log.Printf("Unsupported message type: version=%v, type=%v", header.Version, header.Type)
 		return nil
@@ -140,6 +174,13 @@ func (r *OF13Transceiver) init() error {
 	}
 	if err := r.sendDescriptionRequest(); err != nil {
 		return fmt.Errorf("failed to send description_request message: %v", err)
+	}
+	// Make sure that description_reply is received before port_description_reply
+	if err := r.sendBarrierRequest(); err != nil {
+		return fmt.Errorf("failed to send barrier_request: %v", err)
+	}
+	if err := r.sendPortDescriptionRequest(); err != nil {
+		return fmt.Errorf("failed to send port_description_request message: %v", err)
 	}
 	if err := r.sendBarrierRequest(); err != nil {
 		return fmt.Errorf("failed to send barrier_request: %v", err)
