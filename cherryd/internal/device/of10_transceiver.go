@@ -106,6 +106,15 @@ func (r *OF10Transceiver) handleDescriptionReply(msg *of10.DescriptionReply) err
 	return nil
 }
 
+func (r *OF10Transceiver) handleError(msg *of10.Error) error {
+	// XXX: debugging
+	{
+		r.log.Printf("Error: %+v", msg)
+	}
+
+	return nil
+}
+
 func (r *OF10Transceiver) handleMessage(msg openflow.Message) error {
 	header := msg.Header()
 	if header.Version != r.version {
@@ -117,6 +126,8 @@ func (r *OF10Transceiver) handleMessage(msg openflow.Message) error {
 		return r.handleEchoRequest(v)
 	case *openflow.EchoReply:
 		return r.handleEchoReply(v)
+	case *of10.Error:
+		return r.handleError(v)
 	case *of10.FeaturesReply:
 		return r.handleFeaturesReply(v)
 	case *of10.GetConfigReply:

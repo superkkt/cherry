@@ -125,6 +125,15 @@ func (r *OF13Transceiver) handlePortDescriptionReply(msg *of13.PortDescriptionRe
 	return nil
 }
 
+func (r *OF13Transceiver) handleError(msg *of13.Error) error {
+	// XXX: debugging
+	{
+		r.log.Printf("Error: %+v", msg)
+	}
+
+	return nil
+}
+
 func (r *OF13Transceiver) handleMessage(msg openflow.Message) error {
 	header := msg.Header()
 	if header.Version != r.version {
@@ -136,6 +145,8 @@ func (r *OF13Transceiver) handleMessage(msg openflow.Message) error {
 		return r.handleEchoRequest(v)
 	case *openflow.EchoReply:
 		return r.handleEchoReply(v)
+	case *of13.Error:
+		return r.handleError(v)
 	case *of13.FeaturesReply:
 		return r.handleFeaturesReply(v)
 	case *of13.GetConfigReply:
