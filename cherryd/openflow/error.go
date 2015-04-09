@@ -8,6 +8,7 @@
 package openflow
 
 import (
+	"encoding/binary"
 	"errors"
 )
 
@@ -29,4 +30,37 @@ func IsTimeout(err error) bool {
 	}
 
 	return false
+}
+
+type Error struct {
+	header Header
+	Type   uint16
+	Code   uint16
+	Data   []byte
+}
+
+func (r *Error) Header() Header {
+	return r.header
+}
+
+func (r *Error) MarshalBinary() ([]byte, error) {
+	return nil, ErrUnsupportedMarshaling
+}
+
+func (r *Error) UnmarshalBinary(data []byte) error {
+	if err := r.header.UnmarshalBinary(data); err != nil {
+		return err
+	}
+	if r.header.Length < 12 || len(data) < int(r.header.Length) {
+		return ErrInvalidPacketLength
+	}
+
+	r.Type = binary.BigEndian.Uint16(data[8:10])
+	r.Code = binary.BigEndian.Uint16(data[10:12])
+	if r.header.Length > 12 {
+		length := r.header.Length - 12
+		r.Data = data[12 : 12+length]
+	}
+
+	return nil
 }

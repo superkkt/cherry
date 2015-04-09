@@ -125,7 +125,7 @@ func (r *OF13Transceiver) handlePortDescriptionReply(msg *of13.PortDescriptionRe
 	return nil
 }
 
-func (r *OF13Transceiver) handleError(msg *of13.Error) error {
+func (r *OF13Transceiver) handleError(msg *openflow.Error) error {
 	// XXX: debugging
 	{
 		r.log.Printf("Error: %+v", msg)
@@ -145,7 +145,7 @@ func (r *OF13Transceiver) handleMessage(msg openflow.Message) error {
 		return r.handleEchoRequest(v)
 	case *openflow.EchoReply:
 		return r.handleEchoReply(v)
-	case *of13.Error:
+	case *openflow.Error:
 		return r.handleError(v)
 	case *of13.FeaturesReply:
 		return r.handleFeaturesReply(v)

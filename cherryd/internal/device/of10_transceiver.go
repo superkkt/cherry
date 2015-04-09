@@ -106,7 +106,7 @@ func (r *OF10Transceiver) handleDescriptionReply(msg *of10.DescriptionReply) err
 	return nil
 }
 
-func (r *OF10Transceiver) handleError(msg *of10.Error) error {
+func (r *OF10Transceiver) handleError(msg *openflow.Error) error {
 	// XXX: debugging
 	{
 		r.log.Printf("Error: %+v", msg)
@@ -126,7 +126,7 @@ func (r *OF10Transceiver) handleMessage(msg openflow.Message) error {
 		return r.handleEchoRequest(v)
 	case *openflow.EchoReply:
 		return r.handleEchoReply(v)
-	case *of10.Error:
+	case *openflow.Error:
 		return r.handleError(v)
 	case *of10.FeaturesReply:
 		return r.handleFeaturesReply(v)

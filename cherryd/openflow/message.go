@@ -79,28 +79,20 @@ func ReadMessage(stream *Stream) (Message, error) {
 		return nil, err
 	}
 
+	var msg Message
 	switch packet[1] {
 	// OFPT_HELLO
 	case 0x0:
-		v := new(Hello)
-		if err := v.UnmarshalBinary(packet); err != nil {
-			return nil, err
-		}
-		return v, nil
+		msg = new(Hello)
+	// OFPT_ERROR
+	case 0x1:
+		msg = new(Error)
 	// OFPT_ECHO_REQUEST
 	case 0x2:
-		v := new(EchoRequest)
-		if err := v.UnmarshalBinary(packet); err != nil {
-			return nil, err
-		}
-		return v, nil
+		msg = new(EchoRequest)
 	// OFPT_ECHO_REPLY
 	case 0x3:
-		v := new(EchoReply)
-		if err := v.UnmarshalBinary(packet); err != nil {
-			return nil, err
-		}
-		return v, nil
+		msg = new(EchoReply)
 	// All other message types
 	default:
 		// Find a message parser for the message version
@@ -110,6 +102,11 @@ func ReadMessage(stream *Stream) (Message, error) {
 		}
 		return parser(packet)
 	}
+
+	if err := msg.UnmarshalBinary(packet); err != nil {
+		return nil, err
+	}
+	return msg, nil
 }
 
 // TODO: set deadline before passing conn to this function
