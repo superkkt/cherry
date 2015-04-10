@@ -131,3 +131,16 @@ const (
 	OFPPF_PAUSE      = 1 << 10 /* Pause. */
 	OFPPF_PAUSE_ASYM = 1 << 11 /* Asymmetric pause. */
 )
+
+const (
+	OFPFW_IN_PORT     = 1 << 0  /* Switch input port. */
+	OFPFW_DL_VLAN     = 1 << 1  /* VLAN id. */
+	OFPFW_DL_SRC      = 1 << 2  /* Ethernet source address. */
+	OFPFW_DL_DST      = 1 << 3  /* Ethernet destination address. */
+	OFPFW_DL_TYPE     = 1 << 4  /* Ethernet frame type. */
+	OFPFW_NW_PROTO    = 1 << 5  /* IP protocol. */
+	OFPFW_TP_SRC      = 1 << 6  /* TCP/UDP source port. */
+	OFPFW_TP_DST      = 1 << 7  /* TCP/UDP destination port. */
+	OFPFW_DL_VLAN_PCP = 1 << 20 /* VLAN priority. */
+	OFPFW_NW_TOS      = 1 << 21 /* IP ToS (DSCP field, 6 bits). */
+)
