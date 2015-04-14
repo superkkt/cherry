@@ -13,65 +13,46 @@ import (
 )
 
 type PortDescriptionRequest struct {
-	header openflow.Header
+	openflow.Message
 }
 
 func NewPortDescriptionRequest(xid uint32) *PortDescriptionRequest {
 	return &PortDescriptionRequest{
-		header: openflow.Header{
-			Version: openflow.Ver13,
-			Type:    OFPT_MULTIPART_REQUEST,
-			XID:     xid,
-		},
+		Message: openflow.NewMessage(openflow.Ver13, OFPT_MULTIPART_REQUEST, xid),
 	}
-}
-
-func (r *PortDescriptionRequest) Header() openflow.Header {
-	return r.header
 }
 
 func (r *PortDescriptionRequest) MarshalBinary() ([]byte, error) {
-	r.header.Length = 16
-	header, err := r.header.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
+	v := make([]byte, 8)
+	// Multipart description request
+	binary.BigEndian.PutUint16(v[0:2], OFPMP_PORT_DESC)
+	// No flags and body
+	r.SetPayload(v)
 
-	v := make([]byte, r.header.Length)
-	copy(v[0:8], header)
-	binary.BigEndian.PutUint16(v[8:10], OFPMP_PORT_DESC)
-
-	return v, nil
-}
-
-func (r *PortDescriptionRequest) UnmarshalBinary(data []byte) error {
-	return openflow.ErrUnsupportedUnmarshaling
+	return r.Message.MarshalBinary()
 }
 
 type PortDescriptionReply struct {
-	header openflow.Header
-	Ports  []*Port
-}
-
-func (r *PortDescriptionReply) Header() openflow.Header {
-	return r.header
-}
-
-func (r *PortDescriptionReply) MarshalBinary() ([]byte, error) {
-	return nil, openflow.ErrUnsupportedMarshaling
+	openflow.Message
+	Ports []*Port
 }
 
 func (r *PortDescriptionReply) UnmarshalBinary(data []byte) error {
-	if err := r.header.UnmarshalBinary(data); err != nil {
+	if err := r.Message.UnmarshalBinary(data); err != nil {
 		return err
 	}
-	nPorts := (r.header.Length - 16) / 64
+
+	payload := r.Payload()
+	if payload == nil || len(payload) < 8 {
+		return openflow.ErrInvalidPacketLength
+	}
+	nPorts := (len(payload) - 8) / 64
 	if nPorts == 0 {
 		return nil
 	}
 	r.Ports = make([]*Port, nPorts)
-	for i := uint16(0); i < nPorts; i++ {
-		buf := data[16+i*64:]
+	for i := 0; i < nPorts; i++ {
+		buf := payload[8+i*64:]
 		r.Ports[i] = new(Port)
 		if err := r.Ports[i].UnmarshalBinary(buf[0:64]); err != nil {
 			return err

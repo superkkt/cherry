@@ -13,7 +13,7 @@ import (
 )
 
 type Config struct {
-	header      openflow.Header
+	openflow.Message
 	Flags       uint16
 	MissSendLen uint16
 }
@@ -25,89 +25,51 @@ type SetConfig struct {
 func NewSetConfig(xid uint32, flags, missSendLen uint16) *SetConfig {
 	return &SetConfig{
 		Config{
-			header: openflow.Header{
-				Version: openflow.Ver13,
-				Type:    OFPT_SET_CONFIG,
-				XID:     xid,
-			},
+			Message:     openflow.NewMessage(openflow.Ver13, OFPT_SET_CONFIG, xid),
 			Flags:       flags,
 			MissSendLen: missSendLen,
 		},
 	}
 }
 
-func (r *SetConfig) Header() openflow.Header {
-	return r.header
-}
-
 func (r *SetConfig) MarshalBinary() ([]byte, error) {
-	r.header.Length = 12
-	header, err := r.header.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
+	v := make([]byte, 4)
+	binary.BigEndian.PutUint16(v[0:2], r.Flags)
+	binary.BigEndian.PutUint16(v[2:4], r.MissSendLen)
+	r.SetPayload(v)
 
-	v := make([]byte, r.header.Length)
-	copy(v[0:8], header)
-	binary.BigEndian.PutUint16(v[8:10], r.Flags)
-	binary.BigEndian.PutUint16(v[10:12], r.MissSendLen)
-
-	return v, nil
-}
-
-func (r *SetConfig) UnmarshalBinary(data []byte) error {
-	return openflow.ErrUnsupportedUnmarshaling
+	return r.Message.MarshalBinary()
 }
 
 type GetConfigRequest struct {
-	header openflow.Header
+	openflow.Message
 }
 
 func NewGetConfigRequest(xid uint32) *GetConfigRequest {
 	return &GetConfigRequest{
-		header: openflow.Header{
-			Version: openflow.Ver13,
-			Type:    OFPT_GET_CONFIG_REQUEST,
-			XID:     xid,
-		},
+		Message: openflow.NewMessage(openflow.Ver13, OFPT_GET_CONFIG_REQUEST, xid),
 	}
 }
 
-func (r *GetConfigRequest) Header() openflow.Header {
-	return r.header
-}
-
 func (r *GetConfigRequest) MarshalBinary() ([]byte, error) {
-	r.header.Length = 8
-	return r.header.MarshalBinary()
-}
-
-func (r *GetConfigRequest) UnmarshalBinary(data []byte) error {
-	return openflow.ErrUnsupportedUnmarshaling
+	return r.Message.MarshalBinary()
 }
 
 type GetConfigReply struct {
 	Config
 }
 
-func (r *GetConfigReply) Header() openflow.Header {
-	return r.header
-}
-
-func (r *GetConfigReply) MarshalBinary() ([]byte, error) {
-	return nil, openflow.ErrUnsupportedMarshaling
-}
-
 func (r *GetConfigReply) UnmarshalBinary(data []byte) error {
-	if err := r.header.UnmarshalBinary(data); err != nil {
+	if err := r.Message.UnmarshalBinary(data); err != nil {
 		return err
 	}
-	if r.header.Length < 12 || len(data) < int(r.header.Length) {
+
+	payload := r.Payload()
+	if payload == nil || len(payload) < 4 {
 		return openflow.ErrInvalidPacketLength
 	}
-
-	r.Flags = binary.BigEndian.Uint16(data[8:10])
-	r.MissSendLen = binary.BigEndian.Uint16(data[10:12])
+	r.Flags = binary.BigEndian.Uint16(payload[0:2])
+	r.MissSendLen = binary.BigEndian.Uint16(payload[2:4])
 
 	return nil
 }

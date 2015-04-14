@@ -12,28 +12,15 @@ import (
 )
 
 type FeaturesRequest struct {
-	header openflow.Header
+	openflow.Message
 }
 
 func NewFeaturesRequest(xid uint32) *FeaturesRequest {
 	return &FeaturesRequest{
-		header: openflow.Header{
-			Version: openflow.Ver13,
-			Type:    OFPT_FEATURES_REQUEST,
-			XID:     xid,
-		},
+		Message: openflow.NewMessage(openflow.Ver13, OFPT_FEATURES_REQUEST, xid),
 	}
 }
 
-func (r *FeaturesRequest) Header() openflow.Header {
-	return r.header
-}
-
 func (r *FeaturesRequest) MarshalBinary() ([]byte, error) {
-	r.header.Length = 8
-	return r.header.MarshalBinary()
-}
-
-func (r *FeaturesRequest) UnmarshalBinary(data []byte) error {
-	return openflow.ErrUnsupportedUnmarshaling
+	return r.Message.MarshalBinary()
 }

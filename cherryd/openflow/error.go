@@ -13,11 +13,9 @@ import (
 )
 
 var (
-	ErrInvalidPacketLength     = errors.New("invalid packet length")
-	ErrUnsupportedVersion      = errors.New("unsupported protocol version")
-	ErrUnsupportedMarshaling   = errors.New("invalid marshaling")
-	ErrUnsupportedUnmarshaling = errors.New("invalid unmarshaling")
-	ErrUnsupportedMessage      = errors.New("unsupported message type")
+	ErrInvalidPacketLength = errors.New("invalid packet length")
+	ErrUnsupportedVersion  = errors.New("unsupported protocol version")
+	ErrUnsupportedMessage  = errors.New("unsupported message type")
 )
 
 func IsTimeout(err error) bool {
@@ -33,33 +31,25 @@ func IsTimeout(err error) bool {
 }
 
 type Error struct {
-	header Header
-	Type   uint16
-	Code   uint16
-	Data   []byte
-}
-
-func (r *Error) Header() Header {
-	return r.header
-}
-
-func (r *Error) MarshalBinary() ([]byte, error) {
-	return nil, ErrUnsupportedMarshaling
+	Message
+	Class uint16 // Error type
+	Code  uint16
+	Data  []byte
 }
 
 func (r *Error) UnmarshalBinary(data []byte) error {
-	if err := r.header.UnmarshalBinary(data); err != nil {
+	if err := r.Message.UnmarshalBinary(data); err != nil {
 		return err
 	}
-	if r.header.Length < 12 || len(data) < int(r.header.Length) {
+
+	payload := r.Payload()
+	if payload == nil || len(payload) < 4 {
 		return ErrInvalidPacketLength
 	}
-
-	r.Type = binary.BigEndian.Uint16(data[8:10])
-	r.Code = binary.BigEndian.Uint16(data[10:12])
-	if r.header.Length > 12 {
-		length := r.header.Length - 12
-		r.Data = data[12 : 12+length]
+	r.Class = binary.BigEndian.Uint16(payload[0:2])
+	r.Code = binary.BigEndian.Uint16(payload[2:4])
+	if len(payload) > 4 {
+		r.Data = payload[4:]
 	}
 
 	return nil

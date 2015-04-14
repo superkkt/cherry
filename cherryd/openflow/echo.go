@@ -8,46 +8,20 @@
 package openflow
 
 type Echo struct {
-	header Header
-	Data   []byte
-}
-
-func (r *Echo) Header() Header {
-	return r.header
+	Message
+	Data []byte
 }
 
 func (r *Echo) MarshalBinary() ([]byte, error) {
-	v := make([]byte, r.header.Length)
-
-	header, err := r.header.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
-	copy(v[0:8], header)
-
-	if r.Data != nil && len(r.Data) > 0 {
-		copy(v[8:], r.Data)
-	}
-
-	return v, nil
+	r.SetPayload(r.Data)
+	return r.Message.MarshalBinary()
 }
 
 func (r *Echo) UnmarshalBinary(data []byte) error {
-	if data == nil || len(data) == 0 {
-		return ErrInvalidPacketLength
-	}
-
-	if err := r.header.UnmarshalBinary(data); err != nil {
+	if err := r.Message.UnmarshalBinary(data); err != nil {
 		return err
 	}
-	if len(data) < int(r.header.Length) {
-		return ErrInvalidPacketLength
-	}
-
-	if r.header.Length > 8 {
-		r.Data = make([]byte, r.header.Length-8)
-		copy(r.Data, data[8:])
-	}
+	r.Data = r.Payload()
 
 	return nil
 }
@@ -57,20 +31,11 @@ type EchoRequest struct {
 }
 
 func NewEchoRequest(version uint8, xid uint32, data []byte) *EchoRequest {
-	var length uint16 = 8
-	if data != nil {
-		length += uint16(len(data))
-	}
-
 	return &EchoRequest{
 		Echo{
-			header: Header{
-				Version: version,
-				Type:    0x02, // OFPT_ECHO_REQUEST
-				Length:  length,
-				XID:     xid,
-			},
-			Data: data,
+			// OFPT_ECHO_REQUEST
+			Message: NewMessage(version, 0x02, xid),
+			Data:    data,
 		},
 	}
 }
@@ -80,20 +45,11 @@ type EchoReply struct {
 }
 
 func NewEchoReply(version uint8, xid uint32, data []byte) *EchoReply {
-	var length uint16 = 8
-	if data != nil {
-		length += uint16(len(data))
-	}
-
 	return &EchoReply{
 		Echo{
-			header: Header{
-				Version: version,
-				Type:    0x03, // OFPT_ECHO_REPLY
-				Length:  length,
-				XID:     xid,
-			},
-			Data: data,
+			// OFPT_ECHO_REPLY
+			Message: NewMessage(version, 0x03, xid),
+			Data:    data,
 		},
 	}
 }

@@ -13,7 +13,7 @@ import (
 )
 
 type FeaturesReply struct {
-	header       openflow.Header
+	openflow.Message
 	DPID         uint64
 	NumBuffers   uint32
 	NumTables    uint8
@@ -48,14 +48,6 @@ type Action struct {
 	OFPAT_ENQUEUE      bool /* Output to queue. */
 }
 
-func (r *FeaturesReply) Header() openflow.Header {
-	return r.header
-}
-
-func (r *FeaturesReply) MarshalBinary() ([]byte, error) {
-	return nil, openflow.ErrUnsupportedMarshaling
-}
-
 func getSupportedAction(actions uint32) Action {
 	return Action{
 		OFPAT_OUTPUT:       actions&(1<<OFPAT_OUTPUT) != 0,
@@ -87,26 +79,27 @@ func getCapability(capabilities uint32) Capability {
 }
 
 func (r *FeaturesReply) UnmarshalBinary(data []byte) error {
-	if err := r.header.UnmarshalBinary(data); err != nil {
+	if err := r.Message.UnmarshalBinary(data); err != nil {
 		return err
 	}
-	if r.header.Length < 32 || len(data) < int(r.header.Length) {
+
+	payload := r.Payload()
+	if payload == nil || len(payload) < 24 {
 		return openflow.ErrInvalidPacketLength
 	}
+	r.DPID = binary.BigEndian.Uint64(payload[0:8])
+	r.NumBuffers = binary.BigEndian.Uint32(payload[8:12])
+	r.NumTables = payload[12]
+	r.Capabilities = getCapability(binary.BigEndian.Uint32(payload[16:20]))
+	r.Actions = getSupportedAction(binary.BigEndian.Uint32(payload[20:24]))
 
-	r.DPID = binary.BigEndian.Uint64(data[8:16])
-	r.NumBuffers = binary.BigEndian.Uint32(data[16:20])
-	r.NumTables = data[20]
-	r.Capabilities = getCapability(binary.BigEndian.Uint32(data[24:28]))
-	r.Actions = getSupportedAction(binary.BigEndian.Uint32(data[28:32]))
-
-	nPorts := (r.header.Length - 32) / 48
+	nPorts := (len(payload) - 24) / 48
 	if nPorts == 0 {
 		return nil
 	}
 	r.Ports = make([]*Port, nPorts)
-	for i := uint16(0); i < nPorts; i++ {
-		buf := data[32+i*48:]
+	for i := 0; i < nPorts; i++ {
+		buf := payload[24+i*48:]
 		r.Ports[i] = new(Port)
 		if err := r.Ports[i].UnmarshalBinary(buf[0:48]); err != nil {
 			return err

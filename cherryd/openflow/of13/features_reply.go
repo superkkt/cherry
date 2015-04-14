@@ -13,7 +13,7 @@ import (
 )
 
 type FeaturesReply struct {
-	header       openflow.Header
+	openflow.Message
 	DPID         uint64
 	NumBuffers   uint32
 	NumTables    uint8
@@ -31,14 +31,6 @@ type Capability struct {
 	OFPC_PORT_BLOCKED bool /* Switch will block looping ports. */
 }
 
-func (r *FeaturesReply) Header() openflow.Header {
-	return r.header
-}
-
-func (r *FeaturesReply) MarshalBinary() ([]byte, error) {
-	return nil, openflow.ErrUnsupportedMarshaling
-}
-
 func getCapability(capabilities uint32) Capability {
 	return Capability{
 		OFPC_FLOW_STATS:   capabilities&OFPC_FLOW_STATS != 0,
@@ -52,18 +44,19 @@ func getCapability(capabilities uint32) Capability {
 }
 
 func (r *FeaturesReply) UnmarshalBinary(data []byte) error {
-	if err := r.header.UnmarshalBinary(data); err != nil {
+	if err := r.Message.UnmarshalBinary(data); err != nil {
 		return err
 	}
-	if r.header.Length < 28 || len(data) < int(r.header.Length) {
+
+	payload := r.Payload()
+	if payload == nil || len(payload) < 20 {
 		return openflow.ErrInvalidPacketLength
 	}
-
-	r.DPID = binary.BigEndian.Uint64(data[8:16])
-	r.NumBuffers = binary.BigEndian.Uint32(data[16:20])
-	r.NumTables = data[20]
-	r.AuxID = data[21]
-	r.Capabilities = getCapability(binary.BigEndian.Uint32(data[24:28]))
+	r.DPID = binary.BigEndian.Uint64(payload[0:8])
+	r.NumBuffers = binary.BigEndian.Uint32(payload[8:12])
+	r.NumTables = payload[12]
+	r.AuxID = payload[13]
+	r.Capabilities = getCapability(binary.BigEndian.Uint32(payload[16:20]))
 
 	return nil
 }

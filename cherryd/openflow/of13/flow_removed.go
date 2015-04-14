@@ -12,7 +12,7 @@ import (
 )
 
 type FlowRemoved struct {
-	header          openflow.Header
+	openflow.Message
 	Cookie          uint64
 	Priority        uint16
 	Reason          uint8
@@ -27,15 +27,16 @@ type FlowRemoved struct {
 	// Match *Match
 }
 
-func (r *FlowRemoved) Header() openflow.Header {
-	return r.header
-}
-
-func (r *FlowRemoved) MarshalBinary() ([]byte, error) {
-	return nil, openflow.ErrUnsupportedMarshaling
-}
-
 func (r *FlowRemoved) UnmarshalBinary(data []byte) error {
+	if err := r.Message.UnmarshalBinary(data); err != nil {
+		return err
+	}
+
 	// TODO: Implement this function
+	//payload := r.Payload()
+	//	if payload == nil || len(payload) < 56 {
+	//		return openflow.ErrInvalidPacketLength
+	//	}
+
 	return nil
 }

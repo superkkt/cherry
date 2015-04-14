@@ -12,30 +12,23 @@ import (
 )
 
 type PortStatus struct {
-	header openflow.Header
+	openflow.Message
 	Reason uint8
 	Port   *Port
 }
 
-func (r *PortStatus) Header() openflow.Header {
-	return r.header
-}
-
-func (r *PortStatus) MarshalBinary() ([]byte, error) {
-	return nil, openflow.ErrUnsupportedMarshaling
-}
-
 func (r *PortStatus) UnmarshalBinary(data []byte) error {
-	if err := r.header.UnmarshalBinary(data); err != nil {
+	if err := r.Message.UnmarshalBinary(data); err != nil {
 		return err
 	}
-	if r.header.Length < 80 || len(data) < int(r.header.Length) {
+
+	payload := r.Payload()
+	if payload == nil || len(payload) < 72 {
 		return openflow.ErrInvalidPacketLength
 	}
-
-	r.Reason = data[9]
+	r.Reason = payload[0]
 	r.Port = new(Port)
-	if err := r.Port.UnmarshalBinary(data[16:]); err != nil {
+	if err := r.Port.UnmarshalBinary(payload[8:]); err != nil {
 		return err
 	}
 

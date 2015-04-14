@@ -37,8 +37,7 @@ func (r *BaseTransceiver) getTransactionID() uint32 {
 }
 
 func (r *BaseTransceiver) handleEchoRequest(msg *openflow.EchoRequest) error {
-	header := msg.Header()
-	reply := openflow.NewEchoReply(header.Version, header.XID, msg.Data)
+	reply := openflow.NewEchoReply(msg.Version(), msg.TransactionID(), msg.Data)
 	if err := openflow.WriteMessage(r.stream, reply); err != nil {
 		return fmt.Errorf("failed to send echo reply_message: %v", err)
 	}
@@ -99,13 +98,12 @@ func NewTransceiver(conn net.Conn, log Logger) (Transceiver, error) {
 		return nil, err
 	}
 
-	header := msg.Header()
 	// The first message should be HELLO
-	if header.Type != 0x0 {
+	if msg.Type() != 0x0 {
 		return nil, errors.New("negotiation error: missing HELLO message")
 	}
 
-	if header.Version < openflow.Ver13 {
+	if msg.Version() < openflow.Ver13 {
 		return NewOF10Transceiver(stream, log), nil
 	} else {
 		return NewOF13Transceiver(stream, log), nil

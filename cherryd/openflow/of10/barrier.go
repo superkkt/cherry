@@ -12,44 +12,23 @@ import (
 )
 
 type BarrierRequest struct {
-	header openflow.Header
+	openflow.Message
 }
 
 func NewBarrierRequest(xid uint32) *BarrierRequest {
 	return &BarrierRequest{
-		header: openflow.Header{
-			Version: openflow.Ver10,
-			Type:    OFPT_BARRIER_REQUEST,
-			XID:     xid,
-		},
+		Message: openflow.NewMessage(openflow.Ver10, OFPT_BARRIER_REQUEST, xid),
 	}
 }
 
-func (r *BarrierRequest) Header() openflow.Header {
-	return r.header
-}
-
 func (r *BarrierRequest) MarshalBinary() ([]byte, error) {
-	r.header.Length = 8
-	return r.header.MarshalBinary()
-}
-
-func (r *BarrierRequest) UnmarshalBinary(data []byte) error {
-	return openflow.ErrUnsupportedUnmarshaling
+	return r.Message.MarshalBinary()
 }
 
 type BarrierReply struct {
-	header openflow.Header
-}
-
-func (r *BarrierReply) Header() openflow.Header {
-	return r.header
-}
-
-func (r *BarrierReply) MarshalBinary() ([]byte, error) {
-	return nil, openflow.ErrUnsupportedMarshaling
+	openflow.Message
 }
 
 func (r *BarrierReply) UnmarshalBinary(data []byte) error {
-	return r.header.UnmarshalBinary(data)
+	return r.Message.UnmarshalBinary(data)
 }

@@ -120,6 +120,7 @@ func (r *OF10Transceiver) handlePortStatus(msg *of10.PortStatus) error {
 		r.log.Print("PortStatus is received, but we don't have a switch device yet!")
 		return nil
 	}
+	// Update port status
 	r.device.setPort(msg.Port.Number(), msg.Port)
 
 	// XXX: debugging
@@ -130,9 +131,8 @@ func (r *OF10Transceiver) handlePortStatus(msg *of10.PortStatus) error {
 	return nil
 }
 
-func (r *OF10Transceiver) handleMessage(msg openflow.Message) error {
-	header := msg.Header()
-	if header.Version != r.version {
+func (r *OF10Transceiver) handleMessage(msg openflow.Incoming) error {
+	if msg.Version() != r.version {
 		return errors.New("unexpected openflow protocol version!")
 	}
 
@@ -152,7 +152,7 @@ func (r *OF10Transceiver) handleMessage(msg openflow.Message) error {
 	case *of10.PortStatus:
 		return r.handlePortStatus(v)
 	default:
-		r.log.Printf("Unsupported message type: version=%v, type=%v", header.Version, header.Type)
+		r.log.Printf("Unsupported message type: version=%v, type=%v", msg.Version(), msg.Type())
 		return nil
 	}
 }
@@ -198,7 +198,7 @@ func (r *OF10Transceiver) Run(ctx context.Context) {
 	go r.pinger(ctx, r.version)
 
 	// Reader goroutine
-	receivedMsg := make(chan openflow.Message)
+	receivedMsg := make(chan openflow.Incoming)
 	go func() {
 		for {
 			msg, err := openflow.ReadMessage(r.stream)

@@ -14,43 +14,26 @@ import (
 )
 
 type DescriptionRequest struct {
-	header openflow.Header
+	openflow.Message
 }
 
 func NewDescriptionRequest(xid uint32) *DescriptionRequest {
 	return &DescriptionRequest{
-		header: openflow.Header{
-			Version: openflow.Ver10,
-			Type:    OFPT_STATS_REQUEST,
-			XID:     xid,
-		},
+		Message: openflow.NewMessage(openflow.Ver10, OFPT_STATS_REQUEST, xid),
 	}
-}
-
-func (r *DescriptionRequest) Header() openflow.Header {
-	return r.header
 }
 
 func (r *DescriptionRequest) MarshalBinary() ([]byte, error) {
-	r.header.Length = 12
-	header, err := r.header.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
+	v := make([]byte, 4)
+	binary.BigEndian.PutUint16(v[0:2], OFPST_DESC)
+	// v[2:4] is flags, but not yet defined
+	r.SetPayload(v)
 
-	v := make([]byte, r.header.Length)
-	copy(v[0:8], header)
-	binary.BigEndian.PutUint16(v[8:10], OFPST_DESC)
-
-	return v, nil
-}
-
-func (r *DescriptionRequest) UnmarshalBinary(data []byte) error {
-	return openflow.ErrUnsupportedUnmarshaling
+	return r.Message.MarshalBinary()
 }
 
 type DescriptionReply struct {
-	header       openflow.Header
+	openflow.Message
 	Manufacturer string
 	Hardware     string
 	Software     string
@@ -58,27 +41,21 @@ type DescriptionReply struct {
 	Description  string
 }
 
-func (r *DescriptionReply) Header() openflow.Header {
-	return r.header
-}
-
-func (r *DescriptionReply) MarshalBinary() ([]byte, error) {
-	return nil, openflow.ErrUnsupportedMarshaling
-}
-
 func (r *DescriptionReply) UnmarshalBinary(data []byte) error {
-	if err := r.header.UnmarshalBinary(data); err != nil {
+	if err := r.Message.UnmarshalBinary(data); err != nil {
 		return err
 	}
-	if r.header.Length < 1068 || len(data) < int(r.header.Length) {
+
+	payload := r.Payload()
+	if payload == nil || len(payload) < 1060 {
 		return openflow.ErrInvalidPacketLength
 	}
-
-	r.Manufacturer = strings.TrimRight(string(data[12:268]), "\x00")
-	r.Hardware = strings.TrimRight(string(data[268:524]), "\x00")
-	r.Software = strings.TrimRight(string(data[524:780]), "\x00")
-	r.Serial = strings.TrimRight(string(data[780:812]), "\x00")
-	r.Description = strings.TrimRight(string(data[812:1068]), "\x00")
+	// payload[0:4] is type and flag of ofp_stats_reply
+	r.Manufacturer = strings.TrimRight(string(payload[4:260]), "\x00")
+	r.Hardware = strings.TrimRight(string(payload[260:516]), "\x00")
+	r.Software = strings.TrimRight(string(payload[516:772]), "\x00")
+	r.Serial = strings.TrimRight(string(payload[772:804]), "\x00")
+	r.Description = strings.TrimRight(string(payload[804:1060]), "\x00")
 
 	return nil
 }

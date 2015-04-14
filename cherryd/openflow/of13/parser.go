@@ -16,37 +16,37 @@ func init() {
 	openflow.RegisterParser(openflow.Ver13, ParseMessage)
 }
 
-func ParseMessage(data []byte) (openflow.Message, error) {
-	header := openflow.Header{}
-	if err := header.UnmarshalBinary(data); err != nil {
-		return nil, err
-	}
-
-	var msg openflow.Message
-
-	switch header.Type {
-	case OFPT_FEATURES_REPLY:
-		msg = new(FeaturesReply)
-	case OFPT_GET_CONFIG_REPLY:
-		msg = new(GetConfigReply)
-	case OFPT_MULTIPART_REPLY:
-		switch binary.BigEndian.Uint16(data[8:10]) {
-		case OFPMP_DESC:
-			msg = new(DescriptionReply)
-		case OFPMP_PORT_DESC:
-			msg = new(PortDescriptionReply)
-		default:
-			return nil, openflow.ErrUnsupportedMessage
-		}
-	case OFPT_PORT_STATUS:
-		msg = new(PortStatus)
-	default:
-		return nil, openflow.ErrUnsupportedMessage
-	}
-
+func ParseMessage(data []byte) (openflow.Incoming, error) {
+	msg := openflow.Message{}
 	if err := msg.UnmarshalBinary(data); err != nil {
 		return nil, err
 	}
 
-	return msg, nil
+	var v openflow.Incoming
+
+	switch msg.Type() {
+	case OFPT_FEATURES_REPLY:
+		v = new(FeaturesReply)
+	case OFPT_GET_CONFIG_REPLY:
+		v = new(GetConfigReply)
+	case OFPT_MULTIPART_REPLY:
+		switch binary.BigEndian.Uint16(data[8:10]) {
+		case OFPMP_DESC:
+			v = new(DescriptionReply)
+		case OFPMP_PORT_DESC:
+			v = new(PortDescriptionReply)
+		default:
+			return nil, openflow.ErrUnsupportedMessage
+		}
+	case OFPT_PORT_STATUS:
+		v = new(PortStatus)
+	default:
+		return nil, openflow.ErrUnsupportedMessage
+	}
+
+	if err := v.UnmarshalBinary(data); err != nil {
+		return nil, err
+	}
+
+	return v, nil
 }
