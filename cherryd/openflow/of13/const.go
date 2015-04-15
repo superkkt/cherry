@@ -225,3 +225,33 @@ const (
 	OFPP_CONTROLLER = 0xfffffffd
 	OFPP_ANY        = 0xffffffff
 )
+
+const (
+	OFPFC_ADD           = 0 /* New flow. */
+	OFPFC_MODIFY        = 1 /* Modify all matching flows. */
+	OFPFC_MODIFY_STRICT = 2 /* Modify entry strictly matching wildcards and priority. */
+	OFPFC_DELETE        = 3 /* Delete all matching flows. */
+	OFPFC_DELETE_STRICT = 4 /* Delete entry strictly matching wildcards and priority */
+)
+
+const (
+	OFPIT_GOTO_TABLE     = 1      /* Setup the next table in the lookup pipeline */
+	OFPIT_WRITE_METADATA = 2      /* Setup the metadata field for use later in pipeline */
+	OFPIT_WRITE_ACTIONS  = 3      /* Write the action(s) onto the datapath action set */
+	OFPIT_APPLY_ACTIONS  = 4      /* Applies the action(s) immediately */
+	OFPIT_CLEAR_ACTIONS  = 5      /* Clears all actions from the datapath action set */
+	OFPIT_METER          = 6      /* Apply meter (rate limiter) */
+	OFPIT_EXPERIMENTER   = 0xFFFF /* Experimenter instruction */
+)
+
+const (
+	OFP_NO_BUFFER = 0xffffffff
+)
+
+const (
+	OFPFF_SEND_FLOW_REM = 1 << 0 /* Send flow removed message when flow expires or is deleted. */
+	OFPFF_CHECK_OVERLAP = 1 << 1 /* Check for overlapping entries first. */
+	OFPFF_RESET_COUNTS  = 1 << 2 /* Reset flow packet and byte counts. */
+	OFPFF_NO_PKT_COUNTS = 1 << 3 /* Don't keep track of packet count. */
+	OFPFF_NO_BYT_COUNTS = 1 << 4 /* Don't keep track of byte count. */
+)

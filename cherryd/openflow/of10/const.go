@@ -151,3 +151,21 @@ const (
 	OFPP_CONTROLLER = 0xfffd
 	OFPP_NONE       = 0xffff
 )
+
+const (
+	OFPFF_SEND_FLOW_REM = 1 << 0 /* Send flow removed message when flow expires or is deleted. */
+	OFPFF_CHECK_OVERLAP = 1 << 1 /* Check for overlapping entries first. */
+	OFPFF_EMERG         = 1 << 2 /* Remark this is for emergency. */
+)
+
+const (
+	OFP_NO_BUFFER = 0xffffffff
+)
+
+const (
+	OFPFC_ADD           = 0 /* New flow. */
+	OFPFC_MODIFY        = 1 /* Modify all matching flows. */
+	OFPFC_MODIFY_STRICT = 2 /* Modify entry strictly matching wildcards and priority. */
+	OFPFC_DELETE        = 3 /* Delete all matching flows. */
+	OFPFC_DELETE_STRICT = 4 /* Delete entry strictly matching wildcards and priority. */
+)
