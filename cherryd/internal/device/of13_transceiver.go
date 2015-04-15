@@ -17,13 +17,13 @@ import (
 )
 
 type OF13Transceiver struct {
-	BaseTransceiver
+	baseTransceiver
 	auxID uint8
 }
 
 func NewOF13Transceiver(stream *openflow.Stream, log Logger) *OF13Transceiver {
 	return &OF13Transceiver{
-		BaseTransceiver: BaseTransceiver{
+		baseTransceiver: baseTransceiver{
 			stream:  stream,
 			log:     log,
 			version: openflow.Ver13,

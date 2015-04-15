@@ -23,7 +23,7 @@ type Transceiver interface {
 	sendBarrierRequest() error
 }
 
-type BaseTransceiver struct {
+type baseTransceiver struct {
 	stream  *openflow.Stream
 	log     Logger
 	xid     uint32
@@ -31,12 +31,12 @@ type BaseTransceiver struct {
 	version uint8
 }
 
-func (r *BaseTransceiver) getTransactionID() uint32 {
+func (r *baseTransceiver) getTransactionID() uint32 {
 	// xid will be started from 1, not 0.
 	return atomic.AddUint32(&r.xid, 1)
 }
 
-func (r *BaseTransceiver) handleEchoRequest(msg *openflow.EchoRequest) error {
+func (r *baseTransceiver) handleEchoRequest(msg *openflow.EchoRequest) error {
 	reply := openflow.NewEchoReply(msg.Version(), msg.TransactionID(), msg.Data)
 	if err := openflow.WriteMessage(r.stream, reply); err != nil {
 		return fmt.Errorf("failed to send echo reply_message: %v", err)
@@ -48,7 +48,7 @@ func (r *BaseTransceiver) handleEchoRequest(msg *openflow.EchoRequest) error {
 	return nil
 }
 
-func (r *BaseTransceiver) handleEchoReply(msg *openflow.EchoReply) error {
+func (r *baseTransceiver) handleEchoReply(msg *openflow.EchoReply) error {
 	if msg.Data == nil || len(msg.Data) != 8 {
 		return errors.New("Invalid echo reply data")
 	}
@@ -61,7 +61,7 @@ func (r *BaseTransceiver) handleEchoReply(msg *openflow.EchoReply) error {
 	return nil
 }
 
-func (r *BaseTransceiver) sendEchoRequest(version uint8) error {
+func (r *baseTransceiver) sendEchoRequest(version uint8) error {
 	data := make([]byte, 8)
 	timestamp := time.Now().UnixNano()
 	binary.BigEndian.PutUint64(data, uint64(timestamp))
@@ -75,7 +75,7 @@ func (r *BaseTransceiver) sendEchoRequest(version uint8) error {
 }
 
 // TODO: Implement to close the connection if we miss several echo replies
-func (r *BaseTransceiver) pinger(ctx context.Context, version uint8) {
+func (r *baseTransceiver) pinger(ctx context.Context, version uint8) {
 	ticker := time.NewTicker(time.Duration(15) * time.Second)
 	for {
 		select {

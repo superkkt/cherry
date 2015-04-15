@@ -12,38 +12,38 @@ import (
 	"net"
 )
 
-type FlowMatch interface {
+type Match interface {
 	encoding.BinaryMarshaler
 	encoding.BinaryUnmarshaler
 	SetWildcardInPort() error
 	SetInPort(port uint) error
-	GetInPort() (wildcard bool, inport uint)
+	InPort() (wildcard bool, inport uint)
 	SetWildcardEtherType() error
 	SetEtherType(t uint16) error
-	GetEtherType() (wildcard bool, etherType uint16)
+	EtherType() (wildcard bool, etherType uint16)
 	SetWildcardVLANID() error
 	SetVLANID(id uint16) error
-	GetVLANID() (wildcard bool, vlanID uint16)
+	VLANID() (wildcard bool, vlanID uint16)
 	SetWildcardVLANPriority() error
 	SetVLANPriority(p uint8) error
-	GetVLANPriority() (wildcard bool, priority uint8)
+	VLANPriority() (wildcard bool, priority uint8)
 	SetWildcardSrcMAC() error
 	SetSrcMAC(mac net.HardwareAddr) error
-	GetSrcMAC() (wildcard bool, mac net.HardwareAddr)
+	SrcMAC() (wildcard bool, mac net.HardwareAddr)
 	SetWildcardDstMAC() error
 	SetDstMAC(mac net.HardwareAddr) error
-	GetDstMAC() (wildcard bool, mac net.HardwareAddr)
+	DstMAC() (wildcard bool, mac net.HardwareAddr)
 	SetWildcardIPProtocol() error
 	SetIPProtocol(p uint8) error
-	GetIPProtocol() (wildcard bool, protocol uint8)
+	IPProtocol() (wildcard bool, protocol uint8)
 	SetSrcIP(ip *net.IPNet) error
-	GetSrcIP() *net.IPNet
+	SrcIP() *net.IPNet
 	SetDstIP(ip *net.IPNet) error
-	GetDstIP() *net.IPNet
+	DstIP() *net.IPNet
 	SetWildcardSrcPort() error
 	SetSrcPort(p uint16) error
-	GetSrcPort() (wildcard bool, port uint16)
+	SrcPort() (wildcard bool, port uint16)
 	SetWildcardDstPort() error
 	SetDstPort(p uint16) error
-	GetDstPort() (wildcard bool, port uint16)
+	DstPort() (wildcard bool, port uint16)
 }

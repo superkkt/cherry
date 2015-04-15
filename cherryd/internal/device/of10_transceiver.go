@@ -17,12 +17,12 @@ import (
 )
 
 type OF10Transceiver struct {
-	BaseTransceiver
+	baseTransceiver
 }
 
 func NewOF10Transceiver(stream *openflow.Stream, log Logger) *OF10Transceiver {
 	return &OF10Transceiver{
-		BaseTransceiver: BaseTransceiver{
+		baseTransceiver: baseTransceiver{
 			stream:  stream,
 			log:     log,
 			version: openflow.Ver10,

@@ -144,3 +144,10 @@ const (
 	OFPFW_DL_VLAN_PCP = 1 << 20 /* VLAN priority. */
 	OFPFW_NW_TOS      = 1 << 21 /* IP ToS (DSCP field, 6 bits). */
 )
+
+const (
+	OFPP_TABLE      = 0xfff9
+	OFPP_ALL        = 0xfffc
+	OFPP_CONTROLLER = 0xfffd
+	OFPP_NONE       = 0xffff
+)

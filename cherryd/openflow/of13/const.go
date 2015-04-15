@@ -213,3 +213,15 @@ const (
 	OFPMT_STANDARD = 0
 	OFPMT_OXM      = 1
 )
+
+const (
+	OFPAT_OUTPUT    = 0
+	OFPAT_SET_FIELD = 25
+)
+
+const (
+	OFPP_TABLE      = 0xfffffff9
+	OFPP_ALL        = 0xfffffffc
+	OFPP_CONTROLLER = 0xfffffffd
+	OFPP_ANY        = 0xffffffff
+)

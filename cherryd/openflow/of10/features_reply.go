@@ -18,7 +18,7 @@ type FeaturesReply struct {
 	NumBuffers   uint32
 	NumTables    uint8
 	Capabilities Capability
-	Actions      Action
+	Actions      SupportedAction
 	Ports        []*Port
 }
 
@@ -33,7 +33,7 @@ type Capability struct {
 	OFPC_ARP_MATCH_IP bool /* Match IP addresses in ARP pkts. */
 }
 
-type Action struct {
+type SupportedAction struct {
 	OFPAT_OUTPUT       bool /* Output to switch port. */
 	OFPAT_SET_VLAN_VID bool /* Set the 802.1q VLAN id. */
 	OFPAT_SET_VLAN_PCP bool /* Set the 802.1q priority. */
@@ -48,8 +48,8 @@ type Action struct {
 	OFPAT_ENQUEUE      bool /* Output to queue. */
 }
 
-func getSupportedAction(actions uint32) Action {
-	return Action{
+func getSupportedAction(actions uint32) SupportedAction {
+	return SupportedAction{
 		OFPAT_OUTPUT:       actions&(1<<OFPAT_OUTPUT) != 0,
 		OFPAT_SET_VLAN_VID: actions&(1<<OFPAT_SET_VLAN_VID) != 0,
 		OFPAT_SET_VLAN_PCP: actions&(1<<OFPAT_SET_VLAN_PCP) != 0,

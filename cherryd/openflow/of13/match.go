@@ -18,42 +18,28 @@ import (
 )
 
 var (
-	zeroMAC net.HardwareAddr
-	zeroIP  net.IP
+	ErrMissingIPProtocol     = errors.New("Missing IP protocol")
+	ErrUnsupportedIPProtocol = errors.New("Unsupported IP protocol")
+	ErrInvalidMAC            = errors.New("invalid MAC address")
+	ErrInvalidIP             = errors.New("invalid IP address")
+	ErrMissingEtherType      = errors.New("Missing Ethernet type")
+	ErrUnsupportedEtherType  = errors.New("Unsupported Ethernet type")
+	ErrUnsupportedMatchType  = errors.New("Unsupported flow match type")
 )
 
-var (
-	ErrMissingIPProtocol        = errors.New("Missing IP protocol")
-	ErrUnsupportedIPProtocol    = errors.New("Unsupported IP protocol")
-	ErrInvalidMAC               = errors.New("invalid MAC address")
-	ErrInvalidIP                = errors.New("invalid IP address")
-	ErrMissingEtherType         = errors.New("Missing Ethernet type")
-	ErrUnsupportedEtherType     = errors.New("Unsupported Ethernet type")
-	ErrUnsupportedFlowMatchType = errors.New("Unsupported flow match type")
-)
-
-func init() {
-	mac, err := net.ParseMAC("00:00:00:00:00:00")
-	if err != nil {
-		panic("Invalid initial MAC address!")
-	}
-	zeroMAC = mac
-	zeroIP = net.ParseIP("0.0.0.0")
-}
-
-type FlowMatch struct {
+type Match struct {
 	mutex sync.Mutex
 	m     map[uint]interface{}
 }
 
-// NewFlowMatch returns a FlowMatch whose fields are all wildcarded
-func NewFlowMatch() *FlowMatch {
-	return &FlowMatch{
+// NewMatch returns a Match whose fields are all wildcarded
+func NewMatch() *Match {
+	return &Match{
 		m: make(map[uint]interface{}),
 	}
 }
 
-func (r *FlowMatch) SetWildcardSrcPort() error {
+func (r *Match) SetWildcardSrcPort() error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -62,7 +48,7 @@ func (r *FlowMatch) SetWildcardSrcPort() error {
 	return nil
 }
 
-func (r *FlowMatch) SetSrcPort(p uint16) error {
+func (r *Match) SetSrcPort(p uint16) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -96,7 +82,7 @@ func (r *FlowMatch) SetSrcPort(p uint16) error {
 	return nil
 }
 
-func (r *FlowMatch) GetSrcPort() (wildcard bool, port uint16) {
+func (r *Match) SrcPort() (wildcard bool, port uint16) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -113,7 +99,7 @@ func (r *FlowMatch) GetSrcPort() (wildcard bool, port uint16) {
 	return true, 0
 }
 
-func (r *FlowMatch) SetWildcardDstPort() error {
+func (r *Match) SetWildcardDstPort() error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -122,7 +108,7 @@ func (r *FlowMatch) SetWildcardDstPort() error {
 	return nil
 }
 
-func (r *FlowMatch) SetDstPort(p uint16) error {
+func (r *Match) SetDstPort(p uint16) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -156,7 +142,7 @@ func (r *FlowMatch) SetDstPort(p uint16) error {
 	return nil
 }
 
-func (r *FlowMatch) GetDstPort() (wildcard bool, port uint16) {
+func (r *Match) DstPort() (wildcard bool, port uint16) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -173,7 +159,7 @@ func (r *FlowMatch) GetDstPort() (wildcard bool, port uint16) {
 	return true, 0
 }
 
-func (r *FlowMatch) SetWildcardVLANID() error {
+func (r *Match) SetWildcardVLANID() error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -181,7 +167,7 @@ func (r *FlowMatch) SetWildcardVLANID() error {
 	return nil
 }
 
-func (r *FlowMatch) SetVLANID(id uint16) error {
+func (r *Match) SetVLANID(id uint16) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -189,7 +175,7 @@ func (r *FlowMatch) SetVLANID(id uint16) error {
 	return nil
 }
 
-func (r *FlowMatch) GetVLANID() (wildcard bool, vlanID uint16) {
+func (r *Match) VLANID() (wildcard bool, vlanID uint16) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -201,7 +187,7 @@ func (r *FlowMatch) GetVLANID() (wildcard bool, vlanID uint16) {
 	return true, 0
 }
 
-func (r *FlowMatch) SetWildcardVLANPriority() error {
+func (r *Match) SetWildcardVLANPriority() error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -209,7 +195,7 @@ func (r *FlowMatch) SetWildcardVLANPriority() error {
 	return nil
 }
 
-func (r *FlowMatch) SetVLANPriority(p uint8) error {
+func (r *Match) SetVLANPriority(p uint8) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -217,7 +203,7 @@ func (r *FlowMatch) SetVLANPriority(p uint8) error {
 	return nil
 }
 
-func (r *FlowMatch) GetVLANPriority() (wildcard bool, priority uint8) {
+func (r *Match) VLANPriority() (wildcard bool, priority uint8) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -229,7 +215,7 @@ func (r *FlowMatch) GetVLANPriority() (wildcard bool, priority uint8) {
 	return true, 0
 }
 
-func (r *FlowMatch) SetWildcardIPProtocol() error {
+func (r *Match) SetWildcardIPProtocol() error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -237,7 +223,7 @@ func (r *FlowMatch) SetWildcardIPProtocol() error {
 	return nil
 }
 
-func (r *FlowMatch) SetIPProtocol(p uint8) error {
+func (r *Match) SetIPProtocol(p uint8) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -254,7 +240,7 @@ func (r *FlowMatch) SetIPProtocol(p uint8) error {
 	return nil
 }
 
-func (r *FlowMatch) GetIPProtocol() (wildcard bool, protocol uint8) {
+func (r *Match) IPProtocol() (wildcard bool, protocol uint8) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -266,7 +252,7 @@ func (r *FlowMatch) GetIPProtocol() (wildcard bool, protocol uint8) {
 	return true, 0
 }
 
-func (r *FlowMatch) SetWildcardInPort() error {
+func (r *Match) SetWildcardInPort() error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -274,7 +260,7 @@ func (r *FlowMatch) SetWildcardInPort() error {
 	return nil
 }
 
-func (r *FlowMatch) SetInPort(port uint) error {
+func (r *Match) SetInPort(port uint) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -282,7 +268,7 @@ func (r *FlowMatch) SetInPort(port uint) error {
 	return nil
 }
 
-func (r *FlowMatch) GetInPort() (wildcard bool, inport uint) {
+func (r *Match) InPort() (wildcard bool, inport uint) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -294,7 +280,7 @@ func (r *FlowMatch) GetInPort() (wildcard bool, inport uint) {
 	return true, 0
 }
 
-func (r *FlowMatch) SetWildcardSrcMAC() error {
+func (r *Match) SetWildcardSrcMAC() error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -302,7 +288,7 @@ func (r *FlowMatch) SetWildcardSrcMAC() error {
 	return nil
 }
 
-func (r *FlowMatch) SetSrcMAC(mac net.HardwareAddr) error {
+func (r *Match) SetSrcMAC(mac net.HardwareAddr) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -313,7 +299,7 @@ func (r *FlowMatch) SetSrcMAC(mac net.HardwareAddr) error {
 	return nil
 }
 
-func (r *FlowMatch) GetSrcMAC() (wildcard bool, mac net.HardwareAddr) {
+func (r *Match) SrcMAC() (wildcard bool, mac net.HardwareAddr) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -322,10 +308,10 @@ func (r *FlowMatch) GetSrcMAC() (wildcard bool, mac net.HardwareAddr) {
 		return false, v.(net.HardwareAddr)
 	}
 
-	return true, zeroMAC
+	return true, openflow.ZeroMAC
 }
 
-func (r *FlowMatch) SetWildcardDstMAC() error {
+func (r *Match) SetWildcardDstMAC() error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -333,7 +319,7 @@ func (r *FlowMatch) SetWildcardDstMAC() error {
 	return nil
 }
 
-func (r *FlowMatch) SetDstMAC(mac net.HardwareAddr) error {
+func (r *Match) SetDstMAC(mac net.HardwareAddr) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -344,7 +330,7 @@ func (r *FlowMatch) SetDstMAC(mac net.HardwareAddr) error {
 	return nil
 }
 
-func (r *FlowMatch) GetDstMAC() (wildcard bool, mac net.HardwareAddr) {
+func (r *Match) DstMAC() (wildcard bool, mac net.HardwareAddr) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -353,10 +339,10 @@ func (r *FlowMatch) GetDstMAC() (wildcard bool, mac net.HardwareAddr) {
 		return false, v.(net.HardwareAddr)
 	}
 
-	return true, zeroMAC
+	return true, openflow.ZeroMAC
 }
 
-func (r *FlowMatch) SetSrcIP(ip *net.IPNet) error {
+func (r *Match) SetSrcIP(ip *net.IPNet) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -377,7 +363,7 @@ func (r *FlowMatch) SetSrcIP(ip *net.IPNet) error {
 	return nil
 }
 
-func (r *FlowMatch) GetSrcIP() *net.IPNet {
+func (r *Match) SrcIP() *net.IPNet {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -387,12 +373,12 @@ func (r *FlowMatch) GetSrcIP() *net.IPNet {
 	}
 
 	return &net.IPNet{
-		IP:   zeroIP,
+		IP:   openflow.ZeroIP,
 		Mask: net.CIDRMask(0, 32),
 	}
 }
 
-func (r *FlowMatch) SetDstIP(ip *net.IPNet) error {
+func (r *Match) SetDstIP(ip *net.IPNet) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -413,7 +399,7 @@ func (r *FlowMatch) SetDstIP(ip *net.IPNet) error {
 	return nil
 }
 
-func (r *FlowMatch) GetDstIP() *net.IPNet {
+func (r *Match) DstIP() *net.IPNet {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -423,12 +409,12 @@ func (r *FlowMatch) GetDstIP() *net.IPNet {
 	}
 
 	return &net.IPNet{
-		IP:   zeroIP,
+		IP:   openflow.ZeroIP,
 		Mask: net.CIDRMask(0, 32),
 	}
 }
 
-func (r *FlowMatch) SetWildcardEtherType() error {
+func (r *Match) SetWildcardEtherType() error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -436,7 +422,7 @@ func (r *FlowMatch) SetWildcardEtherType() error {
 	return nil
 }
 
-func (r *FlowMatch) SetEtherType(t uint16) error {
+func (r *Match) SetEtherType(t uint16) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -444,7 +430,7 @@ func (r *FlowMatch) SetEtherType(t uint16) error {
 	return nil
 }
 
-func (r *FlowMatch) GetEtherType() (wildcard bool, etherType uint16) {
+func (r *Match) EtherType() (wildcard bool, etherType uint16) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -552,7 +538,7 @@ func marshalTLV(id uint, v interface{}) ([]byte, error) {
 	}
 }
 
-func (r *FlowMatch) MarshalBinary() ([]byte, error) {
+func (r *Match) MarshalBinary() ([]byte, error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -576,7 +562,7 @@ func (r *FlowMatch) MarshalBinary() ([]byte, error) {
 	return data, nil
 }
 
-func (r *FlowMatch) unmarshalUint8TLV(field uint8, data []byte) error {
+func (r *Match) unmarshalUint8TLV(field uint8, data []byte) error {
 	if len(data) < 5 {
 		return openflow.ErrInvalidPacketLength
 	}
@@ -585,7 +571,7 @@ func (r *FlowMatch) unmarshalUint8TLV(field uint8, data []byte) error {
 	return nil
 }
 
-func (r *FlowMatch) unmarshalUint16TLV(field uint8, data []byte) error {
+func (r *Match) unmarshalUint16TLV(field uint8, data []byte) error {
 	if len(data) < 6 {
 		return openflow.ErrInvalidPacketLength
 	}
@@ -595,7 +581,7 @@ func (r *FlowMatch) unmarshalUint16TLV(field uint8, data []byte) error {
 	return nil
 }
 
-func (r *FlowMatch) unmarshalUint32TLV(field uint8, data []byte) error {
+func (r *Match) unmarshalUint32TLV(field uint8, data []byte) error {
 	if len(data) < 8 {
 		return openflow.ErrInvalidPacketLength
 	}
@@ -605,7 +591,7 @@ func (r *FlowMatch) unmarshalUint32TLV(field uint8, data []byte) error {
 	return nil
 }
 
-func (r *FlowMatch) unmarshalHardwareAddrTLV(field uint8, data []byte) error {
+func (r *Match) unmarshalHardwareAddrTLV(field uint8, data []byte) error {
 	if len(data) < 10 {
 		return openflow.ErrInvalidPacketLength
 	}
@@ -616,7 +602,7 @@ func (r *FlowMatch) unmarshalHardwareAddrTLV(field uint8, data []byte) error {
 	return nil
 }
 
-func (r *FlowMatch) unmarshalIPNetTLV(field uint8, hasmask uint8, data []byte) error {
+func (r *Match) unmarshalIPNetTLV(field uint8, hasmask uint8, data []byte) error {
 	length := 8
 	if hasmask == 1 {
 		length = 12
@@ -640,9 +626,9 @@ func (r *FlowMatch) unmarshalIPNetTLV(field uint8, hasmask uint8, data []byte) e
 	return nil
 }
 
-func (r *FlowMatch) unmarshalTLS(data []byte) error {
+func (r *Match) unmarshalTLV(data []byte) error {
 	buf := data
-	// TLS header length is 4 bytes
+	// TLV header length is 4 bytes
 	for len(buf) >= 4 {
 		header := binary.BigEndian.Uint32(buf[0:4])
 		class := header >> 16 & 0xFFFF
@@ -720,7 +706,7 @@ func (r *FlowMatch) unmarshalTLS(data []byte) error {
 	return nil
 }
 
-func (r *FlowMatch) UnmarshalBinary(data []byte) error {
+func (r *Match) UnmarshalBinary(data []byte) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -728,12 +714,12 @@ func (r *FlowMatch) UnmarshalBinary(data []byte) error {
 		return openflow.ErrInvalidPacketLength
 	}
 	if binary.BigEndian.Uint16(data[0:2]) != OFPMT_OXM {
-		return ErrUnsupportedFlowMatchType
+		return ErrUnsupportedMatchType
 	}
 	length := binary.BigEndian.Uint16(data[2:4])
 	if len(data) < int(length) {
 		return openflow.ErrInvalidPacketLength
 	}
 
-	return r.unmarshalTLS(data[4:length])
+	return r.unmarshalTLV(data[4:length])
 }

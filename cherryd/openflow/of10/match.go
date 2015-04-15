@@ -15,18 +15,13 @@ import (
 )
 
 var (
-	zeroMAC net.HardwareAddr
-	zeroIP  net.IP
-)
-
-var (
 	ErrInvalidMAC            = errors.New("invalid MAC address")
 	ErrInvalidIP             = errors.New("invalid IP address")
 	ErrUnsupportedIPProtocol = errors.New("Unsupported IP protocol")
 	ErrUnsupportedEtherType  = errors.New("Unsupported Ethernet type")
 )
 
-type FlowWildcard struct {
+type Wildcard struct {
 	InPort    bool /* Switch input port. */
 	VLANID    bool /* VLAN id. */
 	SrcMAC    bool /* Ethernet source address. */
@@ -43,17 +38,8 @@ type FlowWildcard struct {
 	VLANPriority bool /* VLAN priority. */
 }
 
-func init() {
-	mac, err := net.ParseMAC("00:00:00:00:00:00")
-	if err != nil {
-		panic("Invalid initial MAC address!")
-	}
-	zeroMAC = mac
-	zeroIP = net.ParseIP("0.0.0.0")
-}
-
-func newFlowWildcardAll() *FlowWildcard {
-	return &FlowWildcard{
+func newWildcardAll() *Wildcard {
+	return &Wildcard{
 		InPort:       true,
 		VLANID:       true,
 		SrcMAC:       true,
@@ -68,7 +54,7 @@ func newFlowWildcardAll() *FlowWildcard {
 	}
 }
 
-func (r *FlowWildcard) MarshalBinary() ([]byte, error) {
+func (r *Wildcard) MarshalBinary() ([]byte, error) {
 	// We only support IPv4 yet
 	if r.SrcIP > 32 || r.DstIP > 32 {
 		return nil, errors.New("invalid IP address wildcard bit count")
@@ -116,7 +102,7 @@ func (r *FlowWildcard) MarshalBinary() ([]byte, error) {
 	return data, nil
 }
 
-func (r *FlowWildcard) UnmarshalBinary(data []byte) error {
+func (r *Wildcard) UnmarshalBinary(data []byte) error {
 	if data == nil || len(data) < 4 {
 		return openflow.ErrInvalidPacketLength
 	}
@@ -155,8 +141,8 @@ func (r *FlowWildcard) UnmarshalBinary(data []byte) error {
 	return nil
 }
 
-type FlowMatch struct {
-	wildcards    *FlowWildcard
+type Match struct {
+	wildcards    *Wildcard
 	inPort       uint16
 	srcMAC       net.HardwareAddr
 	dstMAC       net.HardwareAddr
@@ -170,24 +156,24 @@ type FlowMatch struct {
 	dstPort      uint16
 }
 
-// NewFlowMatch returns a FlowMatch whose fields are all wildcarded
-func NewFlowMatch() *FlowMatch {
-	return &FlowMatch{
-		wildcards: newFlowWildcardAll(),
-		srcMAC:    zeroMAC,
-		dstMAC:    zeroMAC,
-		srcIP:     zeroIP,
-		dstIP:     zeroIP,
+// NewMatch returns a Match whose fields are all wildcarded
+func NewMatch() *Match {
+	return &Match{
+		wildcards: newWildcardAll(),
+		srcMAC:    openflow.ZeroMAC,
+		dstMAC:    openflow.ZeroMAC,
+		srcIP:     openflow.ZeroIP,
+		dstIP:     openflow.ZeroIP,
 	}
 }
 
-func (r *FlowMatch) SetWildcardSrcPort() error {
+func (r *Match) SetWildcardSrcPort() error {
 	r.srcPort = 0
 	r.wildcards.SrcPort = true
 	return nil
 }
 
-func (r *FlowMatch) SetSrcPort(p uint16) error {
+func (r *Match) SetSrcPort(p uint16) error {
 	// IPv4?
 	if r.etherType != 0x0800 {
 		return ErrUnsupportedEtherType
@@ -202,17 +188,17 @@ func (r *FlowMatch) SetSrcPort(p uint16) error {
 	return nil
 }
 
-func (r *FlowMatch) GetSrcPort() (wildcard bool, port uint16) {
+func (r *Match) SrcPort() (wildcard bool, port uint16) {
 	return r.wildcards.SrcPort, r.srcPort
 }
 
-func (r *FlowMatch) SetWildcardDstPort() error {
+func (r *Match) SetWildcardDstPort() error {
 	r.dstPort = 0
 	r.wildcards.DstPort = true
 	return nil
 }
 
-func (r *FlowMatch) SetDstPort(p uint16) error {
+func (r *Match) SetDstPort(p uint16) error {
 	// IPv4?
 	if r.etherType != 0x0800 {
 		return ErrUnsupportedEtherType
@@ -227,49 +213,49 @@ func (r *FlowMatch) SetDstPort(p uint16) error {
 	return nil
 }
 
-func (r *FlowMatch) GetDstPort() (wildcard bool, port uint16) {
+func (r *Match) DstPort() (wildcard bool, port uint16) {
 	return r.wildcards.DstPort, r.dstPort
 }
 
-func (r *FlowMatch) SetWildcardVLANID() error {
+func (r *Match) SetWildcardVLANID() error {
 	r.vlanID = 0
 	r.wildcards.VLANID = true
 	return nil
 }
 
-func (r *FlowMatch) SetVLANID(id uint16) error {
+func (r *Match) SetVLANID(id uint16) error {
 	r.vlanID = id
 	r.wildcards.VLANID = false
 	return nil
 }
 
-func (r *FlowMatch) GetVLANID() (wildcard bool, vlanID uint16) {
+func (r *Match) VLANID() (wildcard bool, vlanID uint16) {
 	return r.wildcards.VLANID, r.vlanID
 }
 
-func (r *FlowMatch) SetWildcardVLANPriority() error {
+func (r *Match) SetWildcardVLANPriority() error {
 	r.vlanPriority = 0
 	r.wildcards.VLANPriority = true
 	return nil
 }
 
-func (r *FlowMatch) SetVLANPriority(p uint8) error {
+func (r *Match) SetVLANPriority(p uint8) error {
 	r.vlanPriority = p
 	r.wildcards.VLANPriority = false
 	return nil
 }
 
-func (r *FlowMatch) GetVLANPriority() (wildcard bool, priority uint8) {
+func (r *Match) VLANPriority() (wildcard bool, priority uint8) {
 	return r.wildcards.VLANPriority, r.vlanPriority
 }
 
-func (r *FlowMatch) SetWildcardIPProtocol() error {
+func (r *Match) SetWildcardIPProtocol() error {
 	r.protocol = 0
 	r.wildcards.Protocol = true
 	return nil
 }
 
-func (r *FlowMatch) SetIPProtocol(p uint8) error {
+func (r *Match) SetIPProtocol(p uint8) error {
 	// IPv4?
 	if r.etherType != 0x0800 {
 		return ErrUnsupportedEtherType
@@ -280,33 +266,33 @@ func (r *FlowMatch) SetIPProtocol(p uint8) error {
 	return nil
 }
 
-func (r *FlowMatch) GetIPProtocol() (wildcard bool, protocol uint8) {
+func (r *Match) IPProtocol() (wildcard bool, protocol uint8) {
 	return r.wildcards.Protocol, r.protocol
 }
 
-func (r *FlowMatch) SetWildcardInPort() error {
+func (r *Match) SetWildcardInPort() error {
 	r.inPort = 0
 	r.wildcards.InPort = true
 	return nil
 }
 
-func (r *FlowMatch) SetInPort(port uint) error {
+func (r *Match) SetInPort(port uint) error {
 	r.inPort = uint16(port)
 	r.wildcards.InPort = false
 	return nil
 }
 
-func (r *FlowMatch) GetInPort() (wildcard bool, inport uint) {
+func (r *Match) InPort() (wildcard bool, inport uint) {
 	return r.wildcards.InPort, uint(r.inPort)
 }
 
-func (r *FlowMatch) SetWildcardSrcMAC() error {
-	r.srcMAC = zeroMAC
+func (r *Match) SetWildcardSrcMAC() error {
+	r.srcMAC = openflow.ZeroMAC
 	r.wildcards.SrcMAC = true
 	return nil
 }
 
-func (r *FlowMatch) SetSrcMAC(mac net.HardwareAddr) error {
+func (r *Match) SetSrcMAC(mac net.HardwareAddr) error {
 	if mac == nil || len(mac) == 0 {
 		return ErrInvalidMAC
 	}
@@ -317,17 +303,17 @@ func (r *FlowMatch) SetSrcMAC(mac net.HardwareAddr) error {
 	return nil
 }
 
-func (r *FlowMatch) GetSrcMAC() (wildcard bool, mac net.HardwareAddr) {
+func (r *Match) SrcMAC() (wildcard bool, mac net.HardwareAddr) {
 	return r.wildcards.SrcMAC, r.srcMAC
 }
 
-func (r *FlowMatch) SetWildcardDstMAC() error {
-	r.dstMAC = zeroMAC
+func (r *Match) SetWildcardDstMAC() error {
+	r.dstMAC = openflow.ZeroMAC
 	r.wildcards.DstMAC = true
 	return nil
 }
 
-func (r *FlowMatch) SetDstMAC(mac net.HardwareAddr) error {
+func (r *Match) SetDstMAC(mac net.HardwareAddr) error {
 	if mac == nil || len(mac) == 0 {
 		return ErrInvalidMAC
 	}
@@ -338,11 +324,11 @@ func (r *FlowMatch) SetDstMAC(mac net.HardwareAddr) error {
 	return nil
 }
 
-func (r *FlowMatch) GetDstMAC() (wildcard bool, mac net.HardwareAddr) {
+func (r *Match) DstMAC() (wildcard bool, mac net.HardwareAddr) {
 	return r.wildcards.DstMAC, r.dstMAC
 }
 
-func (r *FlowMatch) SetSrcIP(ip *net.IPNet) error {
+func (r *Match) SetSrcIP(ip *net.IPNet) error {
 	if ip == nil || ip.IP == nil || len(ip.IP) == 0 {
 		return ErrInvalidIP
 	}
@@ -364,7 +350,7 @@ func (r *FlowMatch) SetSrcIP(ip *net.IPNet) error {
 	return nil
 }
 
-func (r *FlowMatch) GetSrcIP() *net.IPNet {
+func (r *Match) SrcIP() *net.IPNet {
 	ip := make([]byte, len(r.srcIP))
 	copy(ip, r.srcIP)
 
@@ -374,7 +360,7 @@ func (r *FlowMatch) GetSrcIP() *net.IPNet {
 	}
 }
 
-func (r *FlowMatch) SetDstIP(ip *net.IPNet) error {
+func (r *Match) SetDstIP(ip *net.IPNet) error {
 	if ip == nil || ip.IP == nil || len(ip.IP) == 0 {
 		return ErrInvalidIP
 	}
@@ -396,7 +382,7 @@ func (r *FlowMatch) SetDstIP(ip *net.IPNet) error {
 	return nil
 }
 
-func (r *FlowMatch) GetDstIP() *net.IPNet {
+func (r *Match) DstIP() *net.IPNet {
 	ip := make([]byte, len(r.dstIP))
 	copy(ip, r.dstIP)
 
@@ -406,23 +392,23 @@ func (r *FlowMatch) GetDstIP() *net.IPNet {
 	}
 }
 
-func (r *FlowMatch) SetWildcardEtherType() error {
+func (r *Match) SetWildcardEtherType() error {
 	r.etherType = 0
 	r.wildcards.EtherType = true
 	return nil
 }
 
-func (r *FlowMatch) SetEtherType(t uint16) error {
+func (r *Match) SetEtherType(t uint16) error {
 	r.etherType = t
 	r.wildcards.EtherType = false
 	return nil
 }
 
-func (r *FlowMatch) GetEtherType() (wildcard bool, etherType uint16) {
+func (r *Match) EtherType() (wildcard bool, etherType uint16) {
 	return r.wildcards.EtherType, r.etherType
 }
 
-func (r *FlowMatch) MarshalBinary() ([]byte, error) {
+func (r *Match) MarshalBinary() ([]byte, error) {
 	wildcard, err := r.wildcards.MarshalBinary()
 	if err != nil {
 		return nil, err
@@ -447,12 +433,12 @@ func (r *FlowMatch) MarshalBinary() ([]byte, error) {
 	return data, nil
 }
 
-func (r *FlowMatch) UnmarshalBinary(data []byte) error {
+func (r *Match) UnmarshalBinary(data []byte) error {
 	if len(data) < 40 {
 		return openflow.ErrInvalidPacketLength
 	}
 
-	r.wildcards = new(FlowWildcard)
+	r.wildcards = new(Wildcard)
 	if err := r.wildcards.UnmarshalBinary(data[0:4]); err != nil {
 		return err
 	}
