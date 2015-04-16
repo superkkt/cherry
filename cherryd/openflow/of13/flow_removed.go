@@ -8,6 +8,7 @@
 package of13
 
 import (
+	"encoding/binary"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 )
 
@@ -23,8 +24,7 @@ type FlowRemoved struct {
 	HardTimeout     uint16
 	PacketCount     uint64
 	ByteCount       uint64
-	// TODO: Implement this
-	// Match *Match
+	Match           openflow.Match
 }
 
 func (r *FlowRemoved) UnmarshalBinary(data []byte) error {
@@ -32,11 +32,24 @@ func (r *FlowRemoved) UnmarshalBinary(data []byte) error {
 		return err
 	}
 
-	// TODO: Implement this function
-	//payload := r.Payload()
-	//	if payload == nil || len(payload) < 56 {
-	//		return openflow.ErrInvalidPacketLength
-	//	}
+	payload := r.Payload()
+	if payload == nil || len(payload) < 48 {
+		return openflow.ErrInvalidPacketLength
+	}
+	r.Cookie = binary.BigEndian.Uint64(payload[0:8])
+	r.Priority = binary.BigEndian.Uint16(payload[8:10])
+	r.Reason = payload[10]
+	r.TableID = payload[11]
+	r.DurationSec = binary.BigEndian.Uint32(payload[12:16])
+	r.DurationNanoSec = binary.BigEndian.Uint32(payload[16:20])
+	r.IdleTimeout = binary.BigEndian.Uint16(payload[20:22])
+	r.HardTimeout = binary.BigEndian.Uint16(payload[22:24])
+	r.PacketCount = binary.BigEndian.Uint64(payload[24:32])
+	r.ByteCount = binary.BigEndian.Uint64(payload[32:40])
+	r.Match = NewMatch()
+	if err := r.Match.UnmarshalBinary(payload[40:]); err != nil {
+		return err
+	}
 
 	return nil
 }

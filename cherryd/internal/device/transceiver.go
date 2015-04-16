@@ -31,6 +31,7 @@ type Transceiver interface {
 	newAction() openflow.Action
 	sendBarrierRequest() error
 	addFlowMod(conf FlowModConfig) error
+	packetOut(inport openflow.InPort, action openflow.Action, data []byte) error
 }
 
 type baseTransceiver struct {

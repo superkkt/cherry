@@ -90,4 +90,9 @@ func (r *Device) InstallFlowRule(conf FlowModConfig) error {
 	return t.addFlowMod(conf)
 }
 
+func (r *Device) PacketOut(inport openflow.InPort, action openflow.Action, data []byte) error {
+	t := r.getTransceiver()
+	return t.packetOut(inport, action, data)
+}
+
 // TODO: Add exposed functions to provide OpenFlow funtionality to plugins.

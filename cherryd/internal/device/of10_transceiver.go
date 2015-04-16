@@ -13,6 +13,7 @@ import (
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"git.sds.co.kr/cherry.git/cherryd/openflow/of10"
 	"golang.org/x/net/context"
+	"net"
 	"time"
 )
 
@@ -68,6 +69,11 @@ func (r *OF10Transceiver) addFlowMod(conf FlowModConfig) error {
 	return openflow.WriteMessage(r.stream, msg)
 }
 
+func (r *OF10Transceiver) packetOut(inport openflow.InPort, action openflow.Action, data []byte) error {
+	msg := of10.NewPacketOut(r.getTransactionID(), inport, action, data)
+	return openflow.WriteMessage(r.stream, msg)
+}
+
 func (r *OF10Transceiver) newMatch() openflow.Match {
 	return of10.NewMatch()
 }
@@ -104,13 +110,25 @@ func (r *OF10Transceiver) handleFeaturesReply(msg *of10.FeaturesReply) error {
 		match.SetInPort(10)
 		action := r.newAction()
 		action.SetOutput(5)
+		mac, err := net.ParseMAC("3c:07:54:6f:70:b5")
+		if err != nil {
+			panic("invalid MAC address")
+		}
+		action.SetDstMAC(mac)
 		conf := FlowModConfig{
-			IdleTimeout: 30,
+			IdleTimeout: 20,
 			Priority:    10,
 			Match:       match,
 			Action:      action,
 		}
 		if err := r.addFlowMod(conf); err != nil {
+			return err
+		}
+
+		action = r.newAction()
+		action.SetOutput(15)
+		lldp := []byte{0x01, 0x80, 0xc2, 0x00, 0x00, 0x0e, 0x00, 0x01, 0xe8, 0xd8, 0x0f, 0x32, 0x88, 0xcc, 0x02, 0x07, 0x04, 0x00, 0x01, 0xe8, 0xd8, 0x0f, 0x25, 0x04, 0x06, 0x05, 0x73, 0x77, 0x70, 0x31, 0x33, 0x06, 0x02, 0x00, 0x78, 0x0a, 0x07, 0x63, 0x75, 0x6d, 0x75, 0x6c, 0x75, 0x73, 0x0c, 0x34, 0x43, 0x75, 0x6d, 0x75, 0x6c, 0x75, 0x73, 0x20, 0x4c, 0x69, 0x6e, 0x75, 0x78, 0x20, 0x76, 0x65, 0x72, 0x73, 0x69, 0x6f, 0x6e, 0x20, 0x32, 0x2e, 0x35, 0x2e, 0x31, 0x20, 0x72, 0x75, 0x6e, 0x6e, 0x69, 0x6e, 0x67, 0x20, 0x6f, 0x6e, 0x20, 0x64, 0x6e, 0x69, 0x20, 0x65, 0x74, 0x2d, 0x37, 0x34, 0x34, 0x38, 0x62, 0x66, 0x0e, 0x04, 0x00, 0x14, 0x00, 0x14, 0x08, 0x05, 0x73, 0x77, 0x70, 0x31, 0x33, 0x00, 0x00}
+		if err := r.packetOut(openflow.NewInPort(), action, lldp); err != nil {
 			return err
 		}
 	}
@@ -143,11 +161,7 @@ func (r *OF10Transceiver) handleDescriptionReply(msg *of10.DescriptionReply) err
 }
 
 func (r *OF10Transceiver) handleError(msg *openflow.Error) error {
-	// XXX: debugging
-	{
-		r.log.Printf("Error: %+v", msg)
-	}
-
+	r.log.Printf("Error: version=%v, xid=%v, type=%v, code=%v", msg.Version(), msg.TransactionID(), msg.Class, msg.Code)
 	return nil
 }
 
@@ -162,6 +176,15 @@ func (r *OF10Transceiver) handlePortStatus(msg *of10.PortStatus) error {
 	// XXX: debugging
 	{
 		r.log.Printf("PortStatus: %+v, Port: %+v", msg, *msg.Port)
+	}
+
+	return nil
+}
+
+func (r *OF10Transceiver) handleFlowRemoved(msg *of10.FlowRemoved) error {
+	// XXX: debugging
+	{
+		r.log.Printf("FlowRemoved: %+v, match=%+v", msg, msg.Match)
 	}
 
 	return nil
@@ -187,6 +210,8 @@ func (r *OF10Transceiver) handleMessage(msg openflow.Incoming) error {
 		return r.handleDescriptionReply(v)
 	case *of10.PortStatus:
 		return r.handlePortStatus(v)
+	case *of10.FlowRemoved:
+		return r.handleFlowRemoved(v)
 	default:
 		r.log.Printf("Unsupported message type: version=%v, type=%v", msg.Version(), msg.Type())
 		return nil

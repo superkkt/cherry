@@ -84,6 +84,11 @@ func (r *OF13Transceiver) newAction() openflow.Action {
 	return new(of13.Action)
 }
 
+func (r *OF13Transceiver) packetOut(inport openflow.InPort, action openflow.Action, data []byte) error {
+	msg := of13.NewPacketOut(r.getTransactionID(), inport, action, data)
+	return openflow.WriteMessage(r.stream, msg)
+}
+
 func (r *OF13Transceiver) handleFeaturesReply(msg *of13.FeaturesReply) error {
 	r.device = findDevice(msg.DPID)
 	r.device.NumBuffers = uint(msg.NumBuffers)
@@ -102,14 +107,20 @@ func (r *OF13Transceiver) handleFeaturesReply(msg *of13.FeaturesReply) error {
 		match := r.newMatch()
 		match.SetInPort(20)
 		action := r.newAction()
-		action.SetOutput(3)
+		action.SetOutput(10)
+		action.SetSrcMAC(openflow.ZeroMAC)
 		conf := FlowModConfig{
-			IdleTimeout: 30,
+			IdleTimeout: 20,
 			Priority:    10,
 			Match:       match,
 			Action:      action,
 		}
 		if err := r.addFlowMod(conf); err != nil {
+			return err
+		}
+
+		lldp := []byte{0x01, 0x80, 0xc2, 0x00, 0x00, 0x0e, 0x00, 0x01, 0xe8, 0xd8, 0x0f, 0x32, 0x88, 0xcc, 0x02, 0x07, 0x04, 0x00, 0x01, 0xe8, 0xd8, 0x0f, 0x25, 0x04, 0x06, 0x05, 0x73, 0x77, 0x70, 0x31, 0x33, 0x06, 0x02, 0x00, 0x78, 0x0a, 0x07, 0x63, 0x75, 0x6d, 0x75, 0x6c, 0x75, 0x73, 0x0c, 0x34, 0x43, 0x75, 0x6d, 0x75, 0x6c, 0x75, 0x73, 0x20, 0x4c, 0x69, 0x6e, 0x75, 0x78, 0x20, 0x76, 0x65, 0x72, 0x73, 0x69, 0x6f, 0x6e, 0x20, 0x32, 0x2e, 0x35, 0x2e, 0x31, 0x20, 0x72, 0x75, 0x6e, 0x6e, 0x69, 0x6e, 0x67, 0x20, 0x6f, 0x6e, 0x20, 0x64, 0x6e, 0x69, 0x20, 0x65, 0x74, 0x2d, 0x37, 0x34, 0x34, 0x38, 0x62, 0x66, 0x0e, 0x04, 0x00, 0x14, 0x00, 0x14, 0x08, 0x05, 0x73, 0x77, 0x70, 0x31, 0x33, 0x00, 0x00}
+		if err := r.packetOut(openflow.NewInPort(), action, lldp); err != nil {
 			return err
 		}
 	}
@@ -163,11 +174,7 @@ func (r *OF13Transceiver) handlePortDescriptionReply(msg *of13.PortDescriptionRe
 }
 
 func (r *OF13Transceiver) handleError(msg *openflow.Error) error {
-	// XXX: debugging
-	{
-		r.log.Printf("Error: %+v", msg)
-	}
-
+	r.log.Printf("Error: version=%v, xid=%v, type=%v, code=%v", msg.Version(), msg.TransactionID(), msg.Class, msg.Code)
 	return nil
 }
 
@@ -182,6 +189,15 @@ func (r *OF13Transceiver) handlePortStatus(msg *of13.PortStatus) error {
 	// XXX: debugging
 	{
 		r.log.Printf("PortStatus: %+v, Port: %+v", msg, *msg.Port)
+	}
+
+	return nil
+}
+
+func (r *OF13Transceiver) handleFlowRemoved(msg *of13.FlowRemoved) error {
+	// XXX: debugging
+	{
+		r.log.Printf("FlowRemoved: %+v, match=%+v", msg, msg.Match)
 	}
 
 	return nil
@@ -209,6 +225,8 @@ func (r *OF13Transceiver) handleMessage(msg openflow.Incoming) error {
 		return r.handlePortDescriptionReply(v)
 	case *of13.PortStatus:
 		return r.handlePortStatus(v)
+	case *of13.FlowRemoved:
+		return r.handleFlowRemoved(v)
 	default:
 		r.log.Printf("Unsupported message type: version=%v, type=%v", msg.Version(), msg.Type())
 		return nil
