@@ -18,13 +18,13 @@ type Action struct {
 	openflow.BaseAction
 }
 
-func marshalOutput(p uint16) ([]byte, error) {
+func marshalOutput(p uint) ([]byte, error) {
 	v := make([]byte, 8)
 	binary.BigEndian.PutUint16(v[0:2], uint16(OFPAT_OUTPUT))
 	binary.BigEndian.PutUint16(v[2:4], 8)
 
 	var port uint16
-	switch uint(p) {
+	switch p {
 	case openflow.PortTable:
 		port = OFPP_TABLE
 	case openflow.PortAll:
@@ -34,7 +34,7 @@ func marshalOutput(p uint16) ([]byte, error) {
 	case openflow.PortAny:
 		port = OFPP_NONE
 	default:
-		port = p
+		port = uint16(p)
 	}
 	binary.BigEndian.PutUint16(v[4:6], port)
 	// We don't support buffer ID and partial PACKET_IN
@@ -76,7 +76,7 @@ func (r *Action) MarshalBinary() ([]byte, error) {
 	}
 
 	if ok, port := r.Output(); ok {
-		v, err := marshalOutput(uint16(port))
+		v, err := marshalOutput(port)
 		if err != nil {
 			return nil, err
 		}

@@ -75,8 +75,19 @@ func (r *Device) SetBarrier() error {
 	return t.sendBarrierRequest()
 }
 
+func (r *Device) NewMatch() openflow.Match {
+	t := r.getTransceiver()
+	return t.newMatch()
+}
+
+func (r *Device) NewAction() openflow.Action {
+	t := r.getTransceiver()
+	return t.newAction()
+}
+
+func (r *Device) InstallFlowRule(conf FlowModConfig) error {
+	t := r.getTransceiver()
+	return t.addFlowMod(conf)
+}
+
 // TODO: Add exposed functions to provide OpenFlow funtionality to plugins.
-// func (r *Device) InstallFlowRule(...) {
-// 	select a transceiver
-//	send a flow rule to this device through the transceiver
-// }

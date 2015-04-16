@@ -53,12 +53,12 @@ func (r *FlowMod) MarshalBinary() ([]byte, error) {
 		return nil, errors.New("empty flow match")
 	}
 
-	v, err := r.config.Match.MarshalBinary()
+	result, err := r.config.Match.MarshalBinary()
 	if err != nil {
 		return nil, err
 	}
 
-	v = append(v, make([]byte, 24)...)
+	v := make([]byte, 24)
 	binary.BigEndian.PutUint64(v[0:8], r.config.Cookie)
 	binary.BigEndian.PutUint16(v[8:10], r.command)
 	binary.BigEndian.PutUint16(v[10:12], r.config.IdleTimeout)
@@ -66,16 +66,17 @@ func (r *FlowMod) MarshalBinary() ([]byte, error) {
 	binary.BigEndian.PutUint16(v[14:16], r.config.Priority)
 	binary.BigEndian.PutUint32(v[16:20], OFP_NO_BUFFER)
 	binary.BigEndian.PutUint16(v[20:22], OFPP_NONE)
-	binary.BigEndian.PutUint16(v[22:24], OFPFF_SEND_FLOW_REM|OFPFF_CHECK_OVERLAP)
+	binary.BigEndian.PutUint16(v[22:24], OFPFF_SEND_FLOW_REM)
+	result = append(result, v...)
 
 	if r.config.Action != nil {
 		action, err := r.config.Action.MarshalBinary()
 		if err != nil {
 			return nil, err
 		}
-		v = append(v, action...)
+		result = append(result, action...)
 	}
 
-	r.SetPayload(v)
+	r.SetPayload(result)
 	return r.Message.MarshalBinary()
 }

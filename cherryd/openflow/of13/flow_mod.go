@@ -80,7 +80,7 @@ func (r *FlowMod) MarshalBinary() ([]byte, error) {
 	binary.BigEndian.PutUint32(v[24:28], OFP_NO_BUFFER)
 	binary.BigEndian.PutUint32(v[28:32], OFPP_ANY)
 	binary.BigEndian.PutUint32(v[32:36], OFPP_ANY)
-	binary.BigEndian.PutUint16(v[36:38], OFPFF_SEND_FLOW_REM|OFPFF_CHECK_OVERLAP)
+	binary.BigEndian.PutUint16(v[36:38], OFPFF_SEND_FLOW_REM)
 	// v[38:40] is padding
 	match, err := r.config.Match.MarshalBinary()
 	if err != nil {

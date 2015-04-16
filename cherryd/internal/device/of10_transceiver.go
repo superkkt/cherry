@@ -55,6 +55,27 @@ func (r *OF10Transceiver) sendDescriptionRequest() error {
 	return openflow.WriteMessage(r.stream, msg)
 }
 
+func (r *OF10Transceiver) addFlowMod(conf FlowModConfig) error {
+	c := &of10.FlowModConfig{
+		// TODO: set Cookie
+		IdleTimeout: conf.IdleTimeout,
+		HardTimeout: conf.HardTimeout,
+		Priority:    conf.Priority,
+		Match:       conf.Match,
+		Action:      conf.Action,
+	}
+	msg := of10.NewFlowModAdd(r.getTransactionID(), c)
+	return openflow.WriteMessage(r.stream, msg)
+}
+
+func (r *OF10Transceiver) newMatch() openflow.Match {
+	return of10.NewMatch()
+}
+
+func (r *OF10Transceiver) newAction() openflow.Action {
+	return new(of10.Action)
+}
+
 func (r *OF10Transceiver) handleFeaturesReply(msg *of10.FeaturesReply) error {
 	r.device = findDevice(msg.DPID)
 	r.device.NumBuffers = uint(msg.NumBuffers)
@@ -73,8 +94,23 @@ func (r *OF10Transceiver) handleFeaturesReply(msg *of10.FeaturesReply) error {
 	// XXX: debugging
 	{
 		r.log.Printf("FeaturesReply: %+v", msg)
+
 		getconfig := of10.NewGetConfigRequest(r.getTransactionID())
 		if err := openflow.WriteMessage(r.stream, getconfig); err != nil {
+			return err
+		}
+
+		match := r.newMatch()
+		match.SetInPort(10)
+		action := r.newAction()
+		action.SetOutput(5)
+		conf := FlowModConfig{
+			IdleTimeout: 30,
+			Priority:    10,
+			Match:       match,
+			Action:      action,
+		}
+		if err := r.addFlowMod(conf); err != nil {
 			return err
 		}
 	}

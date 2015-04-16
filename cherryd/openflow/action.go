@@ -14,10 +14,10 @@ import (
 )
 
 const (
-	PortTable uint = iota
-	PortAll
-	PortController
-	PortAny // PortNone
+	PortTable      uint = 0xfffffff9
+	PortAll             = 0xfffffffc
+	PortController      = 0xfffffffd
+	PortAny             = 0xffffffff // PortNone
 )
 
 type Action interface {

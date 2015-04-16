@@ -18,9 +18,19 @@ import (
 	"time"
 )
 
+type FlowModConfig struct {
+	Match                    openflow.Match
+	Action                   openflow.Action
+	IdleTimeout, HardTimeout uint16
+	Priority                 uint16
+}
+
 type Transceiver interface {
 	Run(context.Context)
+	newMatch() openflow.Match
+	newAction() openflow.Action
 	sendBarrierRequest() error
+	addFlowMod(conf FlowModConfig) error
 }
 
 type baseTransceiver struct {
