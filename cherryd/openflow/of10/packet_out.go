@@ -34,6 +34,9 @@ func NewPacketOut(xid uint32, inport openflow.InPort, action openflow.Action, da
 }
 
 func (r *PacketOut) MarshalBinary() ([]byte, error) {
+	// XXX:
+	// Dell S4810 switch does not support OFPAT_SET_DL_SRC and
+	// OFPAT_SET_DL_DST actions on a packet out message
 	action := make([]byte, 0)
 	if r.action != nil {
 		a, err := r.action.MarshalBinary()

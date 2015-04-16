@@ -80,6 +80,7 @@ func (r *FlowMod) MarshalBinary() ([]byte, error) {
 	binary.BigEndian.PutUint32(v[24:28], OFP_NO_BUFFER)
 	binary.BigEndian.PutUint32(v[28:32], OFPP_ANY)
 	binary.BigEndian.PutUint32(v[32:36], OFPP_ANY)
+	// XXX: EdgeCore AS4600-54T switch does not support OFPFF_CHECK_OVERLAP
 	binary.BigEndian.PutUint16(v[36:38], OFPFF_SEND_FLOW_REM)
 	// v[38:40] is padding
 	match, err := r.config.Match.MarshalBinary()
