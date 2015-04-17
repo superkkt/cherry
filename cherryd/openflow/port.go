@@ -17,4 +17,6 @@ type Port interface {
 	Name() string
 	IsPortDown() bool // Is the port Administratively down?
 	IsLinkDown() bool // Is a physical link on the port down?
+	Config() uint32
+	Advertise() uint32
 }

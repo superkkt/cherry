@@ -56,6 +56,14 @@ func (r *Port) IsLinkDown() bool {
 	return false
 }
 
+func (r *Port) Config() uint32 {
+	return r.config
+}
+
+func (r *Port) Advertise() uint32 {
+	return r.advertised
+}
+
 type PortFeatureState struct {
 	OFPPF_10MB_HD    bool
 	OFPPF_10MB_FD    bool
