@@ -52,9 +52,10 @@ func (r *PacketIn) UnmarshalBinary(data []byte) error {
 		matchLength += 8 - rem
 	}
 
-	if len(payload) >= int(16+matchLength) {
+	dataOffset := 16 + matchLength + 2 // +2 is padding
+	if len(payload) >= int(dataOffset) {
 		// TODO: Check data size by comparing with r.Length
-		r.Data = payload[16+matchLength:]
+		r.Data = payload[dataOffset:]
 	}
 
 	return nil
