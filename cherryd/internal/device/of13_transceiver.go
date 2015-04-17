@@ -70,7 +70,7 @@ func (r *OF13Transceiver) addFlowMod(conf FlowModConfig) error {
 		HardTimeout: conf.HardTimeout,
 		Priority:    conf.Priority,
 		Match:       conf.Match,
-		Action:      conf.Action,
+		Instruction: &of13.ApplyAction{Action: conf.Action},
 	}
 	msg := of13.NewFlowModAdd(r.getTransactionID(), c)
 	return openflow.WriteMessage(r.stream, msg)
@@ -89,6 +89,35 @@ func (r *OF13Transceiver) packetOut(inport openflow.InPort, action openflow.Acti
 	return openflow.WriteMessage(r.stream, msg)
 }
 
+func (r *OF13Transceiver) removeAllFlows() error {
+	c := &of13.FlowModConfig{
+		TableID: of13.OFPTT_ALL,
+		// All wildcarded match
+		Match: of13.NewMatch(),
+	}
+
+	return openflow.WriteMessage(r.stream, of13.NewFlowModDelete(r.getTransactionID(), c))
+}
+
+func (r *OF13Transceiver) setTableMiss() error {
+	// FIXME: Is it okay to set a table-miss entry for the first table only?
+	packetin := new(of13.Action)
+	packetin.SetOutput(of13.OFPP_CONTROLLER)
+
+	c := &of13.FlowModConfig{
+		TableID: 0,
+		// Permanent flow entry
+		IdleTimeout: 0, HardTimeout: 0,
+		// Table-miss entry should have zero priority
+		Priority: 0,
+		// All wildcarded match
+		Match:       of13.NewMatch(),
+		Instruction: &of13.ApplyAction{Action: packetin},
+	}
+
+	return openflow.WriteMessage(r.stream, of13.NewFlowModAdd(r.getTransactionID(), c))
+}
+
 func (r *OF13Transceiver) handleFeaturesReply(msg *of13.FeaturesReply) error {
 	r.device = findDevice(msg.DPID)
 	r.device.NumBuffers = uint(msg.NumBuffers)
@@ -105,9 +134,9 @@ func (r *OF13Transceiver) handleFeaturesReply(msg *of13.FeaturesReply) error {
 		}
 
 		match := r.newMatch()
-		match.SetInPort(20)
+		match.SetInPort(1)
 		action := r.newAction()
-		action.SetOutput(10)
+		action.SetOutput(openflow.PortTable)
 		action.SetSrcMAC(openflow.ZeroMAC)
 		conf := FlowModConfig{
 			IdleTimeout: 20,
@@ -121,6 +150,16 @@ func (r *OF13Transceiver) handleFeaturesReply(msg *of13.FeaturesReply) error {
 
 		lldp := []byte{0x01, 0x80, 0xc2, 0x00, 0x00, 0x0e, 0x00, 0x01, 0xe8, 0xd8, 0x0f, 0x32, 0x88, 0xcc, 0x02, 0x07, 0x04, 0x00, 0x01, 0xe8, 0xd8, 0x0f, 0x25, 0x04, 0x06, 0x05, 0x73, 0x77, 0x70, 0x31, 0x33, 0x06, 0x02, 0x00, 0x78, 0x0a, 0x07, 0x63, 0x75, 0x6d, 0x75, 0x6c, 0x75, 0x73, 0x0c, 0x34, 0x43, 0x75, 0x6d, 0x75, 0x6c, 0x75, 0x73, 0x20, 0x4c, 0x69, 0x6e, 0x75, 0x78, 0x20, 0x76, 0x65, 0x72, 0x73, 0x69, 0x6f, 0x6e, 0x20, 0x32, 0x2e, 0x35, 0x2e, 0x31, 0x20, 0x72, 0x75, 0x6e, 0x6e, 0x69, 0x6e, 0x67, 0x20, 0x6f, 0x6e, 0x20, 0x64, 0x6e, 0x69, 0x20, 0x65, 0x74, 0x2d, 0x37, 0x34, 0x34, 0x38, 0x62, 0x66, 0x0e, 0x04, 0x00, 0x14, 0x00, 0x14, 0x08, 0x05, 0x73, 0x77, 0x70, 0x31, 0x33, 0x00, 0x00}
 		if err := r.packetOut(openflow.NewInPort(), action, lldp); err != nil {
+			return err
+		}
+
+		table := of13.NewTableFeaturesRequest(r.getTransactionID())
+		if err := openflow.WriteMessage(r.stream, table); err != nil {
+			return err
+		}
+
+		stats := of13.NewFlowStatsRequest(r.getTransactionID(), of13.OFPTT_ALL, 0, 0, of13.NewMatch())
+		if err := openflow.WriteMessage(r.stream, stats); err != nil {
 			return err
 		}
 	}
@@ -203,6 +242,15 @@ func (r *OF13Transceiver) handleFlowRemoved(msg *of13.FlowRemoved) error {
 	return nil
 }
 
+func (r *OF13Transceiver) handlePacketIn(msg *of13.PacketIn) error {
+	// XXX: debugging
+	{
+		r.log.Printf("PacketIn: %+v", msg)
+	}
+
+	return nil
+}
+
 func (r *OF13Transceiver) handleMessage(msg openflow.Incoming) error {
 	if msg.Version() != r.version {
 		return errors.New("unexpected openflow protocol version!")
@@ -227,6 +275,8 @@ func (r *OF13Transceiver) handleMessage(msg openflow.Incoming) error {
 		return r.handlePortStatus(v)
 	case *of13.FlowRemoved:
 		return r.handleFlowRemoved(v)
+	case *of13.PacketIn:
+		return r.handlePacketIn(v)
 	default:
 		r.log.Printf("Unsupported message type: version=%v, type=%v", msg.Version(), msg.Type())
 		return nil
@@ -265,8 +315,15 @@ func (r *OF13Transceiver) init() error {
 	if err := r.sendPortDescriptionRequest(); err != nil {
 		return fmt.Errorf("failed to send port_description_request message: %v", err)
 	}
+	// FIXME: Is it okay to remove all flow from the switch when it connects?
+	if err := r.removeAllFlows(); err != nil {
+		return fmt.Errorf("failed to remove all flow entries: %v", err)
+	}
 	if err := r.sendBarrierRequest(); err != nil {
 		return fmt.Errorf("failed to send barrier_request: %v", err)
+	}
+	if err := r.setTableMiss(); err != nil {
+		return fmt.Errorf("failed to set table_miss flow entry: %v", err)
 	}
 
 	return nil

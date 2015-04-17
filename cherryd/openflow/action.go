@@ -23,6 +23,7 @@ const (
 type Action interface {
 	encoding.BinaryMarshaler
 	encoding.BinaryUnmarshaler
+	// TODO: Implement multiple output actions
 	SetOutput(port uint) error
 	Output() (ok bool, port uint)
 	SetSrcMAC(mac net.HardwareAddr) error

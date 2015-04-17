@@ -21,7 +21,7 @@ type FlowModConfig struct {
 	HardTimeout uint16
 	Priority    uint16
 	Match       openflow.Match
-	Action      openflow.Action
+	Instruction Instruction
 }
 
 type FlowMod struct {
@@ -50,20 +50,6 @@ func NewFlowModDelete(xid uint32, config *FlowModConfig) *FlowMod {
 	return newFlowMod(xid, OFPFC_DELETE, config)
 }
 
-func marshalWriteAction(action openflow.Action) ([]byte, error) {
-	v, err := action.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
-
-	result := make([]byte, 8)
-	result = append(result, v...)
-	binary.BigEndian.PutUint16(result[0:2], OFPIT_WRITE_ACTIONS)
-	binary.BigEndian.PutUint16(result[2:4], uint16(len(result)))
-
-	return result, nil
-}
-
 func (r *FlowMod) MarshalBinary() ([]byte, error) {
 	if r.config.Match == nil {
 		return nil, errors.New("empty flow match")
@@ -88,12 +74,12 @@ func (r *FlowMod) MarshalBinary() ([]byte, error) {
 		return nil, err
 	}
 	v = append(v, match...)
-	if r.config.Action != nil {
-		action, err := marshalWriteAction(r.config.Action)
+	if r.config.Instruction != nil {
+		ins, err := r.config.Instruction.MarshalBinary()
 		if err != nil {
 			return nil, err
 		}
-		v = append(v, action...)
+		v = append(v, ins...)
 	}
 
 	r.SetPayload(v)

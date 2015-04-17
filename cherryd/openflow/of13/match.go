@@ -66,7 +66,7 @@ func (r *Match) SetSrcPort(p uint16) error {
 		return ErrMissingIPProtocol
 	}
 
-	switch proto {
+	switch proto.(uint8) {
 	// TCP
 	case 0x06:
 		r.m[OFPXMT_OFB_TCP_SRC] = p
@@ -126,7 +126,7 @@ func (r *Match) SetDstPort(p uint16) error {
 		return ErrMissingIPProtocol
 	}
 
-	switch proto {
+	switch proto.(uint8) {
 	// TCP
 	case 0x06:
 		r.m[OFPXMT_OFB_TCP_DST] = p
@@ -260,7 +260,7 @@ func (r *Match) SetWildcardInPort() error {
 	return nil
 }
 
-func (r *Match) SetInPort(port uint) error {
+func (r *Match) SetInPort(port uint32) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -268,13 +268,13 @@ func (r *Match) SetInPort(port uint) error {
 	return nil
 }
 
-func (r *Match) InPort() (wildcard bool, inport uint) {
+func (r *Match) InPort() (wildcard bool, inport uint32) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	v, ok := r.m[OFPXMT_OFB_IN_PORT]
 	if ok {
-		return false, v.(uint)
+		return false, v.(uint32)
 	}
 
 	return true, 0
@@ -495,7 +495,7 @@ func marshalUint32TLV(field uint8, v uint32) ([]byte, error) {
 func marshalTLV(id uint, v interface{}) ([]byte, error) {
 	switch id {
 	case OFPXMT_OFB_IN_PORT:
-		port := v.(uint)
+		port := v.(uint32)
 		return marshalUint32TLV(OFPXMT_OFB_IN_PORT, uint32(port))
 	case OFPXMT_OFB_ETH_DST:
 		mac := v.(net.HardwareAddr)

@@ -93,6 +93,7 @@ func (r *baseTransceiver) pinger(ctx context.Context, version uint8) {
 		case <-ticker.C:
 			if err := r.sendEchoRequest(version); err != nil {
 				r.log.Printf("failed to send echo request: %v", err)
+				return
 			}
 		case <-ctx.Done():
 			ticker.Stop()

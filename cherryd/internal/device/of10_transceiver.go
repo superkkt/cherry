@@ -190,6 +190,15 @@ func (r *OF10Transceiver) handleFlowRemoved(msg *of10.FlowRemoved) error {
 	return nil
 }
 
+func (r *OF10Transceiver) handlePacketIn(msg *of10.PacketIn) error {
+	// XXX: debugging
+	{
+		r.log.Printf("PacketIn: %+v", msg)
+	}
+
+	return nil
+}
+
 func (r *OF10Transceiver) handleMessage(msg openflow.Incoming) error {
 	if msg.Version() != r.version {
 		return errors.New("unexpected openflow protocol version!")
@@ -212,6 +221,8 @@ func (r *OF10Transceiver) handleMessage(msg openflow.Incoming) error {
 		return r.handlePortStatus(v)
 	case *of10.FlowRemoved:
 		return r.handleFlowRemoved(v)
+	case *of10.PacketIn:
+		return r.handlePacketIn(v)
 	default:
 		r.log.Printf("Unsupported message type: version=%v, type=%v", msg.Version(), msg.Type())
 		return nil

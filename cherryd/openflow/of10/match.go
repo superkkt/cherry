@@ -276,14 +276,14 @@ func (r *Match) SetWildcardInPort() error {
 	return nil
 }
 
-func (r *Match) SetInPort(port uint) error {
+func (r *Match) SetInPort(port uint32) error {
 	r.inPort = uint16(port)
 	r.wildcards.InPort = false
 	return nil
 }
 
-func (r *Match) InPort() (wildcard bool, inport uint) {
-	return r.wildcards.InPort, uint(r.inPort)
+func (r *Match) InPort() (wildcard bool, inport uint32) {
+	return r.wildcards.InPort, uint32(r.inPort)
 }
 
 func (r *Match) SetWildcardSrcMAC() error {

@@ -227,6 +227,10 @@ const (
 )
 
 const (
+	OFPG_ANY = 0xffffffff
+)
+
+const (
 	OFPFC_ADD           = 0 /* New flow. */
 	OFPFC_MODIFY        = 1 /* Modify all matching flows. */
 	OFPFC_MODIFY_STRICT = 2 /* Modify entry strictly matching wildcards and priority. */
@@ -254,4 +258,11 @@ const (
 	OFPFF_RESET_COUNTS  = 1 << 2 /* Reset flow packet and byte counts. */
 	OFPFF_NO_PKT_COUNTS = 1 << 3 /* Don't keep track of packet count. */
 	OFPFF_NO_BYT_COUNTS = 1 << 4 /* Don't keep track of byte count. */
+)
+
+const (
+	/* Last usable table number. */
+	OFPTT_MAX = 0xfe
+	/* Fake tables. */
+	OFPTT_ALL = 0xff /* Wildcard table used for table config, flow stats and flow deletes. */
 )

@@ -16,8 +16,8 @@ type Match interface {
 	encoding.BinaryMarshaler
 	encoding.BinaryUnmarshaler
 	SetWildcardInPort() error
-	SetInPort(port uint) error
-	InPort() (wildcard bool, inport uint)
+	SetInPort(port uint32) error
+	InPort() (wildcard bool, inport uint32)
 	SetWildcardEtherType() error
 	SetEtherType(t uint16) error
 	EtherType() (wildcard bool, etherType uint16)
