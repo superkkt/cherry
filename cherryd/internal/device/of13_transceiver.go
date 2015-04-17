@@ -312,12 +312,12 @@ func (r *OF13Transceiver) init() error {
 	if err := r.sendBarrierRequest(); err != nil {
 		return fmt.Errorf("failed to send barrier_request: %v", err)
 	}
+	// FIXME: Is it okay to remove all flow from the switch when it connects?
+	//	if err := r.removeAllFlows(); err != nil {
+	//		return fmt.Errorf("failed to remove all flow entries: %v", err)
+	//	}
 	if err := r.sendPortDescriptionRequest(); err != nil {
 		return fmt.Errorf("failed to send port_description_request message: %v", err)
-	}
-	// FIXME: Is it okay to remove all flow from the switch when it connects?
-	if err := r.removeAllFlows(); err != nil {
-		return fmt.Errorf("failed to remove all flow entries: %v", err)
 	}
 	if err := r.sendBarrierRequest(); err != nil {
 		return fmt.Errorf("failed to send barrier_request: %v", err)

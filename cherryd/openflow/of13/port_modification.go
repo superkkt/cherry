@@ -14,6 +14,8 @@ import (
 	"net"
 )
 
+// XXX: PORT_MOD does not result in PORT_STATUS issued from the switch
+
 type PortModification struct {
 	openflow.Message
 	number    uint32
