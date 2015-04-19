@@ -20,6 +20,8 @@ import (
 	"runtime"
 	"syscall"
 	"time"
+	// TODO: remove this
+	_ "git.sds.co.kr/cherry.git/cherryd/net/protocol"
 )
 
 func initSyslog() (*log.Logger, error) {

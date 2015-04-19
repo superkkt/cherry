@@ -10,6 +10,7 @@ package device
 import (
 	"errors"
 	"fmt"
+	"git.sds.co.kr/cherry.git/cherryd/net/protocol"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"git.sds.co.kr/cherry.git/cherryd/openflow/of13"
 	"golang.org/x/net/context"
@@ -191,6 +192,45 @@ func (r *OF13Transceiver) handleDescriptionReply(msg *of13.DescriptionReply) err
 	return nil
 }
 
+func (r *OF13Transceiver) sendLLDP(port *of13.Port) error {
+	lldp := &protocol.LLDP{
+		ChassisID: protocol.LLDPChassisID{
+			SubType: 4, // MAC address
+			Data:    port.MAC(),
+		},
+		PortID: protocol.LLDPPortID{
+			SubType: 5, // Interface Name
+			Data:    []byte(port.Name()),
+		},
+		TTL: 120,
+	}
+	payload, err := lldp.MarshalBinary()
+	if err != nil {
+		return err
+	}
+
+	ethernet := &protocol.Ethernet{
+		SrcMAC: port.MAC(),
+		// LLDP multicast MAC address
+		DstMAC: []byte{0x01, 0x80, 0xC2, 0x00, 0x00, 0x0E},
+		// LLDP ethertype
+		Type:    0x88CC,
+		Payload: payload,
+	}
+	frame, err := ethernet.MarshalBinary()
+	if err != nil {
+		return err
+	}
+
+	action := r.newAction()
+	action.SetOutput(port.Number())
+	if err := r.packetOut(openflow.NewInPort(), action, frame); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (r *OF13Transceiver) handlePortDescriptionReply(msg *of13.PortDescriptionReply) error {
 	if r.device == nil {
 		r.log.Printf("we got port_description_reply before description_reply!")
@@ -200,6 +240,9 @@ func (r *OF13Transceiver) handlePortDescriptionReply(msg *of13.PortDescriptionRe
 	}
 	for _, v := range msg.Ports {
 		r.device.setPort(uint(v.Number()), v)
+		if err := r.sendLLDP(v); err != nil {
+			return err
+		}
 		// XXX: debugging
 		r.log.Printf("Port: %+v", v)
 	}
