@@ -188,15 +188,14 @@ func (r *Graph) CalculateMST() {
 	Vp := make(map[string]Vertex)
 	Ep := make([]Edge, 0)
 
+	V := r.pickValidVertexies()
 	root := r.pickRootVertex()
 	if root == nil {
 		// There is no spanning tree for this graph.
-		r.mst = make([]Edge, 0)
-		return
+		goto finish
 	}
 	// Initial vertex node
 	Vp[root.ID()] = root
-	V := r.pickValidVertexies()
 
 	for len(V) != len(Vp) {
 		var next *list.Element
@@ -204,12 +203,12 @@ func (r *Graph) CalculateMST() {
 			next = elem.Next()
 			e := elem.Value.(Edge)
 			vertexies := e.Vertexies()
-			_, left := Vp[vertexies[0].ID()]
-			_, right := Vp[vertexies[1].ID()]
-			if (left && right) || (!left && !right) {
+			_, first := Vp[vertexies[0].ID()]
+			_, second := Vp[vertexies[1].ID()]
+			if (first && second) || (!first && !second) {
 				continue
 			}
-			if left {
+			if first {
 				Vp[vertexies[1].ID()] = vertexies[1]
 			} else {
 				Vp[vertexies[0].ID()] = vertexies[0]
@@ -219,5 +218,7 @@ func (r *Graph) CalculateMST() {
 			break
 		}
 	}
+
+finish:
 	r.mst = Ep
 }
