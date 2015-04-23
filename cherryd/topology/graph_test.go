@@ -56,6 +56,112 @@ func (r edge) Compare(e Edge) bool {
 	return false
 }
 
+func TestInvalidMST(t *testing.T) {
+	graph := NewGraph()
+	graph.CalculateMST()
+	fmt.Printf("MST: %+v\n", graph.mst)
+	if len(graph.mst) != 0 {
+		t.Fatalf("Unexpected MST: expected len=0, got=%v", len(graph.mst))
+	}
+
+	graph.AddVertex(vertex{"a"})
+	graph.CalculateMST()
+	fmt.Printf("MST: %+v\n", graph.mst)
+	if len(graph.mst) != 0 {
+		t.Fatalf("Unexpected MST: expected len=0, got=%v", len(graph.mst))
+	}
+
+	e := edge{
+		links:  [2]link{link{"a", 1}, link{"b", 1}},
+		weight: 2,
+	}
+	if err := graph.AddEdge(e); err == nil {
+		t.Fatal("Expected error, but not occurred!")
+	}
+}
+
+func TestRemoveVertex(t *testing.T) {
+	graph := NewGraph()
+	graph.AddVertex(vertex{"a"})
+	graph.AddVertex(vertex{"b"})
+	e := edge{
+		links:  [2]link{link{"a", 1}, link{"b", 1}},
+		weight: 2,
+	}
+	if err := graph.AddEdge(e); err != nil {
+		t.Fatal(err)
+	}
+	graph.RemoveVertex(vertex{"a"})
+	if graph.edges.Len() != 0 {
+		t.Fatalf("Expected node length is 0, got=%v\n", graph.edges.Len())
+	}
+}
+
+func TestRemoveEdges(t *testing.T) {
+	graph := NewGraph()
+	graph.AddVertex(vertex{"a"})
+	graph.AddVertex(vertex{"b"})
+	e := edge{
+		links:  [2]link{link{"a", 1}, link{"b", 1}},
+		weight: 2,
+	}
+	if err := graph.AddEdge(e); err != nil {
+		t.Fatal(err)
+	}
+	graph.RemoveEdge(e)
+	if graph.edges.Len() != 0 {
+		t.Fatalf("Expected node length is 0, got=%v\n", graph.edges.Len())
+	}
+	a := graph.nodes["a"]
+	b := graph.nodes["b"]
+	if a.nEdges != 0 || b.nEdges != 0 {
+		t.Fatalf("Expected # of edges is 0/0, got=%v/%v\n", a.nEdges, b.nEdges)
+	}
+
+	if err := graph.AddEdge(e); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.AddEdge(e); err != nil {
+		t.Fatal(err)
+	}
+	if a.nEdges != 2 || b.nEdges != 2 {
+		t.Fatalf("Expected # of edges is 2/2, got=%v/%v\n", a.nEdges, b.nEdges)
+	}
+	graph.RemoveEdge(e)
+	if graph.edges.Len() != 0 {
+		t.Fatalf("Expected node length is 0, got=%v\n", graph.edges.Len())
+	}
+	if a.nEdges != 0 || b.nEdges != 0 {
+		t.Fatalf("Expected # of edges is 0/0, got=%v/%v\n", a.nEdges, b.nEdges)
+	}
+}
+
+func TestDuplicatedEdges(t *testing.T) {
+	graph := NewGraph()
+	graph.AddVertex(vertex{"a"})
+	graph.AddVertex(vertex{"b"})
+	e := edge{
+		links:  [2]link{link{"a", 1}, link{"b", 1}},
+		weight: 2,
+	}
+	if err := graph.AddEdge(e); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.AddEdge(e); err != nil {
+		t.Fatal(err)
+	}
+
+	graph.CalculateMST()
+	fmt.Printf("MST: %+v\n", graph.mst)
+	total := 0.0
+	for _, v := range graph.mst {
+		total += v.Weight()
+	}
+	if len(graph.mst) != 1 || total != 2 {
+		t.Fatalf("Unexpected MST: expected=1/2, got=%v/%v", len(graph.mst), total)
+	}
+}
+
 func TestMST1(t *testing.T) {
 	graph := NewGraph()
 	graph.AddVertex(vertex{"a"})

@@ -10,7 +10,6 @@ package topology
 import (
 	"container/list"
 	"errors"
-	"fmt"
 	"sort"
 	"sync"
 )
@@ -65,6 +64,17 @@ func (r *Graph) RemoveVertex(v Vertex) {
 	}
 
 	delete(r.nodes, v.ID())
+
+	// Remove edges related with this vertex v
+	var next *list.Element
+	for elem := r.edges.Front(); elem != nil; elem = next {
+		next = elem.Next()
+		vertexies := elem.Value.(Edge).Vertexies()
+		if vertexies[0].ID() != v.ID() && vertexies[1].ID() != v.ID() {
+			continue
+		}
+		r.edges.Remove(elem)
+	}
 }
 
 func (r *Graph) AddEdge(e Edge) error {
@@ -72,9 +82,6 @@ func (r *Graph) AddEdge(e Edge) error {
 	defer r.mutex.Unlock()
 
 	vertexies := e.Vertexies()
-	// XXX: debugging
-	fmt.Printf("add vertex: %v / %v\n", vertexies[0].ID(), vertexies[1].ID())
-
 	first, ok1 := r.nodes[vertexies[0].ID()]
 	second, ok2 := r.nodes[vertexies[1].ID()]
 	if !ok1 || !ok2 {
@@ -98,8 +105,6 @@ func (r *Graph) RemoveEdge(e Edge) error {
 	if !ok1 || !ok2 {
 		return errors.New("Graph: removing an edge to unknown vertex")
 	}
-	first.nEdges--
-	second.nEdges--
 
 	var next *list.Element
 	for elem := r.edges.Front(); elem != nil; elem = next {
@@ -109,6 +114,8 @@ func (r *Graph) RemoveEdge(e Edge) error {
 			continue
 		}
 		r.edges.Remove(elem)
+		first.nEdges--
+		second.nEdges--
 	}
 
 	return nil
@@ -174,8 +181,6 @@ func (r *Graph) pickValidVertexies() []Vertex {
 // calculateMST finds a minimum spanning tree of this graph. A caller should lock the mutex before calling this function.
 func (r *Graph) CalculateMST() {
 	if r.edges.Len() == 0 || len(r.nodes) == 0 {
-		// XXX: deubgging
-		fmt.Printf("# of edges or nodes is zero..\n")
 		return
 	}
 
@@ -185,8 +190,6 @@ func (r *Graph) CalculateMST() {
 
 	root := r.pickRootVertex()
 	if root == nil {
-		// XXX: deubgging
-		fmt.Printf("no root vertex..\n")
 		// There is no spanning tree for this graph.
 		r.mst = make([]Edge, 0)
 		return
@@ -195,20 +198,11 @@ func (r *Graph) CalculateMST() {
 	Vp[root.ID()] = root
 	V := r.pickValidVertexies()
 
-	// XXX: deubgging
-	fmt.Printf("V: %+v\n", V)
-	fmt.Printf("Vp: %+v\n", Vp)
-
 	for len(V) != len(Vp) {
-		// XXX: debuggig
-		fmt.Printf("edge len = %v\n", edges.Len())
-
 		var next *list.Element
 		for elem := edges.Front(); elem != nil; elem = next {
 			next = elem.Next()
 			e := elem.Value.(Edge)
-			// XXX: debuggig
-			fmt.Printf("min edge = %+v\n", e)
 			vertexies := e.Vertexies()
 			_, left := Vp[vertexies[0].ID()]
 			_, right := Vp[vertexies[1].ID()]
