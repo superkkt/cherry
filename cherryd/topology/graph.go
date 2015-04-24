@@ -26,7 +26,8 @@ type Edge interface {
 
 type node struct {
 	vertex Vertex
-	nEdges uint
+	edges  map[*list.Element]Edge
+	mst    []Edge // Edges that belongs to the MST. This is updated when CalculateMST() is called.
 }
 
 type Graph struct {
@@ -51,8 +52,10 @@ func (r *Graph) AddVertex(v Vertex) {
 	if v == nil {
 		panic("Graph: adding nil vertex")
 	}
-
-	r.nodes[v.ID()] = &node{vertex: v}
+	r.nodes[v.ID()] = &node{
+		vertex: v,
+		edges:  make(map[*list.Element]Edge),
+	}
 }
 
 func (r *Graph) RemoveVertex(v Vertex) {
@@ -64,7 +67,6 @@ func (r *Graph) RemoveVertex(v Vertex) {
 	}
 
 	delete(r.nodes, v.ID())
-
 	// Remove edges related with this vertex v
 	var next *list.Element
 	for elem := r.edges.Front(); elem != nil; elem = next {
@@ -87,10 +89,10 @@ func (r *Graph) AddEdge(e Edge) error {
 	if !ok1 || !ok2 {
 		return errors.New("Graph: adding an edge to unknown vertex")
 	}
-	first.nEdges++
-	second.nEdges++
 
-	r.edges.PushBack(e)
+	elem := r.edges.PushBack(e)
+	first.edges[elem] = e
+	second.edges[elem] = e
 
 	return nil
 }
@@ -113,9 +115,9 @@ func (r *Graph) RemoveEdge(e Edge) error {
 		if !v.Compare(e) {
 			continue
 		}
+		delete(first.edges, elem)
+		delete(second.edges, elem)
 		r.edges.Remove(elem)
-		first.nEdges--
-		second.nEdges--
 	}
 
 	return nil
@@ -142,7 +144,7 @@ func (r sortedEdge) Swap(i, j int) {
 func (r *Graph) pickRootVertex() Vertex {
 	// Pick arbitrary vertex node
 	for _, v := range r.nodes {
-		if v.nEdges == 0 {
+		if len(v.edges) == 0 {
 			continue
 		}
 		return v.vertex
@@ -169,7 +171,7 @@ func (r *Graph) makeSortedEdges() *list.List {
 func (r *Graph) pickValidVertexies() []Vertex {
 	result := make([]Vertex, 0)
 	for _, v := range r.nodes {
-		if v.nEdges == 0 {
+		if len(v.edges) == 0 {
 			continue
 		}
 		result = append(result, v.vertex)
@@ -178,8 +180,17 @@ func (r *Graph) pickValidVertexies() []Vertex {
 	return result
 }
 
+func (r *Graph) resetNodeEdges() {
+	for _, v := range r.nodes {
+		v.mst = make([]Edge, 0)
+	}
+}
+
 // calculateMST finds a minimum spanning tree of this graph. A caller should lock the mutex before calling this function.
 func (r *Graph) CalculateMST() {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
 	if r.edges.Len() == 0 || len(r.nodes) == 0 {
 		return
 	}
@@ -188,6 +199,7 @@ func (r *Graph) CalculateMST() {
 	Vp := make(map[string]Vertex)
 	Ep := make([]Edge, 0)
 
+	r.resetNodeEdges()
 	V := r.pickValidVertexies()
 	root := r.pickRootVertex()
 	if root == nil {
@@ -213,6 +225,7 @@ func (r *Graph) CalculateMST() {
 			} else {
 				Vp[vertexies[0].ID()] = vertexies[0]
 			}
+			r.updateMSTEdge(vertexies, e)
 			Ep = append(Ep, e)
 			edges.Remove(elem)
 			break
@@ -221,4 +234,116 @@ func (r *Graph) CalculateMST() {
 
 finish:
 	r.mst = Ep
+}
+
+func (r *Graph) updateMSTEdge(vertexies [2]Vertex, e Edge) {
+	first, ok := r.nodes[vertexies[0].ID()]
+	if !ok {
+		panic("Graph: trying to update MST edge for an unknown node")
+	}
+	second, ok := r.nodes[vertexies[1].ID()]
+	if !ok {
+		panic("Graph: trying to update MST edge for an unknown node")
+	}
+
+	first.mst = append(first.mst, e)
+	second.mst = append(second.mst, e)
+}
+
+type queue struct {
+	list *list.List
+}
+
+func newQueue() *queue {
+	return &queue{list.New()}
+}
+
+func (r *queue) enqueue(v interface{}) {
+	r.list.PushBack(v)
+}
+
+func (r *queue) dequeue() interface{} {
+	v := r.list.Front()
+	if v != nil {
+		r.list.Remove(v)
+	}
+	return v.Value
+}
+
+func (r *queue) length() int {
+	return r.list.Len()
+}
+
+type Path struct {
+	V Vertex
+	E Edge
+}
+
+func (r *Graph) FindPath(src, dst Vertex) []Path {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	result := make([]Path, 0)
+	// # of vertexies in MST should be greater than 1.
+	if len(r.mst) <= 1 {
+		return result
+	}
+
+	visited := make(map[string]bool)
+	prev := make(map[string]Path)
+
+	queue := newQueue()
+	queue.enqueue(src)
+	visited[src.ID()] = true
+
+	for queue.length() > 0 {
+		v := queue.dequeue()
+		if v == nil {
+			panic("Graph: nil element is fetched from the queue")
+		}
+
+		node, ok := r.nodes[v.(Vertex).ID()]
+		if !ok {
+			panic("Graph: unknown vertex node")
+		}
+		for _, w := range node.mst {
+			vertexies := w.Vertexies()
+			next := vertexies[0]
+			if vertexies[0].ID() == node.vertex.ID() {
+				next = vertexies[1]
+			}
+			if _, ok := visited[next.ID()]; ok {
+				continue
+			}
+			visited[next.ID()] = true
+			prev[next.ID()] = Path{V: node.vertex, E: w}
+			queue.enqueue(next)
+		}
+	}
+
+	u := dst
+	for {
+		path, ok := prev[u.ID()]
+		if !ok {
+			break
+		}
+		result = append(result, path)
+		u = path.V
+	}
+
+	return reverse(result)
+}
+
+func reverse(data []Path) []Path {
+	length := len(data)
+	if length == 0 {
+		return data
+	}
+
+	result := make([]Path, length)
+	for i, j := 0, length-1; i < length; i, j = i+1, j-1 {
+		result[i] = data[j]
+	}
+
+	return result
 }

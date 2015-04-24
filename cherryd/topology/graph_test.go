@@ -114,8 +114,8 @@ func TestRemoveEdges(t *testing.T) {
 	}
 	a := graph.nodes["a"]
 	b := graph.nodes["b"]
-	if a.nEdges != 0 || b.nEdges != 0 {
-		t.Fatalf("Expected # of edges is 0/0, got=%v/%v\n", a.nEdges, b.nEdges)
+	if len(a.edges) != 0 || len(b.edges) != 0 {
+		t.Fatalf("Expected # of edges is 0/0, got=%v/%v\n", len(a.edges), len(b.edges))
 	}
 
 	if err := graph.AddEdge(e); err != nil {
@@ -124,15 +124,15 @@ func TestRemoveEdges(t *testing.T) {
 	if err := graph.AddEdge(e); err != nil {
 		t.Fatal(err)
 	}
-	if a.nEdges != 2 || b.nEdges != 2 {
-		t.Fatalf("Expected # of edges is 2/2, got=%v/%v\n", a.nEdges, b.nEdges)
+	if len(a.edges) != 2 || len(b.edges) != 2 {
+		t.Fatalf("Expected # of edges is 2/2, got=%v/%v\n", len(a.edges), len(b.edges))
 	}
 	graph.RemoveEdge(e)
 	if graph.edges.Len() != 0 {
 		t.Fatalf("Expected node length is 0, got=%v\n", graph.edges.Len())
 	}
-	if a.nEdges != 0 || b.nEdges != 0 {
-		t.Fatalf("Expected # of edges is 0/0, got=%v/%v\n", a.nEdges, b.nEdges)
+	if len(a.edges) != 0 || len(b.edges) != 0 {
+		t.Fatalf("Expected # of edges is 0/0, got=%v/%v\n", len(a.edges), len(b.edges))
 	}
 }
 
@@ -201,6 +201,16 @@ func TestMST1(t *testing.T) {
 	}
 	if len(graph.mst) != 3 || total != 6 {
 		t.Fatalf("Unexpected MST: expected=3/6, got=%v/%v", len(graph.mst), total)
+	}
+
+	path := graph.FindPath(vertex{"b"}, vertex{"c"})
+	fmt.Printf("Path: %+v\n", path)
+	total = 0.0
+	for _, v := range path {
+		total += v.E.Weight()
+	}
+	if len(path) != 3 || total != 6 {
+		t.Fatalf("Unexpected Path: expected=3/6, got=%v/%v", len(path), total)
 	}
 }
 
@@ -278,6 +288,16 @@ func TestMST2(t *testing.T) {
 	}
 	if len(graph.mst) != 6 || total != 22 {
 		t.Fatalf("Unexpected MST: expected=6/22, got=%v/%v", len(graph.mst), total)
+	}
+
+	path := graph.FindPath(vertex{"d"}, vertex{"e"})
+	fmt.Printf("Path: %+v\n", path)
+	total = 0.0
+	for _, v := range path {
+		total += v.E.Weight()
+	}
+	if len(path) != 3 || total != 8 {
+		t.Fatalf("Unexpected Path: expected=3/8, got=%v/%v", len(path), total)
 	}
 }
 
@@ -366,6 +386,16 @@ func TestMST3(t *testing.T) {
 	if len(graph.mst) != 8 || total != 37 {
 		t.Fatalf("Unexpected MST: expected=8/37, got=%v/%v", len(graph.mst), total)
 	}
+
+	path := graph.FindPath(vertex{"0"}, vertex{"8"})
+	fmt.Printf("Path: %+v\n", path)
+	total = 0.0
+	for _, v := range path {
+		total += v.E.Weight()
+	}
+	if len(path) != 3 || total != 14 {
+		t.Fatalf("Unexpected Path: expected=3/14, got=%v/%v", len(path), total)
+	}
 }
 
 func TestMST4(t *testing.T) {
@@ -433,5 +463,15 @@ func TestMST4(t *testing.T) {
 	}
 	if len(graph.mst) != 5 || total != 13 {
 		t.Fatalf("Unexpected MST: expected=5/13, got=%v/%v", len(graph.mst), total)
+	}
+
+	path := graph.FindPath(vertex{"1"}, vertex{"3"})
+	fmt.Printf("Path: %+v\n", path)
+	total = 0.0
+	for _, v := range path {
+		total += v.E.Weight()
+	}
+	if len(path) != 4 || total != 10 {
+		t.Fatalf("Unexpected Path: expected=4/10, got=%v/%v", len(path), total)
 	}
 }
