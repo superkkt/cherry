@@ -283,59 +283,6 @@ func (r *Graph) calculateMST() {
 		e.enabled = true
 		count++
 	}
-
-	/*
-		if len(r.edges) == 0 || len(r.vertexies) == 0 {
-			return
-		}
-
-		edges := r.makeSortedEdges()
-		Vp := make(map[string]Vertex)
-
-		V := r.pickValidVertexies()
-		root := r.pickRootVertex()
-		if len(V) == 0 || root == nil {
-			// There is no spanning tree for this graph.
-			return
-		}
-
-		prevLen := 0
-		// Initial vertex node
-		Vp[root.ID()] = root
-		// Implementation of Prim's algorithm
-		for len(V) != len(Vp) && prevLen != len(Vp) {
-			prevLen = len(Vp)
-			var next *list.Element
-			for elem := edges.Front(); elem != nil; elem = next {
-				next = elem.Next()
-				e := elem.Value.(*edge)
-
-				vertexies := e.value.Vertexies()
-				_, first := Vp[vertexies[0].ID()]
-				_, second := Vp[vertexies[1].ID()]
-				// New candidate vertex?
-				if (first && second) || (!first && !second) {
-					continue
-				}
-				if first {
-					Vp[vertexies[1].ID()] = vertexies[1]
-				} else {
-					Vp[vertexies[0].ID()] = vertexies[0]
-				}
-
-				// Found new vertex
-				e.enabled = true
-				edges.Remove(elem)
-				break
-			}
-		}
-
-		// Disable all remaining edges
-		for elem := edges.Front(); elem != nil; elem = elem.Next() {
-			e := elem.Value.(*edge)
-			e.enabled = false
-		}
-	*/
 }
 
 type queue struct {
