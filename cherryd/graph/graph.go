@@ -52,7 +52,7 @@ func (r *Graph) AddVertex(v Vertex) {
 	defer r.mutex.Unlock()
 
 	if v == nil {
-		panic("Graph: adding nil vertex")
+		panic("adding nil vertex")
 	}
 	// Check duplication
 	_, ok := r.vertexies[v.ID()]
@@ -64,7 +64,6 @@ func (r *Graph) AddVertex(v Vertex) {
 		value: v,
 		edges: make(map[string]*edge),
 	}
-	r.calculateMST()
 }
 
 func (r *Graph) removeEdge(e Edge) {
@@ -85,7 +84,7 @@ func (r *Graph) RemoveVertex(v Vertex) {
 	defer r.mutex.Unlock()
 
 	if v == nil {
-		panic("Graph: removing nil vertex")
+		panic("removing nil vertex")
 	}
 
 	vertex, ok := r.vertexies[v.ID()]
@@ -96,7 +95,6 @@ func (r *Graph) RemoveVertex(v Vertex) {
 		r.removeEdge(e.value)
 	}
 	delete(r.vertexies, v.ID())
-	r.calculateMST()
 }
 
 func (r *Graph) AddEdge(e Edge) error {
@@ -104,7 +102,7 @@ func (r *Graph) AddEdge(e Edge) error {
 	defer r.mutex.Unlock()
 
 	if e == nil {
-		panic("Graph: adding nil edge")
+		panic("adding nil edge")
 	}
 	// Check duplication
 	_, ok := r.edges[e.ID()]
@@ -114,19 +112,18 @@ func (r *Graph) AddEdge(e Edge) error {
 
 	vertexies := e.Vertexies()
 	if vertexies[0] == nil || vertexies[1] == nil {
-		panic("Graph: adding an edge pointing to nil vertex")
+		panic("adding an edge pointing to nil vertex")
 	}
 	first, ok1 := r.vertexies[vertexies[0].ID()]
 	second, ok2 := r.vertexies[vertexies[1].ID()]
 	if !ok1 || !ok2 {
-		return errors.New("Graph: adding an edge to unknown vertex")
+		return errors.New("AddEdge: adding an edge to unknown vertex")
 	}
 
 	edge := &edge{value: e}
 	r.edges[e.ID()] = edge
 	first.edges[e.ID()] = edge
 	second.edges[e.ID()] = edge
-	r.calculateMST()
 
 	return nil
 }
@@ -136,7 +133,7 @@ func (r *Graph) RemoveEdge(e Edge) error {
 	defer r.mutex.Unlock()
 
 	if e == nil {
-		panic("Graph: removing nil edge")
+		panic("removing nil edge")
 	}
 	_, ok := r.edges[e.ID()]
 	if !ok {
@@ -145,20 +142,35 @@ func (r *Graph) RemoveEdge(e Edge) error {
 
 	vertexies := e.Vertexies()
 	if vertexies[0] == nil || vertexies[1] == nil {
-		panic("Graph: removing an edge pointing to nil vertex")
+		panic("removing an edge pointing to nil vertex")
 	}
 	first, ok1 := r.vertexies[vertexies[0].ID()]
 	second, ok2 := r.vertexies[vertexies[1].ID()]
 	if !ok1 || !ok2 {
-		return errors.New("Graph: removing an edge to unknown vertex")
+		return errors.New("RemoveEdge: removing an edge to unknown vertex")
 	}
 
 	delete(first.edges, e.ID())
 	delete(second.edges, e.ID())
 	delete(r.edges, e.ID())
-	r.calculateMST()
 
 	return nil
+}
+
+func (r *Graph) IsEnabledEdge(e Edge) bool {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	if e == nil {
+		panic("nil edge")
+	}
+
+	v, ok := r.edges[e.ID()]
+	if !ok {
+		return false
+	}
+
+	return v.enabled
 }
 
 type sortedEdge []*edge
@@ -242,9 +254,11 @@ func mergeCluster(clusters map[string]*list.List, l1, l2 *list.List) {
 	}
 }
 
-// calculateMST finds a minimum spanning tree of this graph using Kruskal's algorithm.
-// A caller should lock the mutex before calling this function.
-func (r *Graph) calculateMST() {
+// CalculateMST finds a minimum spanning tree of this graph using Kruskal's algorithm.
+func (r *Graph) CalculateMST() {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
 	if len(r.edges) == 0 || len(r.vertexies) == 0 {
 		return
 	}
@@ -267,11 +281,11 @@ func (r *Graph) calculateMST() {
 		vertexies := e.value.Vertexies()
 		v1, ok := clusters[vertexies[0].ID()]
 		if !ok {
-			panic("Graph: invalid edge pointing an unknown vertex")
+			panic("invalid edge pointing an unknown vertex")
 		}
 		v2, ok := clusters[vertexies[1].ID()]
 		if !ok {
-			panic("Graph: invalid edge pointing an unknown vertex")
+			panic("invalid edge pointing an unknown vertex")
 		}
 
 		// Prevent a loop
@@ -334,7 +348,7 @@ func (r *Graph) FindPath(src, dst Vertex) []Path {
 	for queue.length() > 0 {
 		v := queue.dequeue()
 		if v == nil {
-			panic("Graph: nil element is fetched from the queue")
+			panic("nil element is fetched from the queue")
 		}
 
 		vertex, ok := r.vertexies[v.(Vertex).ID()]

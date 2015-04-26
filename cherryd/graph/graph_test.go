@@ -65,7 +65,7 @@ func printEnabledEdges(g *Graph) (int, float64) {
 func TestInvalidMST(t *testing.T) {
 	graph := New()
 	graph.AddVertex(node{"a"})
-	graph.calculateMST()
+	graph.CalculateMST()
 	c, _ := printEnabledEdges(graph)
 	if c != 0 {
 		t.Fatalf("Unexpected MST: expected len=0, got=%v", c)
@@ -158,7 +158,7 @@ func TestDuplicatedEdges(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	graph.calculateMST()
+	graph.CalculateMST()
 	c, w := printEnabledEdges(graph)
 	if c != 1 || w != 2 {
 		t.Fatalf("Unexpected MST: expected=1/2, got=%v/%v", c, w)
@@ -189,7 +189,7 @@ func TestMST0(t *testing.T) {
 	}
 
 	for i := 0; i < 100; i++ {
-		graph.calculateMST()
+		graph.CalculateMST()
 		c, w := printEnabledEdges(graph)
 		if c != 2 || w != 5 {
 			t.Fatalf("Unexpected MST: expected=2/5, got=%v/%v", c, w)
@@ -259,7 +259,7 @@ func TestMST1(t *testing.T) {
 	}
 
 	for i := 0; i < 100; i++ {
-		graph.calculateMST()
+		graph.CalculateMST()
 		c, w := printEnabledEdges(graph)
 		if c != 3 || w != 6 {
 			t.Fatalf("Unexpected MST: expected=3/6, got=%v/%v", c, w)
@@ -344,7 +344,7 @@ func TestMST2(t *testing.T) {
 	}
 
 	for i := 0; i < 100; i++ {
-		graph.calculateMST()
+		graph.CalculateMST()
 		c, w := printEnabledEdges(graph)
 		if c != 6 || w != 22 {
 			t.Fatalf("Unexpected MST: expected=6/22, got=%v/%v", c, w)
@@ -439,7 +439,7 @@ func TestMST3(t *testing.T) {
 	}
 
 	for i := 0; i < 100; i++ {
-		graph.calculateMST()
+		graph.CalculateMST()
 		c, w := printEnabledEdges(graph)
 		if c != 8 || w != 37 {
 			t.Fatalf("Unexpected MST: expected=8/37, got=%v/%v", c, w)
@@ -515,7 +515,7 @@ func TestMST4(t *testing.T) {
 	}
 
 	for i := 0; i < 100; i++ {
-		graph.calculateMST()
+		graph.CalculateMST()
 		c, w := printEnabledEdges(graph)
 		if c != 5 || w != 13 {
 			t.Fatalf("Unexpected MST: expected=5/13, got=%v/%v", c, w)
