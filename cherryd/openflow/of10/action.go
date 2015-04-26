@@ -15,7 +15,13 @@ import (
 )
 
 type Action struct {
-	openflow.BaseAction
+	*openflow.BaseAction
+}
+
+func NewAction() *Action {
+	return &Action{
+		openflow.NewBaseAction(),
+	}
 }
 
 func marshalOutput(p uint) ([]byte, error) {
@@ -75,8 +81,9 @@ func (r *Action) MarshalBinary() ([]byte, error) {
 		result = append(result, v...)
 	}
 
-	if ok, port := r.Output(); ok {
-		v, err := marshalOutput(port)
+	ports := r.Output()
+	for _, v := range ports {
+		v, err := marshalOutput(v)
 		if err != nil {
 			return nil, err
 		}

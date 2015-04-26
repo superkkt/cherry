@@ -8,16 +8,22 @@
 package device
 
 import (
+	"fmt"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"sync"
 )
+
+type port struct {
+	value openflow.Port
+	link  *Edge
+}
 
 type Device struct {
 	mutex        sync.Mutex
 	DPID         uint64
 	NumBuffers   uint
 	NumTables    uint
-	ports        map[uint]openflow.Port
+	ports        map[uint]*port
 	transceivers map[uint]Transceiver
 	Manufacturer string
 	Hardware     string
@@ -29,22 +35,37 @@ type Device struct {
 func newDevice(dpid uint64) *Device {
 	return &Device{
 		DPID:         dpid,
-		ports:        make(map[uint]openflow.Port),
+		ports:        make(map[uint]*port),
 		transceivers: make(map[uint]Transceiver),
 	}
+}
+
+func (r Device) ID() string {
+	return fmt.Sprintf("%v", r.DPID)
 }
 
 func (r *Device) setPort(id uint, p openflow.Port) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
-	r.ports[id] = p
+
+	r.ports[id] = &port{value: p}
 }
 
-func (r *Device) Port(id uint) (p openflow.Port, ok bool) {
+func (r *Device) Port(id uint) (*port, bool) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
-	p, ok = r.ports[id]
-	return
+
+	p, ok := r.ports[id]
+	return p, ok
+}
+
+func (r *Device) Ports() []*port {
+	ports := make([]*port, 0)
+	for _, v := range r.ports {
+		ports = append(ports, v)
+	}
+
+	return ports
 }
 
 func (r *Device) addTransceiver(id uint, t Transceiver) {
@@ -93,6 +114,11 @@ func (r *Device) InstallFlowRule(conf FlowModConfig) error {
 func (r *Device) PacketOut(inport openflow.InPort, action openflow.Action, data []byte) error {
 	t := r.getTransceiver()
 	return t.packetOut(inport, action, data)
+}
+
+func (r *Device) Flood(inPort openflow.InPort, data []byte) error {
+	t := r.getTransceiver()
+	return t.flood(inPort, data)
 }
 
 // TODO: Add exposed functions to provide OpenFlow funtionality to plugins.

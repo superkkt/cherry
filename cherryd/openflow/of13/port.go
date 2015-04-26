@@ -137,3 +137,30 @@ func (r *Port) UnmarshalBinary(data []byte) error {
 
 	return nil
 }
+
+func (r *Port) Speed() uint64 {
+	switch {
+	case r.current&OFPPF_10MB_HD != 0:
+		return 5
+	case r.current&OFPPF_10MB_FD != 0:
+		return 10
+	case r.current&OFPPF_100MB_HD != 0:
+		return 50
+	case r.current&OFPPF_100MB_FD != 0:
+		return 100
+	case r.current&OFPPF_1GB_HD != 0:
+		return 500
+	case r.current&OFPPF_1GB_FD != 0:
+		return 1000
+	case r.current&OFPPF_10GB_FD != 0:
+		return 10000
+	case r.current&OFPPF_40GB_FD != 0:
+		return 40000
+	case r.current&OFPPF_100GB_FD != 0:
+		return 100000
+	case r.current&OFPPF_1TB_FD != 0:
+		return 1000000
+	default:
+		return 100 // fallback
+	}
+}

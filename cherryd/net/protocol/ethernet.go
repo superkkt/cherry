@@ -45,19 +45,14 @@ func (r *Ethernet) MarshalBinary() ([]byte, error) {
 
 func (r *Ethernet) UnmarshalBinary(data []byte) error {
 	length := len(data)
-	if length < 64 {
+	if length < 14 {
 		return errors.New("invalid ethernet frame length")
-	}
-
-	crc := binary.BigEndian.Uint32(data[length-4:])
-	if crc != crc32.ChecksumIEEE(data[0:length-4]) {
-		return errors.New("incorrect ethernet frame checksum")
 	}
 
 	r.DstMAC = data[0:6]
 	r.SrcMAC = data[6:12]
 	r.Type = binary.BigEndian.Uint16(data[12:14])
-	r.Payload = data[14 : length-4]
+	r.Payload = data[14:]
 
 	return nil
 }

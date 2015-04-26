@@ -8,12 +8,14 @@
 package device
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"git.sds.co.kr/cherry.git/cherryd/net/protocol"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"git.sds.co.kr/cherry.git/cherryd/openflow/of13"
 	"golang.org/x/net/context"
+	"strconv"
 	"time"
 )
 
@@ -82,11 +84,22 @@ func (r *OF13Transceiver) newMatch() openflow.Match {
 }
 
 func (r *OF13Transceiver) newAction() openflow.Action {
-	return new(of13.Action)
+	return of13.NewAction()
 }
 
 func (r *OF13Transceiver) packetOut(inport openflow.InPort, action openflow.Action, data []byte) error {
 	msg := of13.NewPacketOut(r.getTransactionID(), inport, action, data)
+	return openflow.WriteMessage(r.stream, msg)
+}
+
+func (r *OF13Transceiver) flood(inPort openflow.InPort, data []byte) error {
+	if r.device == nil {
+		panic("OF13Transceiver: flood on nil device")
+	}
+
+	action := of13.NewAction()
+	action.SetOutput(of13.OFPP_ALL)
+	msg := of13.NewPacketOut(r.getTransactionID(), inPort, action, data)
 	return openflow.WriteMessage(r.stream, msg)
 }
 
@@ -101,8 +114,8 @@ func (r *OF13Transceiver) removeAllFlows() error {
 }
 
 func (r *OF13Transceiver) setTableMiss() error {
-	// FIXME: Is it okay to set a table-miss entry for the first table only?
-	packetin := new(of13.Action)
+	// FIXME: Is it okay to set a table-miss entry for the first table only? ONOS also does same thing..
+	packetin := of13.NewAction()
 	packetin.SetOutput(of13.OFPP_CONTROLLER)
 
 	c := &of13.FlowModConfig{
@@ -120,50 +133,56 @@ func (r *OF13Transceiver) setTableMiss() error {
 }
 
 func (r *OF13Transceiver) handleFeaturesReply(msg *of13.FeaturesReply) error {
-	r.device = findDevice(msg.DPID)
+	v := Switches.Get(msg.DPID)
+	if v == nil {
+		v = newDevice(msg.DPID)
+	}
+	Switches.add(msg.DPID, v)
+
+	r.device = v
 	r.device.NumBuffers = uint(msg.NumBuffers)
 	r.device.NumTables = uint(msg.NumTables)
 	r.device.addTransceiver(uint(msg.AuxID), r)
 	r.auxID = msg.AuxID
 
 	// XXX: debugging
-	{
-		r.log.Printf("FeaturesReply: %+v", msg)
-		getconfig := of13.NewGetConfigRequest(r.getTransactionID())
-		if err := openflow.WriteMessage(r.stream, getconfig); err != nil {
-			return err
-		}
-
-		match := r.newMatch()
-		match.SetInPort(1)
-		action := r.newAction()
-		action.SetOutput(openflow.PortTable)
-		action.SetSrcMAC(openflow.ZeroMAC)
-		conf := FlowModConfig{
-			IdleTimeout: 20,
-			Priority:    10,
-			Match:       match,
-			Action:      action,
-		}
-		if err := r.addFlowMod(conf); err != nil {
-			return err
-		}
-
-		lldp := []byte{0x01, 0x80, 0xc2, 0x00, 0x00, 0x0e, 0x00, 0x01, 0xe8, 0xd8, 0x0f, 0x32, 0x88, 0xcc, 0x02, 0x07, 0x04, 0x00, 0x01, 0xe8, 0xd8, 0x0f, 0x25, 0x04, 0x06, 0x05, 0x73, 0x77, 0x70, 0x31, 0x33, 0x06, 0x02, 0x00, 0x78, 0x0a, 0x07, 0x63, 0x75, 0x6d, 0x75, 0x6c, 0x75, 0x73, 0x0c, 0x34, 0x43, 0x75, 0x6d, 0x75, 0x6c, 0x75, 0x73, 0x20, 0x4c, 0x69, 0x6e, 0x75, 0x78, 0x20, 0x76, 0x65, 0x72, 0x73, 0x69, 0x6f, 0x6e, 0x20, 0x32, 0x2e, 0x35, 0x2e, 0x31, 0x20, 0x72, 0x75, 0x6e, 0x6e, 0x69, 0x6e, 0x67, 0x20, 0x6f, 0x6e, 0x20, 0x64, 0x6e, 0x69, 0x20, 0x65, 0x74, 0x2d, 0x37, 0x34, 0x34, 0x38, 0x62, 0x66, 0x0e, 0x04, 0x00, 0x14, 0x00, 0x14, 0x08, 0x05, 0x73, 0x77, 0x70, 0x31, 0x33, 0x00, 0x00}
-		if err := r.packetOut(openflow.NewInPort(), action, lldp); err != nil {
-			return err
-		}
-
-		table := of13.NewTableFeaturesRequest(r.getTransactionID())
-		if err := openflow.WriteMessage(r.stream, table); err != nil {
-			return err
-		}
-
-		stats := of13.NewFlowStatsRequest(r.getTransactionID(), of13.OFPTT_ALL, 0, 0, of13.NewMatch())
-		if err := openflow.WriteMessage(r.stream, stats); err != nil {
-			return err
-		}
-	}
+	//	{
+	//		r.log.Printf("FeaturesReply: %+v", msg)
+	//		getconfig := of13.NewGetConfigRequest(r.getTransactionID())
+	//		if err := openflow.WriteMessage(r.stream, getconfig); err != nil {
+	//			return err
+	//		}
+	//
+	//		match := r.newMatch()
+	//		match.SetInPort(1)
+	//		action := r.newAction()
+	//		action.SetOutput(openflow.PortTable)
+	//		action.SetSrcMAC(openflow.ZeroMAC)
+	//		conf := FlowModConfig{
+	//			IdleTimeout: 20,
+	//			Priority:    10,
+	//			Match:       match,
+	//			Action:      action,
+	//		}
+	//		if err := r.addFlowMod(conf); err != nil {
+	//			return err
+	//		}
+	//
+	//		lldp := []byte{0x01, 0x80, 0xc2, 0x00, 0x00, 0x0e, 0x00, 0x01, 0xe8, 0xd8, 0x0f, 0x32, 0x88, 0xcc, 0x02, 0x07, 0x04, 0x00, 0x01, 0xe8, 0xd8, 0x0f, 0x25, 0x04, 0x06, 0x05, 0x73, 0x77, 0x70, 0x31, 0x33, 0x06, 0x02, 0x00, 0x78, 0x0a, 0x07, 0x63, 0x75, 0x6d, 0x75, 0x6c, 0x75, 0x73, 0x0c, 0x34, 0x43, 0x75, 0x6d, 0x75, 0x6c, 0x75, 0x73, 0x20, 0x4c, 0x69, 0x6e, 0x75, 0x78, 0x20, 0x76, 0x65, 0x72, 0x73, 0x69, 0x6f, 0x6e, 0x20, 0x32, 0x2e, 0x35, 0x2e, 0x31, 0x20, 0x72, 0x75, 0x6e, 0x6e, 0x69, 0x6e, 0x67, 0x20, 0x6f, 0x6e, 0x20, 0x64, 0x6e, 0x69, 0x20, 0x65, 0x74, 0x2d, 0x37, 0x34, 0x34, 0x38, 0x62, 0x66, 0x0e, 0x04, 0x00, 0x14, 0x00, 0x14, 0x08, 0x05, 0x73, 0x77, 0x70, 0x31, 0x33, 0x00, 0x00}
+	//		if err := r.packetOut(openflow.NewInPort(), action, lldp); err != nil {
+	//			return err
+	//		}
+	//
+	//		table := of13.NewTableFeaturesRequest(r.getTransactionID())
+	//		if err := openflow.WriteMessage(r.stream, table); err != nil {
+	//			return err
+	//		}
+	//
+	//		stats := of13.NewFlowStatsRequest(r.getTransactionID(), of13.OFPTT_ALL, 0, 0, of13.NewMatch())
+	//		if err := openflow.WriteMessage(r.stream, stats); err != nil {
+	//			return err
+	//		}
+	//	}
 
 	return nil
 }
@@ -192,39 +211,16 @@ func (r *OF13Transceiver) handleDescriptionReply(msg *of13.DescriptionReply) err
 	return nil
 }
 
-func (r *OF13Transceiver) sendLLDP(port *of13.Port) error {
-	lldp := &protocol.LLDP{
-		ChassisID: protocol.LLDPChassisID{
-			SubType: 4, // MAC address
-			Data:    port.MAC(),
-		},
-		PortID: protocol.LLDPPortID{
-			SubType: 5, // Interface Name
-			Data:    []byte(port.Name()),
-		},
-		TTL: 120,
-	}
-	payload, err := lldp.MarshalBinary()
+func (r *OF13Transceiver) sendLLDP(port openflow.Port) error {
+	lldp, err := r.newLLDPEtherFrame(port)
 	if err != nil {
 		return err
 	}
-
-	ethernet := &protocol.Ethernet{
-		SrcMAC: port.MAC(),
-		// LLDP multicast MAC address
-		DstMAC: []byte{0x01, 0x80, 0xC2, 0x00, 0x00, 0x0E},
-		// LLDP ethertype
-		Type:    0x88CC,
-		Payload: payload,
-	}
-	frame, err := ethernet.MarshalBinary()
-	if err != nil {
-		return err
-	}
-
-	action := r.newAction()
+	action := of13.NewAction()
 	action.SetOutput(port.Number())
-	if err := r.packetOut(openflow.NewInPort(), action, frame); err != nil {
+	inport := openflow.NewInPort()
+	inport.SetPort(of13.OFPP_ANY)
+	if err := r.packetOut(inport, action, lldp); err != nil {
 		return err
 	}
 
@@ -239,6 +235,10 @@ func (r *OF13Transceiver) handlePortDescriptionReply(msg *of13.PortDescriptionRe
 		return r.sendPortDescriptionRequest()
 	}
 	for _, v := range msg.Ports {
+		// Reserved port?
+		if v.Number() > of13.OFPP_MAX {
+			continue
+		}
 		r.device.setPort(uint(v.Number()), v)
 		if err := r.sendLLDP(v); err != nil {
 			return err
@@ -265,6 +265,25 @@ func (r *OF13Transceiver) handlePortStatus(msg *of13.PortStatus) error {
 		r.log.Print("PortStatus is received, but we don't have a switch device yet!")
 		return nil
 	}
+
+	// Port removed?
+	switch msg.Reason {
+	case of13.OFPPR_DELETE:
+		port, ok := r.device.Port(msg.Port.Number())
+		if ok && port.link != nil {
+			Switches.unlink(port.link)
+		} else {
+			// Remove learned MAC address in hosts DB
+			Hosts.remove(port.value.MAC())
+		}
+	case of13.OFPPR_ADD:
+		// Update device graph by sending an LLDP packet
+		if err := r.sendLLDP(msg.Port); err != nil {
+			return err
+		}
+	case of13.OFPPR_MODIFY:
+		// FIXME: Should we do something in here?
+	}
 	// Update port status
 	r.device.setPort(msg.Port.Number(), msg.Port)
 
@@ -285,10 +304,163 @@ func (r *OF13Transceiver) handleFlowRemoved(msg *of13.FlowRemoved) error {
 	return nil
 }
 
+func isOurLLDP(p *protocol.LLDP) bool {
+	// We sent a LLDP packet that has ChassisID.SubType=7, PortID.SubType=5,
+	// and port ID starting with "cherry/".
+	if p.ChassisID.SubType != 7 || p.ChassisID.Data == nil {
+		// Do nothing if this packet is not the one we sent
+		return false
+	}
+	if p.PortID.SubType != 5 || p.PortID.Data == nil {
+		return false
+	}
+	if len(p.PortID.Data) <= 7 || !bytes.HasPrefix(p.PortID.Data, []byte("cherry/")) {
+		return false
+	}
+
+	return true
+}
+
+func getDeviceInfo(p *protocol.LLDP) (dpid uint64, port uint32, err error) {
+	dpid, err = strconv.ParseUint(string(p.ChassisID.Data), 10, 64)
+	if err != nil {
+		return 0, 0, err
+	}
+	// PortID.Data string consists of "cherry/" and port number
+	portID, err := strconv.ParseUint(string(p.PortID.Data[7:]), 10, 32)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return dpid, uint32(portID), nil
+}
+
+func (r *OF13Transceiver) handleLLDP(msg *of13.PacketIn, eth *protocol.Ethernet) error {
+	// XXX: debugging
+	r.log.Printf("LLDP is received: %+v", eth)
+
+	if r.device == nil {
+		return errors.New("handleLLDP: nil device")
+	}
+
+	lldp := new(protocol.LLDP)
+	if err := lldp.UnmarshalBinary(eth.Payload); err != nil {
+		return err
+	}
+	// XXX: debugging
+	r.log.Printf("LLDP: %+v\n", lldp)
+
+	if isOurLLDP(lldp) == false {
+		// Do nothing if this packet is not the one we sent
+		return nil
+	}
+	dpid, portNum, err := getDeviceInfo(lldp)
+	if err != nil {
+		// Do nothing if this packet is not the one we sent
+		return nil
+	}
+
+	neighbor := Switches.Get(dpid)
+	if neighbor == nil {
+		// XXX: debugging
+		r.log.Print("NIL neighbor..\n")
+		return nil
+	}
+	port, ok := r.device.Port(uint(msg.InPort))
+	if !ok {
+		// XXX: debugging
+		r.log.Print("NIL port..\n")
+		return nil
+	}
+
+	v1 := &Vertex{r.device, msg.InPort}
+	v2 := &Vertex{neighbor, uint32(portNum)}
+	edge := newEdge(v1, v2, calculateEdgeWeight(port.value.Speed()))
+	Switches.link(edge)
+	port.link = edge
+
+	return nil
+}
+
 func (r *OF13Transceiver) handlePacketIn(msg *of13.PacketIn) error {
+	eth := new(protocol.Ethernet)
+	if err := eth.UnmarshalBinary(msg.Data); err != nil {
+		return err
+	}
+
+	// LLDP?
+	if eth.Type == 0x88CC {
+		if err := r.handleLLDP(msg, eth); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	port, ok := r.device.Port(uint(msg.InPort))
+	if !ok {
+		return nil
+	}
+
+	if port.link == nil {
+		// We only store MAC address if this ingress port is not a link between two switches.
+		Hosts.add(eth.SrcMAC, r.device, msg.InPort)
+	} else {
+		// Do nothing if the ingress port is disabled by STP.
+		// XXX: debugging
+		if Switches.graph.IsEnabledEdge(port.link) == false {
+			r.log.Print("Ignoring PACKET_IN...\n")
+			return nil
+		}
+	}
+
 	// XXX: debugging
 	{
 		r.log.Printf("PacketIn: %+v", msg)
+	}
+
+	// TODO: Send this one to plugins
+
+	// XXX: L2 MAC learning switch
+	{
+		flood := func(port uint32, data []byte) error {
+			// XXX: debugging
+			r.log.Print("Flooding..")
+
+			// Flooding
+			inPort := openflow.NewInPort()
+			inPort.SetPort(uint(port))
+			return r.flood(inPort, data)
+		}
+
+		r.log.Printf("Ethernet: %+v", eth)
+
+		// ARP?
+		if eth.Type == 0x0806 {
+			// XXX: debugging
+			r.log.Print("ARP is received..\n")
+			return flood(msg.InPort, msg.Data)
+		}
+
+		conn, ok := Hosts.Find(eth.DstMAC)
+		if !ok {
+			// XXX: debugging
+			r.log.Printf("Failed to find the destination MAC: %v\n", eth.DstMAC)
+			return flood(msg.InPort, msg.Data)
+		}
+		path := Switches.graph.FindPath(r.device, conn.Device)
+		// Empty path means the destination is not connected with this device that sent PACKET_IN.
+		if len(path) == 0 {
+			// XXX: debugging
+			r.log.Printf("We don't know the path to the destintion: %v\n", eth.DstMAC)
+			// FIXME: Flood? or Drop?
+			return flood(msg.InPort, msg.Data)
+		}
+
+		// XXX: debugging
+		r.log.Printf("Sending PACKET_OUT to %v..\n", eth.DstMAC)
+		action := conn.Device.NewAction()
+		action.SetOutput(uint(conn.Port))
+		return conn.Device.PacketOut(openflow.NewInPort(), action, msg.Data)
 	}
 
 	return nil
@@ -334,7 +506,7 @@ func (r *OF13Transceiver) cleanup() {
 	}
 
 	if r.device.removeTransceiver(uint(r.auxID)) == 0 {
-		Pool.remove(r.device.DPID)
+		Switches.remove(r.device.DPID)
 	}
 }
 
@@ -351,22 +523,15 @@ func (r *OF13Transceiver) init() error {
 	if err := r.sendDescriptionRequest(); err != nil {
 		return fmt.Errorf("failed to send description_request message: %v", err)
 	}
+	if err := r.setTableMiss(); err != nil {
+		return fmt.Errorf("failed to set table_miss flow entry: %v", err)
+	}
 	// Make sure that description_reply is received before port_description_reply
 	if err := r.sendBarrierRequest(); err != nil {
 		return fmt.Errorf("failed to send barrier_request: %v", err)
 	}
-	// FIXME: Is it okay to remove all flow from the switch when it connects?
-	//	if err := r.removeAllFlows(); err != nil {
-	//		return fmt.Errorf("failed to remove all flow entries: %v", err)
-	//	}
 	if err := r.sendPortDescriptionRequest(); err != nil {
 		return fmt.Errorf("failed to send port_description_request message: %v", err)
-	}
-	if err := r.sendBarrierRequest(); err != nil {
-		return fmt.Errorf("failed to send barrier_request: %v", err)
-	}
-	if err := r.setTableMiss(); err != nil {
-		return fmt.Errorf("failed to set table_miss flow entry: %v", err)
 	}
 
 	return nil
@@ -374,6 +539,7 @@ func (r *OF13Transceiver) init() error {
 
 func (r *OF13Transceiver) Run(ctx context.Context) {
 	defer r.cleanup()
+
 	r.stream.SetReadTimeout(1 * time.Second)
 	r.stream.SetWriteTimeout(5 * time.Second)
 	if err := r.init(); err != nil {

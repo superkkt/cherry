@@ -19,4 +19,5 @@ type Port interface {
 	IsLinkDown() bool // Is a physical link on the port down?
 	Config() uint32
 	Advertise() uint32
+	Speed() uint64
 }

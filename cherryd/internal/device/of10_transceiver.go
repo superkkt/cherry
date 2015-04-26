@@ -74,16 +74,27 @@ func (r *OF10Transceiver) packetOut(inport openflow.InPort, action openflow.Acti
 	return openflow.WriteMessage(r.stream, msg)
 }
 
+// TODO: Implement this function
+func (r *OF10Transceiver) flood(inPort openflow.InPort, data []byte) error {
+	return nil
+}
+
 func (r *OF10Transceiver) newMatch() openflow.Match {
 	return of10.NewMatch()
 }
 
 func (r *OF10Transceiver) newAction() openflow.Action {
-	return new(of10.Action)
+	return of10.NewAction()
 }
 
 func (r *OF10Transceiver) handleFeaturesReply(msg *of10.FeaturesReply) error {
-	r.device = findDevice(msg.DPID)
+	v := Switches.Get(msg.DPID)
+	if v == nil {
+		v = newDevice(msg.DPID)
+	}
+	Switches.add(msg.DPID, v)
+
+	r.device = v
 	r.device.NumBuffers = uint(msg.NumBuffers)
 	r.device.NumTables = uint(msg.NumTables)
 	r.device.addTransceiver(0, r)
@@ -235,7 +246,7 @@ func (r *OF10Transceiver) cleanup() {
 	}
 
 	if r.device.removeTransceiver(0) == 0 {
-		Pool.remove(r.device.DPID)
+		Switches.remove(r.device.DPID)
 	}
 }
 

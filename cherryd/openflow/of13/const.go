@@ -220,13 +220,6 @@ const (
 )
 
 const (
-	OFPP_TABLE      = 0xfffffff9
-	OFPP_ALL        = 0xfffffffc
-	OFPP_CONTROLLER = 0xfffffffd
-	OFPP_ANY        = 0xffffffff
-)
-
-const (
 	OFPG_ANY = 0xffffffff
 )
 
@@ -265,4 +258,25 @@ const (
 	OFPTT_MAX = 0xfe
 	/* Fake tables. */
 	OFPTT_ALL = 0xff /* Wildcard table used for table config, flow stats and flow deletes. */
+)
+
+const (
+	OFPPR_ADD    = 0 /* The port was added. */
+	OFPPR_DELETE = 1 /* The port was removed. */
+	OFPPR_MODIFY = 2 /* Some attribute of the port has changed. */
+)
+
+const (
+	/* Maximum number of physical and logical switch ports. */
+	OFPP_MAX = 0xffffff00
+	/* Reserved OpenFlow Port (fake output "ports"). */
+	OFPP_IN_PORT = 0xfffffff8
+	OFPP_TABLE   = 0xfffffff9
+	OFPP_NORMAL  = 0xfffffffa /* Process with normal L2/L3 switching. */
+	/* All physical ports in VLAN, except input port and those blocked or link down. */
+	OFPP_FLOOD      = 0xfffffffb
+	OFPP_ALL        = 0xfffffffc /* All physical ports except input port. */
+	OFPP_CONTROLLER = 0xfffffffd /* Send to controller. */
+	OFPP_LOCAL      = 0xfffffffe /* Local openflow "port". */
+	OFPP_ANY        = 0xffffffff /* Wildcard */
 )

@@ -25,7 +25,7 @@ type Action interface {
 	encoding.BinaryUnmarshaler
 	// TODO: Implement multiple output actions
 	SetOutput(port uint) error
-	Output() (ok bool, port uint)
+	Output() []uint
 	SetSrcMAC(mac net.HardwareAddr) error
 	SrcMAC() (ok bool, mac net.HardwareAddr)
 	SetDstMAC(mac net.HardwareAddr) error
@@ -33,22 +33,29 @@ type Action interface {
 }
 
 type BaseAction struct {
-	output *uint
+	output map[uint]interface{}
 	srcMAC *net.HardwareAddr
 	dstMAC *net.HardwareAddr
 }
 
+func NewBaseAction() *BaseAction {
+	return &BaseAction{
+		output: make(map[uint]interface{}),
+	}
+}
+
 func (r *BaseAction) SetOutput(port uint) error {
-	r.output = &port
+	r.output[port] = nil
 	return nil
 }
 
-func (r *BaseAction) Output() (ok bool, port uint) {
-	if r.output == nil {
-		return false, 0
+func (r *BaseAction) Output() []uint {
+	ports := make([]uint, 0)
+	for v, _ := range r.output {
+		ports = append(ports, v)
 	}
 
-	return true, *r.output
+	return ports
 }
 
 func (r *BaseAction) SetSrcMAC(mac net.HardwareAddr) error {

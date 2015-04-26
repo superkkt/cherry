@@ -11,6 +11,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"git.sds.co.kr/cherry.git/cherryd/net/protocol"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"golang.org/x/net/context"
 	"net"
@@ -32,6 +33,7 @@ type Transceiver interface {
 	sendBarrierRequest() error
 	addFlowMod(conf FlowModConfig) error
 	packetOut(inport openflow.InPort, action openflow.Action, data []byte) error
+	flood(inPort openflow.InPort, data []byte) error
 }
 
 type baseTransceiver struct {
@@ -83,6 +85,43 @@ func (r *baseTransceiver) sendEchoRequest(version uint8) error {
 	}
 
 	return nil
+}
+
+func (r *baseTransceiver) newLLDPEtherFrame(port openflow.Port) ([]byte, error) {
+	if r.device == nil {
+		return nil, errors.New("newLLDPEtherFrame: nil device")
+	}
+
+	lldp := &protocol.LLDP{
+		ChassisID: protocol.LLDPChassisID{
+			SubType: 7, // Locally assigned alpha-numeric string
+			Data:    []byte(fmt.Sprintf("%v", r.device.DPID)),
+		},
+		PortID: protocol.LLDPPortID{
+			SubType: 5, // Interface Name
+			Data:    []byte(fmt.Sprintf("cherry/%v", port.Number())),
+		},
+		TTL: 120,
+	}
+	payload, err := lldp.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+
+	ethernet := &protocol.Ethernet{
+		SrcMAC: port.MAC(),
+		// LLDP multicast MAC address
+		DstMAC: []byte{0x01, 0x80, 0xC2, 0x00, 0x00, 0x0E},
+		// LLDP ethertype
+		Type:    0x88CC,
+		Payload: payload,
+	}
+	frame, err := ethernet.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+
+	return frame, nil
 }
 
 // TODO: Implement to close the connection if we miss several echo replies
