@@ -13,17 +13,12 @@ import (
 	"sync"
 )
 
-type port struct {
-	value openflow.Port
-	link  *Edge
-}
-
 type Device struct {
 	mutex        sync.Mutex
 	DPID         uint64
 	NumBuffers   uint
 	NumTables    uint
-	ports        map[uint]*port
+	ports        map[uint]openflow.Port
 	transceivers map[uint]Transceiver
 	Manufacturer string
 	Hardware     string
@@ -35,7 +30,7 @@ type Device struct {
 func newDevice(dpid uint64) *Device {
 	return &Device{
 		DPID:         dpid,
-		ports:        make(map[uint]*port),
+		ports:        make(map[uint]openflow.Port),
 		transceivers: make(map[uint]Transceiver),
 	}
 }
@@ -48,10 +43,10 @@ func (r *Device) setPort(id uint, p openflow.Port) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	r.ports[id] = &port{value: p}
+	r.ports[id] = p
 }
 
-func (r *Device) Port(id uint) (*port, bool) {
+func (r *Device) Port(id uint) (openflow.Port, bool) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -59,8 +54,8 @@ func (r *Device) Port(id uint) (*port, bool) {
 	return p, ok
 }
 
-func (r *Device) Ports() []*port {
-	ports := make([]*port, 0)
+func (r *Device) Ports() []openflow.Port {
+	ports := make([]openflow.Port, 0)
 	for _, v := range r.ports {
 		ports = append(ports, v)
 	}

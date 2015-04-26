@@ -239,6 +239,7 @@ func (r *OF13Transceiver) handlePortDescriptionReply(msg *of13.PortDescriptionRe
 		if v.Number() > of13.OFPP_MAX {
 			continue
 		}
+		// Add new port information
 		r.device.setPort(uint(v.Number()), v)
 		if err := r.sendLLDP(v); err != nil {
 			return err
@@ -269,13 +270,8 @@ func (r *OF13Transceiver) handlePortStatus(msg *of13.PortStatus) error {
 	// Port removed?
 	switch msg.Reason {
 	case of13.OFPPR_DELETE:
-		port, ok := r.device.Port(msg.Port.Number())
-		if ok && port.link != nil {
-			Switches.unlink(port.link)
-		} else {
-			// Remove learned MAC address in hosts DB
-			Hosts.remove(port.value.MAC())
-		}
+		Switches.graph.RemoveEdge(Point{r.device, uint32(msg.Port.Number())})
+		// TODO: Remove learned MAC address in hosts DB
 	case of13.OFPPR_ADD:
 		// Update device graph by sending an LLDP packet
 		if err := r.sendLLDP(msg.Port); err != nil {
@@ -373,11 +369,13 @@ func (r *OF13Transceiver) handleLLDP(msg *of13.PacketIn, eth *protocol.Ethernet)
 		return nil
 	}
 
-	v1 := &Vertex{r.device, msg.InPort}
-	v2 := &Vertex{neighbor, uint32(portNum)}
-	edge := newEdge(v1, v2, calculateEdgeWeight(port.value.Speed()))
-	Switches.link(edge)
-	port.link = edge
+	p1 := &Point{r.device, msg.InPort}
+	p2 := &Point{neighbor, uint32(portNum)}
+	edge := newEdge(p1, p2, calculateEdgeWeight(port.Speed()))
+	Switches.graph.AddEdge(edge)
+
+	// XXX: debugging
+	fmt.Printf("LLDP from %v:%v, Edge ID=%v\n", dpid, portNum, edge.ID())
 
 	return nil
 }
@@ -396,21 +394,12 @@ func (r *OF13Transceiver) handlePacketIn(msg *of13.PacketIn) error {
 		return nil
 	}
 
-	port, ok := r.device.Port(uint(msg.InPort))
-	if !ok {
-		return nil
-	}
-
-	if port.link == nil {
-		// We only store MAC address if this ingress port is not a link between two switches.
-		Hosts.add(eth.SrcMAC, r.device, msg.InPort)
-	} else {
-		// Do nothing if the ingress port is disabled by STP.
+	// Do nothing if the ingress port is an edge between switches and is disabled by STP.
+	p := Point{r.device, msg.InPort}
+	if Switches.graph.IsEdge(p) && !Switches.graph.IsEnabledPoint(p) {
 		// XXX: debugging
-		if Switches.graph.IsEnabledEdge(port.link) == false {
-			r.log.Print("Ignoring PACKET_IN...\n")
-			return nil
-		}
+		r.log.Printf("Ignoring PACKET_IN on %v/%v...\n", p.Node.DPID, p.Port)
+		return nil
 	}
 
 	// XXX: debugging
@@ -434,33 +423,36 @@ func (r *OF13Transceiver) handlePacketIn(msg *of13.PacketIn) error {
 
 		r.log.Printf("Ethernet: %+v", eth)
 
-		// ARP?
-		if eth.Type == 0x0806 {
-			// XXX: debugging
-			r.log.Print("ARP is received..\n")
-			return flood(msg.InPort, msg.Data)
-		}
+		return flood(msg.InPort, msg.Data)
+		/*
+			// ARP?
+			if eth.Type == 0x0806 {
+				// XXX: debugging
+				r.log.Print("ARP is received..\n")
+				return flood(msg.InPort, msg.Data)
+			}
 
-		conn, ok := Hosts.Find(eth.DstMAC)
-		if !ok {
-			// XXX: debugging
-			r.log.Printf("Failed to find the destination MAC: %v\n", eth.DstMAC)
-			return flood(msg.InPort, msg.Data)
-		}
-		path := Switches.graph.FindPath(r.device, conn.Device)
-		// Empty path means the destination is not connected with this device that sent PACKET_IN.
-		if len(path) == 0 {
-			// XXX: debugging
-			r.log.Printf("We don't know the path to the destintion: %v\n", eth.DstMAC)
-			// FIXME: Flood? or Drop?
-			return flood(msg.InPort, msg.Data)
-		}
+			conn, ok := Hosts.Find(eth.DstMAC)
+			if !ok {
+				// XXX: debugging
+				r.log.Printf("Failed to find the destination MAC: %v\n", eth.DstMAC)
+				return flood(msg.InPort, msg.Data)
+			}
+			path := Switches.graph.FindPath(r.device, conn.Device)
+			// Empty path means the destination is not connected with this device that sent PACKET_IN.
+			if len(path) == 0 {
+				// XXX: debugging
+				r.log.Printf("We don't know the path to the destintion: %v\n", eth.DstMAC)
+				// FIXME: Flood? or Drop?
+				return flood(msg.InPort, msg.Data)
+			}
 
-		// XXX: debugging
-		r.log.Printf("Sending PACKET_OUT to %v..\n", eth.DstMAC)
-		action := conn.Device.NewAction()
-		action.SetOutput(uint(conn.Port))
-		return conn.Device.PacketOut(openflow.NewInPort(), action, msg.Data)
+			// XXX: debugging
+			r.log.Printf("Sending PACKET_OUT to %v..\n", eth.DstMAC)
+			action := conn.Device.NewAction()
+			action.SetOutput(uint(conn.Port))
+			return conn.Device.PacketOut(openflow.NewInPort(), action, msg.Data)
+		*/
 	}
 
 	return nil

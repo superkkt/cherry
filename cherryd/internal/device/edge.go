@@ -9,41 +9,42 @@ package device
 
 import (
 	"fmt"
-	"git.sds.co.kr/cherry.git/cherryd/graph"
+	"git.sds.co.kr/cherry.git/cherryd/internal/graph"
 )
 
-type Vertex struct {
+type Point struct {
 	Node *Device
 	Port uint32
 }
 
-func (r Vertex) ID() string {
-	if r.Node == nil {
-		panic("nil vertex node")
-	}
-	return r.Node.ID()
+func (r Point) ID() string {
+	return fmt.Sprintf("%v:%v", r.Node.DPID, r.Port)
+}
+
+func (r Point) Vertex() graph.Vertex {
+	return r.Node
 }
 
 type Edge struct {
-	v1, v2 *Vertex
+	p1, p2 *Point
 	weight float64
 }
 
-func newEdge(v1, v2 *Vertex, weight float64) *Edge {
-	if v1 == nil || v2 == nil {
-		panic("nil vertex")
+func newEdge(p1, p2 *Point, weight float64) *Edge {
+	if p1 == nil || p2 == nil {
+		panic("nil point")
 	}
 
 	return &Edge{
-		v1:     v1,
-		v2:     v2,
+		p1:     p1,
+		p2:     p2,
 		weight: weight,
 	}
 }
 
 func (r Edge) ID() string {
-	first := r.v1
-	second := r.v2
+	first := r.p1
+	second := r.p2
 	if first.Node.DPID > second.Node.DPID {
 		first, second = second, first
 	}
@@ -51,8 +52,8 @@ func (r Edge) ID() string {
 	return fmt.Sprintf("%v:%v/%v:%v", first.Node.DPID, first.Port, second.Node.DPID, second.Port)
 }
 
-func (r Edge) Vertexies() [2]graph.Vertex {
-	return [2]graph.Vertex{r.v1, r.v2}
+func (r Edge) Points() [2]graph.Point {
+	return [2]graph.Point{r.p1, r.p2}
 }
 
 func (r Edge) Weight() float64 {

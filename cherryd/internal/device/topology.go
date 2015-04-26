@@ -8,7 +8,7 @@
 package device
 
 import (
-	"git.sds.co.kr/cherry.git/cherryd/graph"
+	"git.sds.co.kr/cherry.git/cherryd/internal/graph"
 	"net"
 	"sync"
 )
@@ -38,7 +38,6 @@ func (r *Topology) add(dpid uint64, d *Device) {
 
 	r.pool[dpid] = d
 	r.graph.AddVertex(d)
-	r.graph.CalculateMST()
 }
 
 func (r *Topology) remove(dpid uint64) {
@@ -50,7 +49,6 @@ func (r *Topology) remove(dpid uint64) {
 		return
 	}
 	r.graph.RemoveVertex(device)
-	r.graph.CalculateMST()
 	delete(r.pool, dpid)
 }
 
@@ -59,16 +57,6 @@ func (r *Topology) Get(dpid uint64) *Device {
 	defer r.mutex.Unlock()
 
 	return r.pool[dpid]
-}
-
-func (r *Topology) link(e *Edge) {
-	r.graph.AddEdge(e)
-	r.graph.CalculateMST()
-}
-
-func (r *Topology) unlink(e *Edge) {
-	r.graph.RemoveEdge(e)
-	r.graph.CalculateMST()
 }
 
 type Connection struct {

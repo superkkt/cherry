@@ -25,22 +25,25 @@ type point struct {
 	port uint32
 }
 
+func (r point) ID() string {
+	return fmt.Sprintf("%v:%v", r.dpid, r.port)
+}
+
+func (r point) Vertex() Vertex {
+	return node{r.dpid}
+}
+
 type link struct {
 	points [2]point
 	weight float64
 }
 
 func (r link) ID() string {
-	return fmt.Sprintf("%v:%v/%v:%p", r.points[0].dpid, r.points[0].port, r.points[1].dpid, r.points[1].port)
+	return fmt.Sprintf("%v:%v/%v:%v", r.points[0].dpid, r.points[0].port, r.points[1].dpid, r.points[1].port)
 }
 
-func (r link) Vertexies() [2]Vertex {
-	v1 := node{r.points[0].dpid}
-	v2 := node{r.points[1].dpid}
-	var result [2]Vertex
-	result[0] = v1
-	result[1] = v2
-	return result
+func (r link) Points() [2]Point {
+	return [2]Point{r.points[0], r.points[1]}
 }
 
 func (r link) Weight() float64 {
@@ -65,7 +68,7 @@ func printEnabledEdges(g *Graph) (int, float64) {
 func TestInvalidMST(t *testing.T) {
 	graph := New()
 	graph.AddVertex(node{"a"})
-	graph.CalculateMST()
+	graph.calculateMST()
 	c, _ := printEnabledEdges(graph)
 	if c != 0 {
 		t.Fatalf("Unexpected MST: expected len=0, got=%v", c)
@@ -98,6 +101,9 @@ func TestRemoveVertex(t *testing.T) {
 	if len(graph.edges) != 0 {
 		t.Fatalf("Expected edge length is 0, got=%v\n", len(graph.edges))
 	}
+	if len(graph.points) != 0 {
+		t.Fatalf("Expected points length is 0, got=%v\n", len(graph.points))
+	}
 	v := graph.vertexies["b"]
 	if len(v.edges) != 0 {
 		t.Fatalf("Expected edge length is 0, got=%v\n", len(v.edges))
@@ -115,9 +121,12 @@ func TestRemoveEdges(t *testing.T) {
 	if err := graph.AddEdge(e); err != nil {
 		t.Fatal(err)
 	}
-	graph.RemoveEdge(e)
+	graph.RemoveEdge(point{"a", 1})
 	if len(graph.edges) != 0 {
 		t.Fatalf("Expected edge length is 0, got=%v\n", len(graph.edges))
+	}
+	if len(graph.points) != 0 {
+		t.Fatalf("Expected points length is 0, got=%v\n", len(graph.points))
 	}
 	a := graph.vertexies["a"]
 	b := graph.vertexies["b"]
@@ -134,9 +143,12 @@ func TestRemoveEdges(t *testing.T) {
 	if len(a.edges) != 1 || len(b.edges) != 1 {
 		t.Fatalf("Expected # of edges is 1/1, got=%v/%v\n", len(a.edges), len(b.edges))
 	}
-	graph.RemoveEdge(e)
+	graph.RemoveEdge(point{"a", 1})
 	if len(graph.edges) != 0 {
 		t.Fatalf("Expected edge length is 0, got=%v\n", len(graph.edges))
+	}
+	if len(graph.points) != 0 {
+		t.Fatalf("Expected points length is 0, got=%v\n", len(graph.points))
 	}
 	if len(a.edges) != 0 || len(b.edges) != 0 {
 		t.Fatalf("Expected # of edges is 0/0, got=%v/%v\n", len(a.edges), len(b.edges))
@@ -158,7 +170,7 @@ func TestDuplicatedEdges(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	graph.CalculateMST()
+	graph.calculateMST()
 	c, w := printEnabledEdges(graph)
 	if c != 1 || w != 2 {
 		t.Fatalf("Unexpected MST: expected=1/2, got=%v/%v", c, w)
@@ -189,7 +201,7 @@ func TestMST0(t *testing.T) {
 	}
 
 	for i := 0; i < 100; i++ {
-		graph.CalculateMST()
+		graph.calculateMST()
 		c, w := printEnabledEdges(graph)
 		if c != 2 || w != 5 {
 			t.Fatalf("Unexpected MST: expected=2/5, got=%v/%v", c, w)
@@ -259,7 +271,7 @@ func TestMST1(t *testing.T) {
 	}
 
 	for i := 0; i < 100; i++ {
-		graph.CalculateMST()
+		graph.calculateMST()
 		c, w := printEnabledEdges(graph)
 		if c != 3 || w != 6 {
 			t.Fatalf("Unexpected MST: expected=3/6, got=%v/%v", c, w)
@@ -344,7 +356,7 @@ func TestMST2(t *testing.T) {
 	}
 
 	for i := 0; i < 100; i++ {
-		graph.CalculateMST()
+		graph.calculateMST()
 		c, w := printEnabledEdges(graph)
 		if c != 6 || w != 22 {
 			t.Fatalf("Unexpected MST: expected=6/22, got=%v/%v", c, w)
@@ -439,7 +451,7 @@ func TestMST3(t *testing.T) {
 	}
 
 	for i := 0; i < 100; i++ {
-		graph.CalculateMST()
+		graph.calculateMST()
 		c, w := printEnabledEdges(graph)
 		if c != 8 || w != 37 {
 			t.Fatalf("Unexpected MST: expected=8/37, got=%v/%v", c, w)
@@ -515,7 +527,7 @@ func TestMST4(t *testing.T) {
 	}
 
 	for i := 0; i < 100; i++ {
-		graph.CalculateMST()
+		graph.calculateMST()
 		c, w := printEnabledEdges(graph)
 		if c != 5 || w != 13 {
 			t.Fatalf("Unexpected MST: expected=5/13, got=%v/%v", c, w)
