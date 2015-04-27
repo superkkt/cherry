@@ -37,11 +37,12 @@ type Transceiver interface {
 }
 
 type baseTransceiver struct {
-	stream  *openflow.Stream
-	log     Logger
-	xid     uint32
-	device  *Device
-	version uint8
+	stream       *openflow.Stream
+	log          Logger
+	xid          uint32
+	device       *Device
+	version      uint8
+	lldpExplored atomic.Value
 }
 
 func (r *baseTransceiver) getTransactionID() uint32 {
@@ -139,6 +140,18 @@ func (r *baseTransceiver) pinger(ctx context.Context, version uint8) {
 			return
 		}
 	}
+}
+
+func (r *baseTransceiver) IsLLDPExplored() bool {
+	return r.lldpExplored.Load().(bool)
+}
+
+func (r *baseTransceiver) LLDPTimer() {
+	// We will serve PACKET_IN after n seconds to make sure LLDPs explore whole network topology.
+	go func() {
+		time.Sleep(2 * time.Second)
+		r.lldpExplored.Store(true)
+	}()
 }
 
 func NewTransceiver(conn net.Conn, log Logger) (Transceiver, error) {

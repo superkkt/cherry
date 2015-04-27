@@ -22,13 +22,15 @@ type OF10Transceiver struct {
 }
 
 func NewOF10Transceiver(stream *openflow.Stream, log Logger) *OF10Transceiver {
-	return &OF10Transceiver{
+	v := &OF10Transceiver{
 		baseTransceiver: baseTransceiver{
 			stream:  stream,
 			log:     log,
 			version: openflow.Ver10,
 		},
 	}
+	v.lldpExplored.Store(false)
+	return v
 }
 
 func (r *OF10Transceiver) sendHello() error {

@@ -151,12 +151,16 @@ func (r *Graph) RemoveEdge(p Point) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
+	// XXX: debugging
+	fmt.Printf("Removing an edge.. %v\n", p.ID())
 	e, ok := r.points[p.ID()]
 	if !ok {
 		return
 	}
 	r.removeEdge(e.value)
 	r.calculateMST()
+	// XXX: debugging
+	fmt.Printf("Removed an edge.. %v\n", p.ID())
 }
 
 func (r *Graph) IsEdge(p Point) bool {

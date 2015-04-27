@@ -25,13 +25,15 @@ type OF13Transceiver struct {
 }
 
 func NewOF13Transceiver(stream *openflow.Stream, log Logger) *OF13Transceiver {
-	return &OF13Transceiver{
+	v := &OF13Transceiver{
 		baseTransceiver: baseTransceiver{
 			stream:  stream,
 			log:     log,
 			version: openflow.Ver13,
 		},
 	}
+	v.lldpExplored.Store(false)
+	return v
 }
 
 func (r *OF13Transceiver) sendHello() error {
@@ -247,6 +249,7 @@ func (r *OF13Transceiver) handlePortDescriptionReply(msg *of13.PortDescriptionRe
 		// XXX: debugging
 		r.log.Printf("Port: %+v", v)
 	}
+	r.LLDPTimer()
 
 	// XXX: debugging
 	{
@@ -267,21 +270,29 @@ func (r *OF13Transceiver) handlePortStatus(msg *of13.PortStatus) error {
 		return nil
 	}
 
-	// Port removed?
-	switch msg.Reason {
-	case of13.OFPPR_DELETE:
+	// XXX: debugging
+	{
+		if msg.Port.IsPortDown() {
+			fmt.Printf("PortDown: %v/%v\n", r.device.DPID, msg.Port.Number())
+		}
+		if msg.Port.IsLinkDown() {
+			fmt.Printf("LinkDown: %v/%v\n", r.device.DPID, msg.Port.Number())
+		}
+	}
+
+	if msg.Port.IsPortDown() || msg.Port.IsLinkDown() {
 		Switches.graph.RemoveEdge(Point{r.device, uint32(msg.Port.Number())})
 		// TODO: Remove learned MAC address in hosts DB
-	case of13.OFPPR_ADD:
+	} else {
 		// Update device graph by sending an LLDP packet
 		if err := r.sendLLDP(msg.Port); err != nil {
 			return err
 		}
-	case of13.OFPPR_MODIFY:
-		// FIXME: Should we do something in here?
 	}
 	// Update port status
 	r.device.setPort(msg.Port.Number(), msg.Port)
+
+	// TODO: Send this event to applications
 
 	// XXX: debugging
 	{
@@ -394,11 +405,17 @@ func (r *OF13Transceiver) handlePacketIn(msg *of13.PacketIn) error {
 		return nil
 	}
 
-	// Do nothing if the ingress port is an edge between switches and is disabled by STP.
 	p := Point{r.device, msg.InPort}
+	// Do nothing if LLDPs we sent are still exploring network topology.
+	if !r.IsLLDPExplored() {
+		// XXX: debugging
+		r.log.Printf("Ignoring PACKET_IN on %v/%v due to LLDP exploring...\n", p.Node.DPID, p.Port)
+		return nil
+	}
+	// Do nothing if the ingress port is an edge between switches and is disabled by STP.
 	if Switches.graph.IsEdge(p) && !Switches.graph.IsEnabledPoint(p) {
 		// XXX: debugging
-		r.log.Printf("Ignoring PACKET_IN on %v/%v...\n", p.Node.DPID, p.Port)
+		r.log.Printf("Ignoring PACKET_IN on %v/%v due to disabled port by STP...\n", p.Node.DPID, p.Port)
 		return nil
 	}
 
