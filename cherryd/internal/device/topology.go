@@ -28,7 +28,8 @@ func init() {
 		graph: graph.New(),
 	}
 	Hosts = &HostPool{
-		pool: make(map[string]Connection),
+		mac:   make(map[string]Point),
+		point: make(map[string][]net.HardwareAddr),
 	}
 }
 
@@ -59,43 +60,71 @@ func (r *Topology) Get(dpid uint64) *Device {
 	return r.pool[dpid]
 }
 
-type Connection struct {
-	Device *Device
-	Port   uint32
-}
-
 type HostPool struct {
 	mutex sync.Mutex
-	pool  map[string]Connection
+	mac   map[string]Point
+	point map[string][]net.HardwareAddr
 }
 
-func (r *HostPool) add(mac net.HardwareAddr, device *Device, port uint32) {
+func (r *HostPool) add(mac net.HardwareAddr, p Point) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	if mac == nil || p.Node == nil {
+		panic("nil parameters")
+	}
+
+	// Check duplication
+	prev, ok := r.mac[mac.String()]
+	if ok {
+		if prev.Compare(p) {
+			// Do nothing if same one already exists
+			return
+		}
+		// Remove previous values
+		r._remove(prev)
+	}
+
+	r.mac[mac.String()] = p
+
+	v, ok := r.point[p.ID()]
+	if ok {
+		v = append(v, mac)
+	} else {
+		v = []net.HardwareAddr{mac}
+	}
+	r.point[p.ID()] = v
+}
+
+func (r *HostPool) _remove(p Point) {
+	v, ok := r.point[p.ID()]
+	if !ok {
+		return
+	}
+	for _, mac := range v {
+		delete(r.mac, mac.String())
+	}
+	delete(r.point, p.ID())
+}
+
+func (r *HostPool) remove(p Point) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	if p.Node == nil {
+		panic("nil parameter")
+	}
+
+	r._remove(p)
+}
+
+func (r *HostPool) Find(mac net.HardwareAddr) (p Point, ok bool) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	if mac == nil {
 		panic("nil MAC address")
 	}
-	r.pool[mac.String()] = Connection{device, port}
-}
-
-func (r *HostPool) remove(mac net.HardwareAddr) {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	if mac == nil {
-		panic("nil MAC address")
-	}
-	delete(r.pool, mac.String())
-}
-
-func (r *HostPool) Find(mac net.HardwareAddr) (Connection, bool) {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	if mac == nil {
-		panic("nil MAC address")
-	}
-	v, ok := r.pool[mac.String()]
-	return v, ok
+	p, ok = r.mac[mac.String()]
+	return
 }

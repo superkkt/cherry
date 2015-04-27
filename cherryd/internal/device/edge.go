@@ -25,6 +25,10 @@ func (r Point) Vertex() graph.Vertex {
 	return r.Node
 }
 
+func (r Point) Compare(p Point) bool {
+	return r.Node.DPID == p.Node.DPID && r.Port == p.Port
+}
+
 type Edge struct {
 	p1, p2 *Point
 	weight float64
