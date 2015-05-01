@@ -16,12 +16,14 @@ import (
 	"git.sds.co.kr/cherry.git/cherryd/openflow/of13"
 	"golang.org/x/net/context"
 	"strconv"
+	"strings"
 	"time"
 )
 
 type OF13Transceiver struct {
 	baseTransceiver
-	auxID uint8
+	auxID       uint8
+	flowTableID uint8 // Table ID that we install flows (default: 0)
 }
 
 func NewOF13Transceiver(stream *openflow.Stream, log Logger, p PacketProcessor) *OF13Transceiver {
@@ -70,8 +72,7 @@ func (r *OF13Transceiver) sendPortDescriptionRequest() error {
 func (r *OF13Transceiver) addFlowMod(conf FlowModConfig) error {
 	c := &of13.FlowModConfig{
 		// TODO: set Cookie
-		// TODO: set TableID depend on their usage using flow removed message
-		TableID:     0,
+		TableID:     r.flowTableID,
 		IdleTimeout: conf.IdleTimeout,
 		HardTimeout: conf.HardTimeout,
 		Priority:    conf.Priority,
@@ -116,20 +117,17 @@ func (r *OF13Transceiver) removeAllFlows() error {
 	return openflow.WriteMessage(r.stream, of13.NewFlowModDelete(r.getTransactionID(), c))
 }
 
-func (r *OF13Transceiver) setTableMiss() error {
-	packetin := of13.NewAction()
-	packetin.SetOutput(of13.OFPP_CONTROLLER)
-
+func (r *OF13Transceiver) setTableMiss(tableID uint8, inst of13.Instruction) error {
 	c := &of13.FlowModConfig{
 		// FIXME: Is it okay to set a table-miss entry for the first table only? ONOS also does same thing..
-		TableID: 0,
+		TableID: tableID,
 		// Permanent flow entry
 		IdleTimeout: 0, HardTimeout: 0,
 		// Table-miss entry should have zero priority
 		Priority: 0,
 		// All wildcarded match
 		Match:       of13.NewMatch(),
-		Instruction: &of13.ApplyAction{Action: packetin},
+		Instruction: inst,
 	}
 
 	return openflow.WriteMessage(r.stream, of13.NewFlowModAdd(r.getTransactionID(), c))
@@ -148,6 +146,14 @@ func (r *OF13Transceiver) handleFeaturesReply(msg *of13.FeaturesReply) error {
 	r.device.addTransceiver(uint(msg.AuxID), r)
 	r.auxID = msg.AuxID
 
+	// XXX: debugging
+	{
+		table := of13.NewTableFeaturesRequest(r.getTransactionID())
+		if err := openflow.WriteMessage(r.stream, table); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -160,12 +166,51 @@ func (r *OF13Transceiver) handleGetConfigReply(msg *of13.GetConfigReply) error {
 	return nil
 }
 
+func isHP2920_24G(msg *of13.DescriptionReply) bool {
+	return strings.HasPrefix(msg.Manufacturer, "HP") && strings.HasPrefix(msg.Hardware, "2920-24G")
+}
+
+func (r *OF13Transceiver) setHP2920TableMiss() error {
+	// XXX: debugging
+	r.log.Print("Set HP2920 TableMiss entries..\n")
+
+	if err := r.setTableMiss(0, &of13.GotoTable{TableID: 100}); err != nil {
+		return fmt.Errorf("failed to set table_miss flow entry: %v", err)
+	}
+	if err := r.setTableMiss(100, &of13.GotoTable{TableID: 200}); err != nil {
+		return fmt.Errorf("failed to set table_miss flow entry: %v", err)
+	}
+	packetin := of13.NewAction()
+	packetin.SetOutput(of13.OFPP_CONTROLLER)
+	if err := r.setTableMiss(200, &of13.ApplyAction{Action: packetin}); err != nil {
+		return fmt.Errorf("failed to set table_miss flow entry: %v", err)
+	}
+	r.flowTableID = 200
+
+	return nil
+}
+
 func (r *OF13Transceiver) handleDescriptionReply(msg *of13.DescriptionReply) error {
 	r.device.Manufacturer = msg.Manufacturer
 	r.device.Hardware = msg.Hardware
 	r.device.Software = msg.Software
 	r.device.Serial = msg.Serial
 	r.device.Description = msg.Description
+
+	// FIXME:
+	// Implement general routines for various table structures of OF1.3 switches
+	// based on table features reply
+	if isHP2920_24G(msg) {
+		if err := r.setHP2920TableMiss(); err != nil {
+			return err
+		}
+	} else {
+		packetin := of13.NewAction()
+		packetin.SetOutput(of13.OFPP_CONTROLLER)
+		if err := r.setTableMiss(0, &of13.ApplyAction{Action: packetin}); err != nil {
+			return fmt.Errorf("failed to set table_miss flow entry: %v", err)
+		}
+	}
 
 	// XXX: debugging
 	{
@@ -451,11 +496,15 @@ func (r *OF13Transceiver) init() error {
 	if err := r.sendFeaturesRequest(); err != nil {
 		return fmt.Errorf("failed to send features_request message: %v", err)
 	}
+	if err := r.removeAllFlows(); err != nil {
+		return fmt.Errorf("failed to remove all flows that are already installed: %v", err)
+	}
+	// Make sure that the installed flows are removed before setTableMiss() is called
+	if err := r.sendBarrierRequest(); err != nil {
+		return fmt.Errorf("failed to send barrier_request: %v", err)
+	}
 	if err := r.sendDescriptionRequest(); err != nil {
 		return fmt.Errorf("failed to send description_request message: %v", err)
-	}
-	if err := r.setTableMiss(); err != nil {
-		return fmt.Errorf("failed to set table_miss flow entry: %v", err)
 	}
 	// Make sure that description_reply is received before port_description_reply
 	if err := r.sendBarrierRequest(); err != nil {

@@ -697,7 +697,7 @@ func (r *Match) unmarshalTLV(data []byte) error {
 				return err
 			}
 		default:
-			return fmt.Errorf("unsupported TLV field type: %v", field)
+			// Do nothing
 		}
 
 		buf = buf[4+length:]
