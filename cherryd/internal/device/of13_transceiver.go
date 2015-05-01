@@ -11,14 +11,11 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"git.sds.co.kr/cherry.git/cherryd/internal/graph"
 	"git.sds.co.kr/cherry.git/cherryd/net/protocol"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"git.sds.co.kr/cherry.git/cherryd/openflow/of13"
 	"golang.org/x/net/context"
-	"net"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -27,12 +24,13 @@ type OF13Transceiver struct {
 	auxID uint8
 }
 
-func NewOF13Transceiver(stream *openflow.Stream, log Logger) *OF13Transceiver {
+func NewOF13Transceiver(stream *openflow.Stream, log Logger, p PacketProcessor) *OF13Transceiver {
 	v := &OF13Transceiver{
 		baseTransceiver: baseTransceiver{
-			stream:  stream,
-			log:     log,
-			version: openflow.Ver13,
+			stream:    stream,
+			log:       log,
+			version:   openflow.Ver13,
+			processor: p,
 		},
 	}
 	v.lldpExplored.Store(false)
@@ -119,11 +117,11 @@ func (r *OF13Transceiver) removeAllFlows() error {
 }
 
 func (r *OF13Transceiver) setTableMiss() error {
-	// FIXME: Is it okay to set a table-miss entry for the first table only? ONOS also does same thing..
 	packetin := of13.NewAction()
 	packetin.SetOutput(of13.OFPP_CONTROLLER)
 
 	c := &of13.FlowModConfig{
+		// FIXME: Is it okay to set a table-miss entry for the first table only? ONOS also does same thing..
 		TableID: 0,
 		// Permanent flow entry
 		IdleTimeout: 0, HardTimeout: 0,
@@ -213,7 +211,7 @@ func (r *OF13Transceiver) handlePortDescriptionReply(msg *of13.PortDescriptionRe
 		// XXX: debugging
 		r.log.Printf("Port: %+v", v)
 	}
-	r.LLDPTimer()
+	r.startLLDPTimer()
 
 	// XXX: debugging
 	{
@@ -249,7 +247,7 @@ func (r *OF13Transceiver) handlePortStatus(msg *of13.PortStatus) error {
 	// Update port status
 	r.device.setPort(msg.Port.Number(), msg.Port)
 
-	// TODO: Send this event to applications
+	// TODO: Send this event to applications using Event() method
 
 	// XXX: debugging
 	{
@@ -359,6 +357,8 @@ func (r *OF13Transceiver) handlePacketIn(msg *of13.PacketIn) error {
 	if err := eth.UnmarshalBinary(msg.Data); err != nil {
 		return err
 	}
+	// XXX: debugging
+	fmt.Printf("Ethernet: %+v", eth)
 
 	// LLDP?
 	if eth.Type == 0x88CC {
@@ -374,7 +374,7 @@ func (r *OF13Transceiver) handlePacketIn(msg *of13.PacketIn) error {
 		Hosts.add(eth.SrcMAC, p)
 	}
 	// Do nothing if LLDPs we sent are still exploring network topology.
-	if !r.IsLLDPExplored() {
+	if !r.isLLDPExplored() {
 		// XXX: debugging
 		r.log.Printf("Ignoring PACKET_IN on %v/%v due to LLDP exploring...\n", p.Node.DPID, p.Port)
 		return nil
@@ -391,94 +391,10 @@ func (r *OF13Transceiver) handlePacketIn(msg *of13.PacketIn) error {
 		r.log.Printf("PacketIn: %+v", msg)
 	}
 
-	// TODO: Send this one to plugins
-
-	// XXX: L2 MAC learning switch
-	{
-		flood := func(port uint32, data []byte) error {
-			// XXX: debugging
-			r.log.Print("Flooding..")
-
-			// Flooding
-			inPort := openflow.NewInPort()
-			inPort.SetPort(uint(port))
-			return r.flood(inPort, data)
-		}
-
-		r.log.Printf("Ethernet: %+v", eth)
-
-		// ARP request?
-		if eth.Type == 0x0806 && strings.ToUpper(eth.DstMAC.String()) == "FF:FF:FF:FF:FF:FF" {
-			// XXX: debugging
-			r.log.Print("ARP request is received..\n")
-			return flood(msg.InPort, msg.Data)
-		}
-
-		// TODO: Add test cases for hosts DB
-		dstPoint, ok := Hosts.Find(eth.DstMAC)
-		if !ok {
-			// XXX: debugging
-			r.log.Printf("Failed to find the destination MAC: %v\n", eth.DstMAC)
-			return flood(msg.InPort, msg.Data)
-		}
-		path := Switches.graph.FindPath(r.device, dstPoint.Node)
-		// Empty path means the destination is not connected with this device that sent PACKET_IN.
-		if len(path) == 0 {
-			// XXX: debugging
-			r.log.Printf("We don't know the path to the destintion: %v\n", eth.DstMAC)
-			// FIXME: Flood? or Drop?
-			return flood(msg.InPort, msg.Data)
-		}
-		// Install flows bidirectionally in all switches on the path
-		inPort := msg.InPort
-		for _, v := range path {
-			src, dst := getPoint(v)
-			r.installFlowRule(inPort, eth.SrcMAC, eth.DstMAC, src)
-			r.installFlowRule(src.Port, eth.DstMAC, eth.SrcMAC, &Point{src.Node, inPort})
-			inPort = dst.Port
-		}
-		// TODO: Remove flows when the port, which is used in the flow, is removed
-
-		// XXX: debugging
-		r.log.Printf("Sending PACKET_OUT to %v..\n", eth.DstMAC)
-
-		// PacketOut on the final destination switch
-		action := dstPoint.Node.NewAction()
-		action.SetOutput(uint(dstPoint.Port))
-		return dstPoint.Node.PacketOut(openflow.NewInPort(), action, msg.Data)
+	if r.processor == nil {
+		return nil
 	}
-
-	return nil
-}
-
-func getPoint(path graph.Path) (src, dst *Point) {
-	device := path.V.(*Device)
-	edge := path.E.(*Edge)
-	if edge.p1.Node.ID() == device.ID() {
-		return edge.p1, edge.p2
-	}
-	return edge.p2, edge.p1
-}
-
-func (r *OF13Transceiver) installFlowRule(inPort uint32, src, dst net.HardwareAddr, p *Point) error {
-	match := p.Node.NewMatch()
-	match.SetInPort(inPort)
-	match.SetSrcMAC(src)
-	match.SetDstMAC(dst)
-	return r._installFlowRule(match, p)
-}
-
-func (r *OF13Transceiver) _installFlowRule(match openflow.Match, p *Point) error {
-	action := p.Node.NewAction()
-	action.SetOutput(uint(p.Port))
-	c := FlowModConfig{
-		IdleTimeout: 30,
-		Priority:    10,
-		Match:       match,
-		Action:      action,
-	}
-
-	return p.Node.InstallFlowRule(c)
+	return r.processor.Run(eth, p)
 }
 
 func (r *OF13Transceiver) handleMessage(msg openflow.Incoming) error {

@@ -21,12 +21,13 @@ type OF10Transceiver struct {
 	baseTransceiver
 }
 
-func NewOF10Transceiver(stream *openflow.Stream, log Logger) *OF10Transceiver {
+func NewOF10Transceiver(stream *openflow.Stream, log Logger, p PacketProcessor) *OF10Transceiver {
 	v := &OF10Transceiver{
 		baseTransceiver: baseTransceiver{
-			stream:  stream,
-			log:     log,
-			version: openflow.Ver10,
+			stream:    stream,
+			log:       log,
+			version:   openflow.Ver10,
+			processor: p,
 		},
 	}
 	v.lldpExplored.Store(false)

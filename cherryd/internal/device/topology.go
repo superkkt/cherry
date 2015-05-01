@@ -60,6 +60,10 @@ func (r *Topology) Get(dpid uint64) *Device {
 	return r.pool[dpid]
 }
 
+func (r *Topology) FindPath(src, dst *Device) []graph.Path {
+	return r.graph.FindPath(src, dst)
+}
+
 type HostPool struct {
 	mutex sync.Mutex
 	mac   map[string]Point

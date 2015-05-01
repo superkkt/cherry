@@ -43,6 +43,11 @@ type baseTransceiver struct {
 	device       *Device
 	version      uint8
 	lldpExplored atomic.Value
+	processor    PacketProcessor
+}
+
+type PacketProcessor interface {
+	Run(eth *protocol.Ethernet, ingress Point) error
 }
 
 func (r *baseTransceiver) getTransactionID() uint32 {
@@ -142,11 +147,11 @@ func (r *baseTransceiver) pinger(ctx context.Context, version uint8) {
 	}
 }
 
-func (r *baseTransceiver) IsLLDPExplored() bool {
+func (r *baseTransceiver) isLLDPExplored() bool {
 	return r.lldpExplored.Load().(bool)
 }
 
-func (r *baseTransceiver) LLDPTimer() {
+func (r *baseTransceiver) startLLDPTimer() {
 	// We will serve PACKET_IN after n seconds to make sure LLDPs explore whole network topology.
 	go func() {
 		time.Sleep(2 * time.Second)
@@ -154,7 +159,7 @@ func (r *baseTransceiver) LLDPTimer() {
 	}()
 }
 
-func NewTransceiver(conn net.Conn, log Logger) (Transceiver, error) {
+func NewTransceiver(conn net.Conn, log Logger, p PacketProcessor) (Transceiver, error) {
 	stream := openflow.NewStream(conn)
 	stream.SetReadTimeout(5 * time.Second)
 	msg, err := openflow.ReadMessage(stream)
@@ -168,8 +173,8 @@ func NewTransceiver(conn net.Conn, log Logger) (Transceiver, error) {
 	}
 
 	if msg.Version() < openflow.Ver13 {
-		return NewOF10Transceiver(stream, log), nil
+		return NewOF10Transceiver(stream, log, p), nil
 	} else {
-		return NewOF13Transceiver(stream, log), nil
+		return NewOF13Transceiver(stream, log, p), nil
 	}
 }

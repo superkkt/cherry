@@ -30,7 +30,7 @@ func (r Point) Compare(p Point) bool {
 }
 
 type Edge struct {
-	p1, p2 *Point
+	P1, P2 *Point
 	weight float64
 }
 
@@ -40,15 +40,15 @@ func newEdge(p1, p2 *Point, weight float64) *Edge {
 	}
 
 	return &Edge{
-		p1:     p1,
-		p2:     p2,
+		P1:     p1,
+		P2:     p2,
 		weight: weight,
 	}
 }
 
 func (r Edge) ID() string {
-	first := r.p1
-	second := r.p2
+	first := r.P1
+	second := r.P2
 	if first.Node.DPID > second.Node.DPID {
 		first, second = second, first
 	}
@@ -57,7 +57,7 @@ func (r Edge) ID() string {
 }
 
 func (r Edge) Points() [2]graph.Point {
-	return [2]graph.Point{r.p1, r.p2}
+	return [2]graph.Point{r.P1, r.P2}
 }
 
 func (r Edge) Weight() float64 {
