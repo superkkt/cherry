@@ -102,7 +102,7 @@ func (r *OF13Transceiver) flood(inPort openflow.InPort, data []byte) error {
 	}
 
 	action := of13.NewAction()
-	action.SetOutput(of13.OFPP_ALL)
+	action.SetOutput(of13.OFPP_FLOOD)
 	msg := of13.NewPacketOut(r.getTransactionID(), inPort, action, data)
 	return openflow.WriteMessage(r.stream, msg)
 }
