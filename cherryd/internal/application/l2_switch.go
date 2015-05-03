@@ -35,16 +35,18 @@ func isARPRequest(eth *protocol.Ethernet) bool {
 	return eth.Type == 0x0806 && strings.ToUpper(eth.DstMAC.String()) == "FF:FF:FF:FF:FF:FF"
 }
 
-func (r *l2Switch) run(eth *protocol.Ethernet, ingress device.Point) (drop bool, err error) {
-	flood := func(port uint32, data []byte) error {
-		// XXX: debugging
-		fmt.Print("Flooding..")
+func flood(node *device.Device, port uint32, data []byte) error {
+	// XXX: debugging
+	fmt.Print("Flooding..")
 
-		// Flooding
-		v := openflow.NewInPort()
-		v.SetPort(uint(port))
-		return ingress.Node.Flood(v, data)
-	}
+	// Flooding
+	v := openflow.NewInPort()
+	v.SetPort(uint(port))
+	return node.Flood(v, data)
+}
+
+// TODO: Remove flows when the port, which is used in the flow, is removed
+func (r *l2Switch) run(eth *protocol.Ethernet, ingress device.Point) (drop bool, err error) {
 
 	// FIXME: Is it better to get the raw packet as an input parameter?
 	packet, err := eth.MarshalBinary()
@@ -55,41 +57,28 @@ func (r *l2Switch) run(eth *protocol.Ethernet, ingress device.Point) (drop bool,
 	if isARPRequest(eth) {
 		// XXX: debugging
 		fmt.Print("ARP request is received..\n")
-		return true, flood(ingress.Port, packet)
+		return true, flood(ingress.Node, ingress.Port, packet)
 	}
 
 	// TODO: Add test cases for hosts DB
-	dstPoint, ok := device.Hosts.Find(eth.DstMAC)
+	destination, ok := device.Hosts.Find(eth.DstMAC)
 	if !ok {
 		// XXX: debugging
 		fmt.Printf("Failed to find the destination MAC: %v\n", eth.DstMAC)
-		return true, flood(ingress.Port, packet)
+		return true, flood(ingress.Node, ingress.Port, packet)
 	}
-	path := device.Switches.FindPath(ingress.Node, dstPoint.Node)
-	// Empty path means the destination is not connected with this device that sent PACKET_IN.
-	if len(path) == 0 {
-		// XXX: debugging
-		fmt.Printf("We don't know the path to the destintion: %v\n", eth.DstMAC)
-		// FIXME: Flood? or Drop?
-		return true, flood(ingress.Port, packet)
+
+	if err := installFlowRule(eth, ingress, destination); err != nil {
+		return false, err
 	}
-	// Install flows bidirectionally in all switches on the path
-	inPort := ingress.Port
-	for _, v := range path {
-		src, dst := getPoint(v)
-		installFlowRule(inPort, eth.SrcMAC, eth.DstMAC, src)
-		installFlowRule(src.Port, eth.DstMAC, eth.SrcMAC, &device.Point{src.Node, inPort})
-		inPort = dst.Port
-	}
-	// TODO: Remove flows when the port, which is used in the flow, is removed
 
 	// XXX: debugging
 	fmt.Printf("Sending PACKET_OUT to %v..\n", eth.DstMAC)
 
 	// PacketOut on the final destination switch
-	action := dstPoint.Node.NewAction()
-	action.SetOutput(uint(dstPoint.Port))
-	return true, dstPoint.Node.PacketOut(openflow.NewInPort(), action, packet)
+	action := destination.Node.NewAction()
+	action.SetOutput(uint(destination.Port))
+	return true, destination.Node.PacketOut(openflow.NewInPort(), action, packet)
 }
 
 func getPoint(path graph.Path) (src, dst *device.Point) {
@@ -101,17 +90,47 @@ func getPoint(path graph.Path) (src, dst *device.Point) {
 	return edge.P2, edge.P1
 }
 
-func installFlowRule(inPort uint32, src, dst net.HardwareAddr, p *device.Point) error {
-	match := p.Node.NewMatch()
-	match.SetInPort(inPort)
-	match.SetSrcMAC(src)
-	match.SetDstMAC(dst)
-	return _installFlowRule(match, p)
+func installFlowRule(eth *protocol.Ethernet, ingress, destination device.Point) error {
+	// src and dst nodes are on same node?
+	if ingress.Node.DPID == destination.Node.DPID {
+		if err := _installFlowRule(ingress.Port, eth.SrcMAC, eth.DstMAC, &destination); err != nil {
+			return err
+		}
+		return _installFlowRule(destination.Port, eth.DstMAC, eth.SrcMAC, &ingress)
+	}
+
+	path := device.Switches.FindPath(ingress.Node, destination.Node)
+	// Empty path means the destination is not connected with this device that sent PACKET_IN.
+	if len(path) == 0 {
+		// XXX: debugging
+		fmt.Printf("We don't know the path to the destintion: %v\n", eth.DstMAC)
+		// FIXME: Is this an error?
+		return nil
+	}
+	// Install flows bidirectionally in all switches on the path
+	inPort := ingress.Port
+	for _, v := range path {
+		src, dst := getPoint(v)
+		if err := _installFlowRule(inPort, eth.SrcMAC, eth.DstMAC, src); err != nil {
+			return err
+		}
+		if err := _installFlowRule(src.Port, eth.DstMAC, eth.SrcMAC, &device.Point{src.Node, inPort}); err != nil {
+			return err
+		}
+		inPort = dst.Port
+	}
+
+	return nil
 }
 
-func _installFlowRule(match openflow.Match, p *device.Point) error {
-	action := p.Node.NewAction()
-	action.SetOutput(uint(p.Port))
+func _installFlowRule(inPort uint32, srcMAC, dstMAC net.HardwareAddr, destination *device.Point) error {
+	match := destination.Node.NewMatch()
+	match.SetInPort(inPort)
+	match.SetSrcMAC(srcMAC)
+	match.SetDstMAC(dstMAC)
+
+	action := destination.Node.NewAction()
+	action.SetOutput(uint(destination.Port))
 	c := device.FlowModConfig{
 		IdleTimeout: 30,
 		Priority:    10,
@@ -119,5 +138,5 @@ func _installFlowRule(match openflow.Match, p *device.Point) error {
 		Action:      action,
 	}
 
-	return p.Node.InstallFlowRule(c)
+	return destination.Node.InstallFlowRule(c)
 }
