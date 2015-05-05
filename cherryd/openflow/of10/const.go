@@ -146,7 +146,9 @@ const (
 )
 
 const (
+	OFPP_MAX        = 0xff00
 	OFPP_TABLE      = 0xfff9
+	OFPP_FLOOD      = 0xfffb
 	OFPP_ALL        = 0xfffc
 	OFPP_CONTROLLER = 0xfffd
 	OFPP_NONE       = 0xffff

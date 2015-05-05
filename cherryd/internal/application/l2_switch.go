@@ -37,7 +37,7 @@ func isARPRequest(eth *protocol.Ethernet) bool {
 
 func flood(node *device.Device, port uint32, data []byte) error {
 	// XXX: debugging
-	fmt.Print("Flooding..")
+	fmt.Print("Flooding..\n")
 
 	// Flooding
 	v := openflow.NewInPort()

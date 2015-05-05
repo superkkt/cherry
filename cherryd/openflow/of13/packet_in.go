@@ -23,6 +23,18 @@ type PacketIn struct {
 	Data     []byte
 }
 
+func (r *PacketIn) GetBufferID() uint32 {
+	return r.BufferID
+}
+
+func (r *PacketIn) GetInPort() uint32 {
+	return r.InPort
+}
+
+func (r *PacketIn) GetData() []byte {
+	return r.Data
+}
+
 func (r *PacketIn) UnmarshalBinary(data []byte) error {
 	if err := r.Message.UnmarshalBinary(data); err != nil {
 		return err

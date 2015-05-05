@@ -8,14 +8,11 @@
 package device
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
-	"git.sds.co.kr/cherry.git/cherryd/net/protocol"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"git.sds.co.kr/cherry.git/cherryd/openflow/of13"
 	"golang.org/x/net/context"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -98,7 +95,7 @@ func (r *OF13Transceiver) packetOut(inport openflow.InPort, action openflow.Acti
 
 func (r *OF13Transceiver) flood(inPort openflow.InPort, data []byte) error {
 	if r.device == nil {
-		panic("OF13Transceiver: flood on nil device")
+		panic("flood on nil device")
 	}
 
 	action := of13.NewAction()
@@ -220,22 +217,6 @@ func (r *OF13Transceiver) handleDescriptionReply(msg *of13.DescriptionReply) err
 	return nil
 }
 
-func (r *OF13Transceiver) sendLLDP(port openflow.Port) error {
-	lldp, err := r.newLLDPEtherFrame(port)
-	if err != nil {
-		return err
-	}
-	action := of13.NewAction()
-	action.SetOutput(port.Number())
-	inport := openflow.NewInPort()
-	inport.SetPort(of13.OFPP_ANY)
-	if err := r.packetOut(inport, action, lldp); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (r *OF13Transceiver) handlePortDescriptionReply(msg *of13.PortDescriptionReply) error {
 	if r.device == nil {
 		r.log.Printf("we got port_description_reply before description_reply!")
@@ -277,35 +258,9 @@ func (r *OF13Transceiver) handlePortStatus(msg *of13.PortStatus) error {
 		return nil
 	}
 
-	if msg.Port.IsPortDown() || msg.Port.IsLinkDown() {
-		p := Point{r.device, uint32(msg.Port.Number())}
-		// Recalculate minimum spanning tree
-		Switches.graph.RemoveEdge(p)
-		// Remove learned MAC address
-		Hosts.remove(p)
-	} else {
-		// Update device graph by sending an LLDP packet
-		if err := r.sendLLDP(msg.Port); err != nil {
-			return err
-		}
-	}
-	// Update port status
-	r.device.setPort(msg.Port.Number(), msg.Port)
-
 	// TODO: Send this event to applications using Event() method
 
-	// XXX: debugging
-	{
-		r.log.Printf("PortStatus: %+v, Port: %+v", msg, *msg.Port)
-		if msg.Port.IsPortDown() {
-			fmt.Printf("PortDown: %v/%v\n", r.device.DPID, msg.Port.Number())
-		}
-		if msg.Port.IsLinkDown() {
-			fmt.Printf("LinkDown: %v/%v\n", r.device.DPID, msg.Port.Number())
-		}
-	}
-
-	return nil
+	return r.updatePortStatus(msg.Port)
 }
 
 func (r *OF13Transceiver) handleFlowRemoved(msg *of13.FlowRemoved) error {
@@ -317,129 +272,15 @@ func (r *OF13Transceiver) handleFlowRemoved(msg *of13.FlowRemoved) error {
 	return nil
 }
 
-func isOurLLDP(p *protocol.LLDP) bool {
-	// We sent a LLDP packet that has ChassisID.SubType=7, PortID.SubType=5,
-	// and port ID starting with "cherry/".
-	if p.ChassisID.SubType != 7 || p.ChassisID.Data == nil {
-		// Do nothing if this packet is not the one we sent
-		return false
-	}
-	if p.PortID.SubType != 5 || p.PortID.Data == nil {
-		return false
-	}
-	if len(p.PortID.Data) <= 7 || !bytes.HasPrefix(p.PortID.Data, []byte("cherry/")) {
-		return false
-	}
-
-	return true
-}
-
-func getDeviceInfo(p *protocol.LLDP) (dpid uint64, port uint32, err error) {
-	dpid, err = strconv.ParseUint(string(p.ChassisID.Data), 10, 64)
-	if err != nil {
-		return 0, 0, err
-	}
-	// PortID.Data string consists of "cherry/" and port number
-	portID, err := strconv.ParseUint(string(p.PortID.Data[7:]), 10, 32)
-	if err != nil {
-		return 0, 0, err
-	}
-
-	return dpid, uint32(portID), nil
-}
-
-func (r *OF13Transceiver) handleLLDP(msg *of13.PacketIn, eth *protocol.Ethernet) error {
-	// XXX: debugging
-	r.log.Printf("LLDP is received: %+v", eth)
-
-	if r.device == nil {
-		return errors.New("handleLLDP: nil device")
-	}
-
-	lldp := new(protocol.LLDP)
-	if err := lldp.UnmarshalBinary(eth.Payload); err != nil {
-		return err
-	}
-	// XXX: debugging
-	r.log.Printf("LLDP: %+v\n", lldp)
-
-	if isOurLLDP(lldp) == false {
-		// Do nothing if this packet is not the one we sent
-		return nil
-	}
-	dpid, portNum, err := getDeviceInfo(lldp)
-	if err != nil {
-		// Do nothing if this packet is not the one we sent
-		return nil
-	}
-
-	neighbor := Switches.Get(dpid)
-	if neighbor == nil {
-		// XXX: debugging
-		r.log.Print("NIL neighbor..\n")
-		return nil
-	}
-	port, ok := r.device.Port(uint(msg.InPort))
-	if !ok {
-		// XXX: debugging
-		r.log.Print("NIL port..\n")
-		return nil
-	}
-
-	p1 := &Point{r.device, msg.InPort}
-	p2 := &Point{neighbor, uint32(portNum)}
-	edge := newEdge(p1, p2, calculateEdgeWeight(port.Speed()))
-	Switches.graph.AddEdge(edge)
-
-	// XXX: debugging
-	fmt.Printf("LLDP from %v:%v, Edge ID=%v\n", dpid, portNum, edge.ID())
-
-	return nil
-}
-
 func (r *OF13Transceiver) handlePacketIn(msg *of13.PacketIn) error {
-	eth := new(protocol.Ethernet)
-	if err := eth.UnmarshalBinary(msg.Data); err != nil {
-		return err
-	}
-	// XXX: debugging
-	fmt.Printf("Ethernet: %+v", eth)
-
-	// LLDP?
-	if eth.Type == 0x88CC {
-		if err := r.handleLLDP(msg, eth); err != nil {
-			return err
-		}
-		return nil
-	}
-
-	p := Point{r.device, msg.InPort}
-	// MAC learning if we are not on an edge between switches
-	if !Switches.graph.IsEdge(p) {
-		Hosts.add(eth.SrcMAC, p)
-	}
-	// Do nothing if LLDPs we sent are still exploring network topology.
-	if !r.isLLDPExplored() {
-		// XXX: debugging
-		r.log.Printf("Ignoring PACKET_IN on %v/%v due to LLDP exploring...\n", p.Node.DPID, p.Port)
-		return nil
-	}
-	// Do nothing if the ingress port is an edge between switches and is disabled by STP.
-	if Switches.graph.IsEdge(p) && !Switches.graph.IsEnabledPoint(p) {
-		// XXX: debugging
-		r.log.Printf("Ignoring PACKET_IN on %v/%v due to disabled port by STP...\n", p.Node.DPID, p.Port)
-		return nil
-	}
+	r.handleIncoming(msg.InPort, msg.Data)
 
 	// XXX: debugging
 	{
 		r.log.Printf("PacketIn: %+v", msg)
 	}
 
-	if r.processor == nil {
-		return nil
-	}
-	return r.processor.Run(eth, p)
+	return nil
 }
 
 func (r *OF13Transceiver) handleMessage(msg openflow.Incoming) error {

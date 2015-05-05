@@ -13,7 +13,6 @@ import (
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"git.sds.co.kr/cherry.git/cherryd/openflow/of10"
 	"golang.org/x/net/context"
-	"net"
 	"time"
 )
 
@@ -77,9 +76,15 @@ func (r *OF10Transceiver) packetOut(inport openflow.InPort, action openflow.Acti
 	return openflow.WriteMessage(r.stream, msg)
 }
 
-// TODO: Implement this function
 func (r *OF10Transceiver) flood(inPort openflow.InPort, data []byte) error {
-	return nil
+	if r.device == nil {
+		panic("flood on nil device")
+	}
+
+	action := of10.NewAction()
+	action.SetOutput(of10.OFPP_FLOOD)
+	msg := of10.NewPacketOut(r.getTransactionID(), inPort, action, data)
+	return openflow.WriteMessage(r.stream, msg)
 }
 
 func (r *OF10Transceiver) newMatch() openflow.Match {
@@ -102,50 +107,20 @@ func (r *OF10Transceiver) handleFeaturesReply(msg *of10.FeaturesReply) error {
 	r.device.NumTables = uint(msg.NumTables)
 	r.device.addTransceiver(0, r)
 
-	if msg.Capabilities.OFPC_STP == true {
-		// TODO: Disable STP on all ports
-	}
 	for _, v := range msg.Ports {
+		// Reserved port?
+		if v.Number() > of10.OFPP_MAX {
+			continue
+		}
+		// Add new port information
 		r.device.setPort(uint(v.Number()), v)
+		if err := r.sendLLDP(v); err != nil {
+			return err
+		}
 		// XXX: debugging
 		r.log.Printf("Port: %+v", v)
 	}
-
-	// XXX: debugging
-	{
-		r.log.Printf("FeaturesReply: %+v", msg)
-
-		getconfig := of10.NewGetConfigRequest(r.getTransactionID())
-		if err := openflow.WriteMessage(r.stream, getconfig); err != nil {
-			return err
-		}
-
-		match := r.newMatch()
-		match.SetInPort(10)
-		action := r.newAction()
-		action.SetOutput(5)
-		mac, err := net.ParseMAC("3c:07:54:6f:70:b5")
-		if err != nil {
-			panic("invalid MAC address")
-		}
-		action.SetDstMAC(mac)
-		conf := FlowModConfig{
-			IdleTimeout: 20,
-			Priority:    10,
-			Match:       match,
-			Action:      action,
-		}
-		if err := r.addFlowMod(conf); err != nil {
-			return err
-		}
-
-		action = r.newAction()
-		action.SetOutput(15)
-		lldp := []byte{0x01, 0x80, 0xc2, 0x00, 0x00, 0x0e, 0x00, 0x01, 0xe8, 0xd8, 0x0f, 0x32, 0x88, 0xcc, 0x02, 0x07, 0x04, 0x00, 0x01, 0xe8, 0xd8, 0x0f, 0x25, 0x04, 0x06, 0x05, 0x73, 0x77, 0x70, 0x31, 0x33, 0x06, 0x02, 0x00, 0x78, 0x0a, 0x07, 0x63, 0x75, 0x6d, 0x75, 0x6c, 0x75, 0x73, 0x0c, 0x34, 0x43, 0x75, 0x6d, 0x75, 0x6c, 0x75, 0x73, 0x20, 0x4c, 0x69, 0x6e, 0x75, 0x78, 0x20, 0x76, 0x65, 0x72, 0x73, 0x69, 0x6f, 0x6e, 0x20, 0x32, 0x2e, 0x35, 0x2e, 0x31, 0x20, 0x72, 0x75, 0x6e, 0x6e, 0x69, 0x6e, 0x67, 0x20, 0x6f, 0x6e, 0x20, 0x64, 0x6e, 0x69, 0x20, 0x65, 0x74, 0x2d, 0x37, 0x34, 0x34, 0x38, 0x62, 0x66, 0x0e, 0x04, 0x00, 0x14, 0x00, 0x14, 0x08, 0x05, 0x73, 0x77, 0x70, 0x31, 0x33, 0x00, 0x00}
-		if err := r.packetOut(openflow.NewInPort(), action, lldp); err != nil {
-			return err
-		}
-	}
+	r.startLLDPTimer()
 
 	return nil
 }
@@ -184,15 +159,10 @@ func (r *OF10Transceiver) handlePortStatus(msg *of10.PortStatus) error {
 		r.log.Print("PortStatus is received, but we don't have a switch device yet!")
 		return nil
 	}
-	// Update port status
-	r.device.setPort(msg.Port.Number(), msg.Port)
 
-	// XXX: debugging
-	{
-		r.log.Printf("PortStatus: %+v, Port: %+v", msg, *msg.Port)
-	}
+	// TODO: Send this event to applications using Event() method
 
-	return nil
+	return r.updatePortStatus(msg.Port)
 }
 
 func (r *OF10Transceiver) handleFlowRemoved(msg *of10.FlowRemoved) error {
@@ -205,6 +175,8 @@ func (r *OF10Transceiver) handleFlowRemoved(msg *of10.FlowRemoved) error {
 }
 
 func (r *OF10Transceiver) handlePacketIn(msg *of10.PacketIn) error {
+	r.handleIncoming(uint32(msg.InPort), msg.Data)
+
 	// XXX: debugging
 	{
 		r.log.Printf("PacketIn: %+v", msg)
@@ -275,6 +247,7 @@ func (r *OF10Transceiver) init() error {
 
 func (r *OF10Transceiver) Run(ctx context.Context) {
 	defer r.cleanup()
+
 	r.stream.SetReadTimeout(1 * time.Second)
 	r.stream.SetWriteTimeout(5 * time.Second)
 	if err := r.init(); err != nil {
