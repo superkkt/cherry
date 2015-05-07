@@ -10,7 +10,6 @@ package protocol
 import (
 	"encoding/binary"
 	"errors"
-	"hash/crc32"
 	"net"
 )
 
@@ -20,7 +19,7 @@ type Ethernet struct {
 	Payload        []byte
 }
 
-func (r *Ethernet) MarshalBinary() ([]byte, error) {
+func (r Ethernet) MarshalBinary() ([]byte, error) {
 	if r.SrcMAC == nil || r.DstMAC == nil {
 		return nil, errors.New("invalid MAC address")
 	}
@@ -28,7 +27,7 @@ func (r *Ethernet) MarshalBinary() ([]byte, error) {
 		return nil, errors.New("nil payload")
 	}
 
-	length := 64
+	length := 60
 	if len(r.Payload) > 46 {
 		length += len(r.Payload) - 46
 	}
@@ -38,7 +37,6 @@ func (r *Ethernet) MarshalBinary() ([]byte, error) {
 	copy(v[6:12], r.SrcMAC)
 	binary.BigEndian.PutUint16(v[12:14], r.Type)
 	copy(v[14:], r.Payload)
-	binary.BigEndian.PutUint32(v[length-4:], crc32.ChecksumIEEE(v[0:length-4]))
 
 	return v, nil
 }

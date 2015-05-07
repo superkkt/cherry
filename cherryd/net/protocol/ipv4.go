@@ -54,7 +54,7 @@ func NewIPv4(src, dst net.IP, protocol uint8, payload []byte) *IPv4 {
 		IHL:     5,                         // 20 bytes
 		Length:  uint16(len(payload) + 20), // Payload + Header
 		// FIXME: Should we set ID as a random number?
-		Flags:    1, // Don't Fragment
+		Flags:    0x2, // Don't Fragment
 		TTL:      64,
 		Protocol: protocol,
 		SrcIP:    src,
@@ -63,36 +63,7 @@ func NewIPv4(src, dst net.IP, protocol uint8, payload []byte) *IPv4 {
 	}
 }
 
-func aroundCarry(sum uint32) uint32 {
-	v := sum
-	for {
-		if (v >> 16) == 0 {
-			break
-		}
-		upper := (v >> 16) & 0xFFFF
-		lower := v & 0xFFFF
-		v = upper + lower
-	}
-
-	return v
-}
-
-func calculateIPv4Checksum(header []byte) (uint16, error) {
-	length := len(header)
-	if length%2 != 0 {
-		return 0, errors.New("invalid IPv4 header length")
-	}
-
-	var sum uint32 = 0
-	for i := 0; i < length; i += 2 {
-		sum += uint32(binary.BigEndian.Uint16(header[i : i+2]))
-	}
-	sum = aroundCarry(sum)
-
-	return ^uint16(sum), nil
-}
-
-func (r *IPv4) MarshalBinary() ([]byte, error) {
+func (r IPv4) MarshalBinary() ([]byte, error) {
 	if r.SrcIP == nil || r.DstIP == nil {
 		return nil, errors.New("nil IP address")
 	}
@@ -109,10 +80,7 @@ func (r *IPv4) MarshalBinary() ([]byte, error) {
 	copy(header[12:16], r.SrcIP)
 	copy(header[16:20], r.DstIP)
 
-	checksum, err := calculateIPv4Checksum(header)
-	if err != nil {
-		return nil, err
-	}
+	checksum := calculateChecksum(header)
 	binary.BigEndian.PutUint16(header[10:12], checksum)
 
 	if r.Payload == nil {

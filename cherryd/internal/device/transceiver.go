@@ -291,7 +291,7 @@ func (r *baseTransceiver) handleIncoming(inPort uint32, packet []byte) error {
 		return err
 	}
 	// XXX: debugging
-	fmt.Printf("Ethernet: %+v", eth)
+	fmt.Printf("Ethernet: %+v\n", eth)
 
 	// LLDP?
 	if eth.Type == 0x88CC {

@@ -8,6 +8,7 @@
 package application
 
 import (
+	"fmt"
 	"git.sds.co.kr/cherry.git/cherryd/internal/device"
 	"git.sds.co.kr/cherry.git/cherryd/net/protocol"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
@@ -52,12 +53,7 @@ func makeARPReply(request *protocol.ARP) ([]byte, error) {
 	return eth.MarshalBinary()
 }
 
-func (r virtualRouter) run(eth *protocol.Ethernet, ingress device.Point) (drop bool, err error) {
-	// ARP?
-	if eth.Type != 0x0806 {
-		return false, nil
-	}
-
+func handleARP(eth *protocol.Ethernet, ingress device.Point) (drop bool, err error) {
 	arp := new(protocol.ARP)
 	if err := arp.UnmarshalBinary(eth.Payload); err != nil {
 		return false, err
@@ -78,4 +74,70 @@ func (r virtualRouter) run(eth *protocol.Ethernet, ingress device.Point) (drop b
 	action.SetOutput(uint(ingress.Port))
 
 	return true, ingress.Node.PacketOut(openflow.NewInPort(), action, reply)
+}
+
+func makeICMPEchoReply(src, dst net.IP, req *protocol.ICMPEcho) ([]byte, error) {
+	reply, err := protocol.NewICMPEchoReply(req.ID, req.Sequence, req.Payload).MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+
+	ip, err := protocol.NewIPv4(src, dst, 1, reply).MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+
+	return ip, nil
+}
+
+func handleIPv4(eth *protocol.Ethernet, ingress device.Point) (drop bool, err error) {
+	fmt.Printf("Receiving IPv4 packet..\n")
+	ip := new(protocol.IPv4)
+	if err := ip.UnmarshalBinary(eth.Payload); err != nil {
+		return false, err
+	}
+	fmt.Printf("IPv4: %+v\n", ip)
+
+	// ICMP to 10.0.0.254?
+	if ip.Protocol != 1 || !ip.DstIP.Equal(net.IPv4(10, 0, 0, 254)) {
+		return false, nil
+	}
+
+	icmp := new(protocol.ICMPEcho)
+	if err := icmp.UnmarshalBinary(ip.Payload); err != nil {
+		return false, err
+	}
+	reply, err := makeICMPEchoReply(ip.DstIP, ip.SrcIP, icmp)
+	if err != nil {
+		return false, err
+	}
+
+	v, err := protocol.Ethernet{
+		SrcMAC:  eth.DstMAC,
+		DstMAC:  eth.SrcMAC,
+		Type:    0x0800,
+		Payload: reply,
+	}.MarshalBinary()
+	if err != nil {
+		return false, err
+	}
+
+	action := ingress.Node.NewAction()
+	action.SetOutput(uint(ingress.Port))
+
+	return true, ingress.Node.PacketOut(openflow.NewInPort(), action, v)
+}
+
+func (r virtualRouter) run(eth *protocol.Ethernet, ingress device.Point) (drop bool, err error) {
+	switch eth.Type {
+	// ARP
+	case 0x0806:
+		return handleARP(eth, ingress)
+	// IPv4
+	case 0x0800:
+		return handleIPv4(eth, ingress)
+	default:
+		return false, nil
+	}
+
 }
