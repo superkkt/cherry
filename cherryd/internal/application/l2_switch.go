@@ -47,7 +47,6 @@ func flood(node *device.Device, port uint32, data []byte) error {
 
 // TODO: Remove flows when the port, which is used in the flow, is removed
 func (r *l2Switch) run(eth *protocol.Ethernet, ingress device.Point) (drop bool, err error) {
-
 	// FIXME: Is it better to get the raw packet as an input parameter?
 	packet, err := eth.MarshalBinary()
 	if err != nil {
@@ -91,12 +90,30 @@ func getPoint(path graph.Path) (src, dst *device.Point) {
 }
 
 func installFlowRule(eth *protocol.Ethernet, ingress, destination device.Point) error {
+	// XXX: HP 2920 only does not support Dst. MAC as a packet matching column,
+	// so we implement this L2 MAC learning switch based on L3 IP addresses instead of L2 MAC addresses.
+	if eth.Type != 0x0800 {
+		return nil
+	}
+	ip := new(protocol.IPv4)
+	if err := ip.UnmarshalBinary(eth.Payload); err != nil {
+		return err
+	}
+	srcIP := &net.IPNet{
+		IP:   ip.SrcIP,
+		Mask: net.IPv4Mask(0, 0, 0, 0),
+	}
+	dstIP := &net.IPNet{
+		IP:   ip.DstIP,
+		Mask: net.IPv4Mask(0, 0, 0, 0),
+	}
+
 	// src and dst nodes are on same node?
 	if ingress.Node.DPID == destination.Node.DPID {
-		if err := _installFlowRule(ingress.Port, eth.SrcMAC, eth.DstMAC, &destination); err != nil {
+		if err := _installFlowRule(ingress.Port, eth.Type, srcIP, dstIP, &destination); err != nil {
 			return err
 		}
-		return _installFlowRule(destination.Port, eth.DstMAC, eth.SrcMAC, &ingress)
+		return _installFlowRule(destination.Port, eth.Type, dstIP, srcIP, &ingress)
 	}
 
 	path := device.Switches.FindPath(ingress.Node, destination.Node)
@@ -111,10 +128,10 @@ func installFlowRule(eth *protocol.Ethernet, ingress, destination device.Point) 
 	inPort := ingress.Port
 	for _, v := range path {
 		src, dst := getPoint(v)
-		if err := _installFlowRule(inPort, eth.SrcMAC, eth.DstMAC, src); err != nil {
+		if err := _installFlowRule(inPort, eth.Type, srcIP, dstIP, src); err != nil {
 			return err
 		}
-		if err := _installFlowRule(src.Port, eth.DstMAC, eth.SrcMAC, &device.Point{src.Node, inPort}); err != nil {
+		if err := _installFlowRule(src.Port, eth.Type, dstIP, srcIP, &device.Point{src.Node, inPort}); err != nil {
 			return err
 		}
 		inPort = dst.Port
@@ -123,11 +140,12 @@ func installFlowRule(eth *protocol.Ethernet, ingress, destination device.Point) 
 	return nil
 }
 
-func _installFlowRule(inPort uint32, srcMAC, dstMAC net.HardwareAddr, destination *device.Point) error {
+func _installFlowRule(inPort uint32, etherType uint16, srcIP, dstIP *net.IPNet, destination *device.Point) error {
 	match := destination.Node.NewMatch()
 	match.SetInPort(inPort)
-	match.SetSrcMAC(srcMAC)
-	match.SetDstMAC(dstMAC)
+	match.SetEtherType(etherType)
+	match.SetSrcIP(srcIP)
+	match.SetDstIP(dstIP)
 
 	action := destination.Node.NewAction()
 	action.SetOutput(uint(destination.Port))

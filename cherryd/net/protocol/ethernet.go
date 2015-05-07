@@ -57,6 +57,7 @@ func (r *Ethernet) UnmarshalBinary(data []byte) error {
 	} else {
 		r.Payload = data[14:]
 	}
+	// FIXME: Add routines for JumboFrame
 
 	return nil
 }

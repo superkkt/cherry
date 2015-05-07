@@ -167,22 +167,46 @@ func isHP2920_24G(msg *of13.DescriptionReply) bool {
 	return strings.HasPrefix(msg.Manufacturer, "HP") && strings.HasPrefix(msg.Hardware, "2920-24G")
 }
 
+func isAS460054_T(msg *of13.DescriptionReply) bool {
+	return strings.Contains(msg.Hardware, "AS4600-54T")
+}
+
 func (r *OF13Transceiver) setHP2920TableMiss() error {
 	// XXX: debugging
 	r.log.Print("Set HP2920 TableMiss entries..\n")
 
+	// Table-100 is a hardware table, and Table-200 is a software table that gives very low performance.
+	// Although Table-200 supports Dst. MAC column as a packet matching field of a flow rule, we only use
+	// Table-100 because the software table gives very poor performance in terms of network speed.
 	if err := r.setTableMiss(0, &of13.GotoTable{TableID: 100}); err != nil {
-		return fmt.Errorf("failed to set table_miss flow entry: %v", err)
-	}
-	if err := r.setTableMiss(100, &of13.GotoTable{TableID: 200}); err != nil {
 		return fmt.Errorf("failed to set table_miss flow entry: %v", err)
 	}
 	packetin := of13.NewAction()
 	packetin.SetOutput(of13.OFPP_CONTROLLER)
-	if err := r.setTableMiss(200, &of13.ApplyAction{Action: packetin}); err != nil {
+	if err := r.setTableMiss(100, &of13.ApplyAction{Action: packetin}); err != nil {
 		return fmt.Errorf("failed to set table_miss flow entry: %v", err)
 	}
-	r.flowTableID = 200
+	r.flowTableID = 100
+
+	return nil
+}
+
+func (r *OF13Transceiver) setAS4600TableMiss() error {
+	// XXX: debugging
+	r.log.Print("Set AS4600 TableMiss entries..\n")
+
+	// FIXME:
+	// AS460054-T gives an error (type=5, code=1) that means TABLE_FULL when we install a table-miss flow on Table-0.
+	// Is this a bug of this switch??
+	if err := r.setTableMiss(0, &of13.GotoTable{TableID: 2}); err != nil {
+		return fmt.Errorf("failed to set table_miss flow entry: %v", err)
+	}
+	packetin := of13.NewAction()
+	packetin.SetOutput(of13.OFPP_CONTROLLER)
+	if err := r.setTableMiss(2, &of13.ApplyAction{Action: packetin}); err != nil {
+		return fmt.Errorf("failed to set table_miss flow entry: %v", err)
+	}
+	r.flowTableID = 2
 
 	return nil
 }
@@ -199,6 +223,10 @@ func (r *OF13Transceiver) handleDescriptionReply(msg *of13.DescriptionReply) err
 	// based on table features reply
 	if isHP2920_24G(msg) {
 		if err := r.setHP2920TableMiss(); err != nil {
+			return err
+		}
+	} else if isAS460054_T(msg) {
+		if err := r.setAS4600TableMiss(); err != nil {
 			return err
 		}
 	} else {
