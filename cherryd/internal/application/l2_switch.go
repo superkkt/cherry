@@ -101,11 +101,11 @@ func installFlowRule(eth *protocol.Ethernet, ingress, destination device.Point) 
 	}
 	srcIP := &net.IPNet{
 		IP:   ip.SrcIP,
-		Mask: net.IPv4Mask(0, 0, 0, 0),
+		Mask: net.IPv4Mask(255, 255, 255, 255),
 	}
 	dstIP := &net.IPNet{
 		IP:   ip.DstIP,
-		Mask: net.IPv4Mask(0, 0, 0, 0),
+		Mask: net.IPv4Mask(255, 255, 255, 255),
 	}
 
 	// src and dst nodes are on same node?
