@@ -50,7 +50,13 @@ func (r *Ethernet) UnmarshalBinary(data []byte) error {
 	r.DstMAC = data[0:6]
 	r.SrcMAC = data[6:12]
 	r.Type = binary.BigEndian.Uint16(data[12:14])
-	r.Payload = data[14:]
+	// IEEE 802.1Q-tagged frame?
+	if r.Type == 0x8100 {
+		r.Type = binary.BigEndian.Uint16(data[16:18])
+		r.Payload = data[18:]
+	} else {
+		r.Payload = data[14:]
+	}
 
 	return nil
 }
