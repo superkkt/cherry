@@ -18,36 +18,15 @@ import (
 )
 
 func init() {
-	Pool.add(new(l2Switch))
+	Pool.add(new(L2Switch))
 }
 
-type l2Switch struct {
-	prior uint
-	state bool
+type L2Switch struct {
+	baseProcessor
 }
 
-func (r *l2Switch) name() string {
+func (r *L2Switch) name() string {
 	return "L2Switch"
-}
-
-func (r l2Switch) priority() uint {
-	return r.prior
-}
-
-func (r *l2Switch) setPriority(p uint) {
-	r.prior = p
-}
-
-func (r *l2Switch) enable() {
-	r.state = true
-}
-
-func (r *l2Switch) disable() {
-	r.state = false
-}
-
-func (r l2Switch) enabled() bool {
-	return r.state
 }
 
 func isARPRequest(eth *protocol.Ethernet) bool {
@@ -65,7 +44,7 @@ func flood(node *device.Device, port uint32, data []byte) error {
 }
 
 // TODO: Remove flows when the port, which is used in the flow, is removed
-func (r *l2Switch) run(eth *protocol.Ethernet, ingress device.Point) (drop bool, err error) {
+func (r *L2Switch) run(eth *protocol.Ethernet, ingress device.Point) (drop bool, err error) {
 
 	// FIXME: Is it better to get the raw packet as an input parameter?
 	packet, err := eth.MarshalBinary()
@@ -109,7 +88,7 @@ func getPoint(path graph.Path) (src, dst *device.Point) {
 	return edge.P2, edge.P1
 }
 
-func (r l2Switch) installFlowRule(eth *protocol.Ethernet, ingress, destination device.Point) error {
+func (r L2Switch) installFlowRule(eth *protocol.Ethernet, ingress, destination device.Point) error {
 	// src and dst nodes are on same node?
 	if ingress.Node.DPID == destination.Node.DPID {
 		if err := r._installFlowRule(ingress.Port, eth.SrcMAC, eth.DstMAC, &destination); err != nil {
@@ -142,7 +121,7 @@ func (r l2Switch) installFlowRule(eth *protocol.Ethernet, ingress, destination d
 	return nil
 }
 
-func (r l2Switch) _installFlowRule(inPort uint32, srcMAC, dstMAC net.HardwareAddr, destination *device.Point) error {
+func (r L2Switch) _installFlowRule(inPort uint32, srcMAC, dstMAC net.HardwareAddr, destination *device.Point) error {
 	match := destination.Node.NewMatch()
 	match.SetInPort(inPort)
 	match.SetSrcMAC(srcMAC)

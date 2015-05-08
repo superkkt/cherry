@@ -16,40 +16,19 @@ import (
 )
 
 func init() {
-	Pool.add(new(l3Switch))
+	Pool.add(new(L3Switch))
 }
 
-type l3Switch struct {
-	prior uint
-	state bool
+type L3Switch struct {
+	baseProcessor
 }
 
-func (r l3Switch) name() string {
+func (r L3Switch) name() string {
 	return "L3Switch"
 }
 
-func (r l3Switch) priority() uint {
-	return r.prior
-}
-
-func (r *l3Switch) setPriority(p uint) {
-	r.prior = p
-}
-
-func (r *l3Switch) enable() {
-	r.state = true
-}
-
-func (r *l3Switch) disable() {
-	r.state = false
-}
-
-func (r l3Switch) enabled() bool {
-	return r.state
-}
-
 // TODO: Remove flows when the port, which is used in the flow, is removed
-func (r *l3Switch) run(eth *protocol.Ethernet, ingress device.Point) (drop bool, err error) {
+func (r *L3Switch) run(eth *protocol.Ethernet, ingress device.Point) (drop bool, err error) {
 	// FIXME: Is it better to get the raw packet as an input parameter?
 	packet, err := eth.MarshalBinary()
 	if err != nil {
@@ -83,7 +62,7 @@ func (r *l3Switch) run(eth *protocol.Ethernet, ingress device.Point) (drop bool,
 	return true, destination.Node.PacketOut(openflow.NewInPort(), action, packet)
 }
 
-func (r l3Switch) installFlowRule(eth *protocol.Ethernet, ingress, destination device.Point) error {
+func (r L3Switch) installFlowRule(eth *protocol.Ethernet, ingress, destination device.Point) error {
 	// XXX: HP 2920 only does not support Dst. MAC as a packet matching column,
 	// so we implement this L2 MAC learning switch based on L3 IP addresses instead of L2 MAC addresses.
 	if eth.Type != 0x0800 {
@@ -134,7 +113,7 @@ func (r l3Switch) installFlowRule(eth *protocol.Ethernet, ingress, destination d
 	return nil
 }
 
-func (r l3Switch) _installFlowRule(inPort uint32, etherType uint16, srcIP, dstIP *net.IPNet, destination *device.Point) error {
+func (r L3Switch) _installFlowRule(inPort uint32, etherType uint16, srcIP, dstIP *net.IPNet, destination *device.Point) error {
 	match := destination.Node.NewMatch()
 	match.SetInPort(inPort)
 	match.SetEtherType(etherType)

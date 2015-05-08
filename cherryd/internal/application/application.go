@@ -34,6 +34,31 @@ type processor interface {
 	run(eth *protocol.Ethernet, ingress device.Point) (drop bool, err error)
 }
 
+type baseProcessor struct {
+	prior uint
+	state bool
+}
+
+func (r baseProcessor) priority() uint {
+	return r.prior
+}
+
+func (r *baseProcessor) setPriority(p uint) {
+	r.prior = p
+}
+
+func (r *baseProcessor) enable() {
+	r.state = true
+}
+
+func (r *baseProcessor) disable() {
+	r.state = false
+}
+
+func (r baseProcessor) enabled() bool {
+	return r.state
+}
+
 type sortByPriority []processor
 
 func (r sortByPriority) Len() int {
