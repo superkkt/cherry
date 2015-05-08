@@ -20,7 +20,7 @@ import (
 type OF13Transceiver struct {
 	baseTransceiver
 	auxID        uint8
-	flowTableIDs []uint8 // Table IDs that we install flows (default: 0)
+	flowTableIDs []uint8 // Table IDs that we install flows
 }
 
 func NewOF13Transceiver(stream *openflow.Stream, log Logger, p PacketProcessor) *OF13Transceiver {
@@ -31,6 +31,7 @@ func NewOF13Transceiver(stream *openflow.Stream, log Logger, p PacketProcessor) 
 			version:   openflow.Ver13,
 			processor: p,
 		},
+		flowTableIDs: []uint8{0},
 	}
 	v.lldpExplored.Store(false)
 	return v
@@ -122,7 +123,6 @@ func (r *OF13Transceiver) removeAllFlows() error {
 
 func (r *OF13Transceiver) setTableMiss(tableID uint8, inst of13.Instruction) error {
 	c := &of13.FlowModConfig{
-		// FIXME: Is it okay to set a table-miss entry for the first table only? ONOS also does same thing..
 		TableID: tableID,
 		// Permanent flow entry
 		IdleTimeout: 0, HardTimeout: 0,
@@ -181,16 +181,17 @@ func (r *OF13Transceiver) setHP2920TableMiss() error {
 	// XXX: debugging
 	r.log.Print("Set HP2920 TableMiss entries..\n")
 
-	// Table-100 is a hardware table, and Table-200 is a software table that has very low performance.
+	// Table-100 is a hardware table, and Table-200 is a software table
+	// that has very low performance.
 	if err := r.setTableMiss(0, &of13.GotoTable{TableID: 100}); err != nil {
 		return fmt.Errorf("failed to set table_miss flow entry: %v", err)
 	}
 	if err := r.setTableMiss(100, &of13.GotoTable{TableID: 200}); err != nil {
 		return fmt.Errorf("failed to set table_miss flow entry: %v", err)
 	}
-	packetin := of13.NewAction()
-	packetin.SetOutput(of13.OFPP_CONTROLLER)
-	if err := r.setTableMiss(200, &of13.ApplyAction{Action: packetin}); err != nil {
+	action := of13.NewAction()
+	action.SetOutput(of13.OFPP_CONTROLLER)
+	if err := r.setTableMiss(200, &of13.ApplyAction{Action: action}); err != nil {
 		return fmt.Errorf("failed to set table_miss flow entry: %v", err)
 	}
 	r.flowTableIDs = []uint8{100, 200}
@@ -203,17 +204,29 @@ func (r *OF13Transceiver) setAS4600TableMiss() error {
 	r.log.Print("Set AS4600 TableMiss entries..\n")
 
 	// FIXME:
-	// AS460054-T gives an error (type=5, code=1) that means TABLE_FULL when we install a table-miss flow on Table-0.
-	// Is this a bug of this switch??
+	// AS460054-T gives an error (type=5, code=1) that means TABLE_FULL
+	// when we install a table-miss flow on Table-0 after we delete all
+	// flows already installed from the switch. Is this a bug of this switch??
 	if err := r.setTableMiss(0, &of13.GotoTable{TableID: 2}); err != nil {
 		return fmt.Errorf("failed to set table_miss flow entry: %v", err)
 	}
-	packetin := of13.NewAction()
-	packetin.SetOutput(of13.OFPP_CONTROLLER)
-	if err := r.setTableMiss(2, &of13.ApplyAction{Action: packetin}); err != nil {
+	action := of13.NewAction()
+	action.SetOutput(of13.OFPP_CONTROLLER)
+	if err := r.setTableMiss(2, &of13.ApplyAction{Action: action}); err != nil {
 		return fmt.Errorf("failed to set table_miss flow entry: %v", err)
 	}
 	r.flowTableIDs = []uint8{2}
+
+	return nil
+}
+
+func (r *OF13Transceiver) setDefaultTableMiss() error {
+	action := of13.NewAction()
+	action.SetOutput(of13.OFPP_CONTROLLER)
+	// We only use Table-0.
+	if err := r.setTableMiss(0, &of13.ApplyAction{Action: action}); err != nil {
+		return fmt.Errorf("failed to set table_miss flow entry: %v", err)
+	}
 
 	return nil
 }
@@ -228,20 +241,17 @@ func (r *OF13Transceiver) handleDescriptionReply(msg *of13.DescriptionReply) err
 	// FIXME:
 	// Implement general routines for various table structures of OF1.3 switches
 	// based on table features reply
-	if isHP2920_24G(msg) {
-		if err := r.setHP2920TableMiss(); err != nil {
-			return err
-		}
-	} else if isAS460054_T(msg) {
-		if err := r.setAS4600TableMiss(); err != nil {
-			return err
-		}
-	} else {
-		packetin := of13.NewAction()
-		packetin.SetOutput(of13.OFPP_CONTROLLER)
-		if err := r.setTableMiss(0, &of13.ApplyAction{Action: packetin}); err != nil {
-			return fmt.Errorf("failed to set table_miss flow entry: %v", err)
-		}
+	var err error
+	switch {
+	case isHP2920_24G(msg):
+		err = r.setHP2920TableMiss()
+	case isAS460054_T(msg):
+		err = r.setAS4600TableMiss()
+	default:
+		err = r.setDefaultTableMiss()
+	}
+	if err != nil {
+		return err
 	}
 
 	// XXX: debugging
