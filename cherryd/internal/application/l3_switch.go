@@ -10,63 +10,46 @@ package application
 import (
 	"fmt"
 	"git.sds.co.kr/cherry.git/cherryd/internal/device"
-	"git.sds.co.kr/cherry.git/cherryd/internal/graph"
 	"git.sds.co.kr/cherry.git/cherryd/net/protocol"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"net"
-	"strings"
 )
 
 func init() {
-	Pool.add(new(l2Switch))
+	Pool.add(new(l3Switch))
 }
 
-type l2Switch struct {
+type l3Switch struct {
 	prior uint
 	state bool
 }
 
-func (r *l2Switch) name() string {
-	return "L2Switch"
+func (r l3Switch) name() string {
+	return "L3Switch"
 }
 
-func (r l2Switch) priority() uint {
+func (r l3Switch) priority() uint {
 	return r.prior
 }
 
-func (r *l2Switch) setPriority(p uint) {
+func (r *l3Switch) setPriority(p uint) {
 	r.prior = p
 }
 
-func (r *l2Switch) enable() {
+func (r *l3Switch) enable() {
 	r.state = true
 }
 
-func (r *l2Switch) disable() {
+func (r *l3Switch) disable() {
 	r.state = false
 }
 
-func (r l2Switch) enabled() bool {
+func (r l3Switch) enabled() bool {
 	return r.state
 }
 
-func isARPRequest(eth *protocol.Ethernet) bool {
-	return eth.Type == 0x0806 && strings.ToUpper(eth.DstMAC.String()) == "FF:FF:FF:FF:FF:FF"
-}
-
-func flood(node *device.Device, port uint32, data []byte) error {
-	// XXX: debugging
-	fmt.Print("Flooding..\n")
-
-	// Flooding
-	v := openflow.NewInPort()
-	v.SetPort(uint(port))
-	return node.Flood(v, data)
-}
-
 // TODO: Remove flows when the port, which is used in the flow, is removed
-func (r *l2Switch) run(eth *protocol.Ethernet, ingress device.Point) (drop bool, err error) {
-
+func (r *l3Switch) run(eth *protocol.Ethernet, ingress device.Point) (drop bool, err error) {
 	// FIXME: Is it better to get the raw packet as an input parameter?
 	packet, err := eth.MarshalBinary()
 	if err != nil {
@@ -100,22 +83,31 @@ func (r *l2Switch) run(eth *protocol.Ethernet, ingress device.Point) (drop bool,
 	return true, destination.Node.PacketOut(openflow.NewInPort(), action, packet)
 }
 
-func getPoint(path graph.Path) (src, dst *device.Point) {
-	node := path.V.(*device.Device)
-	edge := path.E.(*device.Edge)
-	if edge.P1.Node.ID() == node.ID() {
-		return edge.P1, edge.P2
+func (r l3Switch) installFlowRule(eth *protocol.Ethernet, ingress, destination device.Point) error {
+	// XXX: HP 2920 only does not support Dst. MAC as a packet matching column,
+	// so we implement this L2 MAC learning switch based on L3 IP addresses instead of L2 MAC addresses.
+	if eth.Type != 0x0800 {
+		return nil
 	}
-	return edge.P2, edge.P1
-}
+	ip := new(protocol.IPv4)
+	if err := ip.UnmarshalBinary(eth.Payload); err != nil {
+		return err
+	}
+	srcIP := &net.IPNet{
+		IP:   ip.SrcIP,
+		Mask: net.IPv4Mask(255, 255, 255, 255),
+	}
+	dstIP := &net.IPNet{
+		IP:   ip.DstIP,
+		Mask: net.IPv4Mask(255, 255, 255, 255),
+	}
 
-func (r l2Switch) installFlowRule(eth *protocol.Ethernet, ingress, destination device.Point) error {
 	// src and dst nodes are on same node?
 	if ingress.Node.DPID == destination.Node.DPID {
-		if err := r._installFlowRule(ingress.Port, eth.SrcMAC, eth.DstMAC, &destination); err != nil {
+		if err := r._installFlowRule(ingress.Port, eth.Type, srcIP, dstIP, &destination); err != nil {
 			return err
 		}
-		return r._installFlowRule(destination.Port, eth.DstMAC, eth.SrcMAC, &ingress)
+		return r._installFlowRule(destination.Port, eth.Type, dstIP, srcIP, &ingress)
 	}
 
 	path := device.Switches.FindPath(ingress.Node, destination.Node)
@@ -130,10 +122,10 @@ func (r l2Switch) installFlowRule(eth *protocol.Ethernet, ingress, destination d
 	inPort := ingress.Port
 	for _, v := range path {
 		src, dst := getPoint(v)
-		if err := r._installFlowRule(inPort, eth.SrcMAC, eth.DstMAC, src); err != nil {
+		if err := r._installFlowRule(inPort, eth.Type, srcIP, dstIP, src); err != nil {
 			return err
 		}
-		if err := r._installFlowRule(src.Port, eth.DstMAC, eth.SrcMAC, &device.Point{src.Node, inPort}); err != nil {
+		if err := r._installFlowRule(src.Port, eth.Type, dstIP, srcIP, &device.Point{src.Node, inPort}); err != nil {
 			return err
 		}
 		inPort = dst.Port
@@ -142,11 +134,12 @@ func (r l2Switch) installFlowRule(eth *protocol.Ethernet, ingress, destination d
 	return nil
 }
 
-func (r l2Switch) _installFlowRule(inPort uint32, srcMAC, dstMAC net.HardwareAddr, destination *device.Point) error {
+func (r l3Switch) _installFlowRule(inPort uint32, etherType uint16, srcIP, dstIP *net.IPNet, destination *device.Point) error {
 	match := destination.Node.NewMatch()
 	match.SetInPort(inPort)
-	match.SetSrcMAC(srcMAC)
-	match.SetDstMAC(dstMAC)
+	match.SetEtherType(etherType)
+	match.SetSrcIP(srcIP)
+	match.SetDstIP(dstIP)
 
 	action := destination.Node.NewAction()
 	action.SetOutput(uint(destination.Port))
