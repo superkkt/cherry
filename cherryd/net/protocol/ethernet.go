@@ -27,23 +27,19 @@ func (r Ethernet) MarshalBinary() ([]byte, error) {
 		return nil, errors.New("nil payload")
 	}
 
-	length := 60
-	if len(r.Payload) > 46 {
-		length += len(r.Payload) - 46
-	}
-
-	v := make([]byte, length)
+	v := make([]byte, 14+len(r.Payload))
 	copy(v[0:6], r.DstMAC)
 	copy(v[6:12], r.SrcMAC)
 	binary.BigEndian.PutUint16(v[12:14], r.Type)
-	copy(v[14:], r.Payload)
+	if len(r.Payload) > 0 {
+		copy(v[14:], r.Payload)
+	}
 
 	return v, nil
 }
 
 func (r *Ethernet) UnmarshalBinary(data []byte) error {
-	length := len(data)
-	if length < 14 {
+	if len(data) < 14 {
 		return errors.New("invalid ethernet frame length")
 	}
 
