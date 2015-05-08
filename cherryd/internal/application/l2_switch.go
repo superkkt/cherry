@@ -21,14 +21,33 @@ func init() {
 	Pool.add(new(l2Switch))
 }
 
-type l2Switch struct{}
-
-func (r *l2Switch) name() string {
-	return "L2 MAC Learning Switch"
+type l2Switch struct {
+	prior uint
+	state bool
 }
 
-func (r *l2Switch) priority() uint {
-	return 100
+func (r l2Switch) name() string {
+	return "L2Switch"
+}
+
+func (r l2Switch) priority() uint {
+	return r.prior
+}
+
+func (r *l2Switch) setPriority(p uint) {
+	r.prior = p
+}
+
+func (r *l2Switch) enable() {
+	r.state = true
+}
+
+func (r *l2Switch) disable() {
+	r.state = false
+}
+
+func (r l2Switch) enabled() bool {
+	return r.state
 }
 
 func isARPRequest(eth *protocol.Ethernet) bool {

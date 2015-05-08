@@ -12,6 +12,7 @@ import (
 	"git.sds.co.kr/cherry.git/cherryd/internal/device"
 	"git.sds.co.kr/cherry.git/cherryd/net/protocol"
 	"sort"
+	"strings"
 	"sync"
 )
 
@@ -26,6 +27,10 @@ func init() {
 type processor interface {
 	name() string
 	priority() uint
+	setPriority(uint)
+	enable()
+	disable()
+	enabled() bool
 	run(eth *protocol.Ethernet, ingress device.Point) (drop bool, err error)
 }
 
@@ -52,8 +57,31 @@ func (r *Application) add(p processor) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
+	p.disable()
 	r.p = append(r.p, p)
 	sort.Sort(sortByPriority(r.p))
+}
+
+func (r *Application) Enable(name string, priority uint) error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	enabled := false
+	for _, v := range r.p {
+		if strings.ToUpper(v.name()) != strings.ToUpper(name) {
+			continue
+		}
+		v.setPriority(priority)
+		v.enable()
+		enabled = true
+		break
+	}
+	if !enabled {
+		return fmt.Errorf("not found application %v", name)
+	}
+	sort.Sort(sortByPriority(r.p))
+
+	return nil
 }
 
 func (r *Application) Run(eth *protocol.Ethernet, ingress device.Point) error {
@@ -65,8 +93,11 @@ func (r *Application) Run(eth *protocol.Ethernet, ingress device.Point) error {
 	}
 
 	for _, v := range r.p {
+		if !v.enabled() {
+			continue
+		}
 		// XXX: debugging
-		fmt.Printf("Running %v(%v)..\n", v.name(), v.priority())
+		fmt.Printf("Running %v (priority=%v)..\n", v.name(), v.priority())
 		drop, err := v.run(eth, ingress)
 		if err != nil {
 			return err

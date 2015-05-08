@@ -59,9 +59,9 @@ func listen(ctx context.Context, log *log.Logger, config *Config) {
 		SetKeepAlivePeriod(d time.Duration) error
 	}
 
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%v", config.ServerPort))
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%v", config.Port))
 	if err != nil {
-		log.Printf("Failed to listen on %v port: %v", config.ServerPort, err)
+		log.Printf("Failed to listen on %v port: %v", config.Port, err)
 		return
 	}
 	defer listener.Close()
@@ -108,6 +108,16 @@ func listen(ctx context.Context, log *log.Logger, config *Config) {
 	}
 }
 
+func enableApplications(config *Config) error {
+	for _, v := range config.Apps {
+		if err := application.Pool.Enable(v.Name, v.Priority); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU() * 2)
 	flag.Parse()
@@ -115,6 +125,11 @@ func main() {
 	conf := NewConfig()
 	if err := conf.Read(); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to read configurations: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := enableApplications(conf); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to enable applications: %v\n", err)
 		os.Exit(1)
 	}
 

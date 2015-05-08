@@ -29,14 +29,33 @@ func init() {
 	vIP = net.IPv4(223, 130, 122, 1)
 }
 
-type virtualRouter struct{}
+type virtualRouter struct {
+	prior uint
+	state bool
+}
 
 func (r virtualRouter) name() string {
-	return "Virtual Router"
+	return "VirtualRouter"
 }
 
 func (r virtualRouter) priority() uint {
-	return 10
+	return r.prior
+}
+
+func (r *virtualRouter) setPriority(p uint) {
+	r.prior = p
+}
+
+func (r *virtualRouter) enable() {
+	r.state = true
+}
+
+func (r *virtualRouter) disable() {
+	r.state = false
+}
+
+func (r virtualRouter) enabled() bool {
+	return r.state
 }
 
 func makeARPReply(request *protocol.ARP) ([]byte, error) {
