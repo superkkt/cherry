@@ -19,8 +19,8 @@ import (
 
 type OF13Transceiver struct {
 	baseTransceiver
-	auxID       uint8
-	flowTableID uint8 // Table ID that we install flows (default: 0)
+	auxID        uint8
+	flowTableIDs []uint8 // Table IDs that we install flows (default: 0)
 }
 
 func NewOF13Transceiver(stream *openflow.Stream, log Logger, p PacketProcessor) *OF13Transceiver {
@@ -67,17 +67,23 @@ func (r *OF13Transceiver) sendPortDescriptionRequest() error {
 }
 
 func (r *OF13Transceiver) addFlowMod(conf FlowModConfig) error {
-	c := &of13.FlowModConfig{
-		// TODO: set Cookie
-		TableID:     r.flowTableID,
-		IdleTimeout: conf.IdleTimeout,
-		HardTimeout: conf.HardTimeout,
-		Priority:    conf.Priority,
-		Match:       conf.Match,
-		Instruction: &of13.ApplyAction{Action: conf.Action},
+	for _, v := range r.flowTableIDs {
+		c := &of13.FlowModConfig{
+			// TODO: set Cookie
+			TableID:     v,
+			IdleTimeout: conf.IdleTimeout,
+			HardTimeout: conf.HardTimeout,
+			Priority:    conf.Priority,
+			Match:       conf.Match,
+			Instruction: &of13.ApplyAction{Action: conf.Action},
+		}
+		msg := of13.NewFlowModAdd(r.getTransactionID(), c)
+		if err := openflow.WriteMessage(r.stream, msg); err != nil {
+			return err
+		}
 	}
-	msg := of13.NewFlowModAdd(r.getTransactionID(), c)
-	return openflow.WriteMessage(r.stream, msg)
+
+	return nil
 }
 
 func (r *OF13Transceiver) newMatch() openflow.Match {
@@ -175,18 +181,19 @@ func (r *OF13Transceiver) setHP2920TableMiss() error {
 	// XXX: debugging
 	r.log.Print("Set HP2920 TableMiss entries..\n")
 
-	// Table-100 is a hardware table, and Table-200 is a software table that gives very low performance.
-	// Although Table-200 supports Dst. MAC column as a packet matching field of a flow rule, we only use
-	// Table-100 because the software table gives very poor performance in terms of network speed.
+	// Table-100 is a hardware table, and Table-200 is a software table that has very low performance.
 	if err := r.setTableMiss(0, &of13.GotoTable{TableID: 100}); err != nil {
+		return fmt.Errorf("failed to set table_miss flow entry: %v", err)
+	}
+	if err := r.setTableMiss(100, &of13.GotoTable{TableID: 200}); err != nil {
 		return fmt.Errorf("failed to set table_miss flow entry: %v", err)
 	}
 	packetin := of13.NewAction()
 	packetin.SetOutput(of13.OFPP_CONTROLLER)
-	if err := r.setTableMiss(100, &of13.ApplyAction{Action: packetin}); err != nil {
+	if err := r.setTableMiss(200, &of13.ApplyAction{Action: packetin}); err != nil {
 		return fmt.Errorf("failed to set table_miss flow entry: %v", err)
 	}
-	r.flowTableID = 100
+	r.flowTableIDs = []uint8{100, 200}
 
 	return nil
 }
@@ -206,7 +213,7 @@ func (r *OF13Transceiver) setAS4600TableMiss() error {
 	if err := r.setTableMiss(2, &of13.ApplyAction{Action: packetin}); err != nil {
 		return fmt.Errorf("failed to set table_miss flow entry: %v", err)
 	}
-	r.flowTableID = 2
+	r.flowTableIDs = []uint8{2}
 
 	return nil
 }
