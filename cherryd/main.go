@@ -11,7 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"git.sds.co.kr/cherry.git/cherryd/internal/application"
-	"git.sds.co.kr/cherry.git/cherryd/internal/device"
+	"git.sds.co.kr/cherry.git/cherryd/internal/controller"
 	"golang.org/x/net/context"
 	"log"
 	"log/syslog"
@@ -95,7 +95,7 @@ func listen(ctx context.Context, log *log.Logger, config *Config) {
 
 			go func() {
 				defer conn.Close()
-				transceiver, err := device.NewTransceiver(conn, log, application.Pool)
+				transceiver, err := controller.NewTransceiver(conn, log, application.Pool)
 				if err != nil {
 					log.Printf("Failed to create a new transceiver: %v", err)
 					return

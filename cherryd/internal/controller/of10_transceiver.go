@@ -5,7 +5,7 @@
  * Kitae Kim <superkkt@sds.co.kr>
  */
 
-package device
+package controller
 
 import (
 	"errors"

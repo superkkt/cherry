@@ -9,7 +9,7 @@ package application
 
 import (
 	"fmt"
-	"git.sds.co.kr/cherry.git/cherryd/internal/device"
+	"git.sds.co.kr/cherry.git/cherryd/internal/controller"
 	"git.sds.co.kr/cherry.git/cherryd/internal/graph"
 	"git.sds.co.kr/cherry.git/cherryd/net/protocol"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
@@ -33,7 +33,7 @@ func isARPRequest(eth *protocol.Ethernet) bool {
 	return eth.Type == 0x0806 && strings.ToUpper(eth.DstMAC.String()) == "FF:FF:FF:FF:FF:FF"
 }
 
-func flood(node *device.Device, port uint32, data []byte) error {
+func flood(node *controller.Device, port uint32, data []byte) error {
 	// XXX: debugging
 	fmt.Print("Flooding..\n")
 
@@ -44,7 +44,7 @@ func flood(node *device.Device, port uint32, data []byte) error {
 }
 
 // TODO: Remove flows when the port, which is used in the flow, is removed
-func (r *L2Switch) run(eth *protocol.Ethernet, ingress device.Point) (drop bool, err error) {
+func (r *L2Switch) run(eth *protocol.Ethernet, ingress controller.Point) (drop bool, err error) {
 
 	// FIXME: Is it better to get the raw packet as an input parameter?
 	packet, err := eth.MarshalBinary()
@@ -59,7 +59,7 @@ func (r *L2Switch) run(eth *protocol.Ethernet, ingress device.Point) (drop bool,
 	}
 
 	// TODO: Add test cases for hosts DB
-	destination, ok := device.Hosts.Find(eth.DstMAC)
+	destination, ok := controller.Hosts.Find(eth.DstMAC)
 	if !ok {
 		// XXX: debugging
 		fmt.Printf("Failed to find the destination MAC: %v\n", eth.DstMAC)
@@ -79,25 +79,25 @@ func (r *L2Switch) run(eth *protocol.Ethernet, ingress device.Point) (drop bool,
 	return true, destination.Node.PacketOut(openflow.NewInPort(), action, packet)
 }
 
-func getPoint(path graph.Path) (src, dst *device.Point) {
-	node := path.V.(*device.Device)
-	edge := path.E.(*device.Edge)
+func getPoint(path graph.Path) (src, dst *controller.Point) {
+	node := path.V.(*controller.Device)
+	edge := path.E.(*controller.Edge)
 	if edge.P1.Node.ID() == node.ID() {
 		return edge.P1, edge.P2
 	}
 	return edge.P2, edge.P1
 }
 
-func (r L2Switch) installFlowRule(eth *protocol.Ethernet, ingress, destination device.Point) error {
+func (r L2Switch) installFlowRule(eth *protocol.Ethernet, ingress, destination controller.Point) error {
 	// src and dst nodes are on same node?
 	if ingress.Node.DPID == destination.Node.DPID {
-		if err := r._installFlowRule(ingress.Port, eth.SrcMAC, eth.DstMAC, &destination); err != nil {
+		if err := r._installFlowRule(ingress.Port, eth.Type, eth.SrcMAC, eth.DstMAC, &destination); err != nil {
 			return err
 		}
-		return r._installFlowRule(destination.Port, eth.DstMAC, eth.SrcMAC, &ingress)
+		return r._installFlowRule(destination.Port, eth.Type, eth.DstMAC, eth.SrcMAC, &ingress)
 	}
 
-	path := device.Switches.FindPath(ingress.Node, destination.Node)
+	path := controller.Switches.FindPath(ingress.Node, destination.Node)
 	// Empty path means the destination is not connected with this device that sent PACKET_IN.
 	if len(path) == 0 {
 		// XXX: debugging
@@ -109,10 +109,10 @@ func (r L2Switch) installFlowRule(eth *protocol.Ethernet, ingress, destination d
 	inPort := ingress.Port
 	for _, v := range path {
 		src, dst := getPoint(v)
-		if err := r._installFlowRule(inPort, eth.SrcMAC, eth.DstMAC, src); err != nil {
+		if err := r._installFlowRule(inPort, eth.Type, eth.SrcMAC, eth.DstMAC, src); err != nil {
 			return err
 		}
-		if err := r._installFlowRule(src.Port, eth.DstMAC, eth.SrcMAC, &device.Point{src.Node, inPort}); err != nil {
+		if err := r._installFlowRule(src.Port, eth.Type, eth.DstMAC, eth.SrcMAC, &controller.Point{src.Node, inPort}); err != nil {
 			return err
 		}
 		inPort = dst.Port
@@ -121,15 +121,16 @@ func (r L2Switch) installFlowRule(eth *protocol.Ethernet, ingress, destination d
 	return nil
 }
 
-func (r L2Switch) _installFlowRule(inPort uint32, srcMAC, dstMAC net.HardwareAddr, destination *device.Point) error {
+func (r L2Switch) _installFlowRule(inPort uint32, etherType uint16, srcMAC, dstMAC net.HardwareAddr, destination *controller.Point) error {
 	match := destination.Node.NewMatch()
 	match.SetInPort(inPort)
+	match.SetEtherType(etherType)
 	match.SetSrcMAC(srcMAC)
 	match.SetDstMAC(dstMAC)
 
 	action := destination.Node.NewAction()
 	action.SetOutput(uint(destination.Port))
-	c := device.FlowModConfig{
+	c := controller.FlowModConfig{
 		IdleTimeout: 30,
 		Priority:    10,
 		Match:       match,

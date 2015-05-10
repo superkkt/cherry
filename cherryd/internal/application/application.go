@@ -9,7 +9,7 @@ package application
 
 import (
 	"fmt"
-	"git.sds.co.kr/cherry.git/cherryd/internal/device"
+	"git.sds.co.kr/cherry.git/cherryd/internal/controller"
 	"git.sds.co.kr/cherry.git/cherryd/net/protocol"
 	"sort"
 	"strings"
@@ -31,7 +31,7 @@ type processor interface {
 	enable()
 	disable()
 	enabled() bool
-	run(eth *protocol.Ethernet, ingress device.Point) (drop bool, err error)
+	run(eth *protocol.Ethernet, ingress controller.Point) (drop bool, err error)
 }
 
 type baseProcessor struct {
@@ -109,7 +109,7 @@ func (r *Application) Enable(name string, priority uint) error {
 	return nil
 }
 
-func (r *Application) Run(eth *protocol.Ethernet, ingress device.Point) error {
+func (r *Application) Run(eth *protocol.Ethernet, ingress controller.Point) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 

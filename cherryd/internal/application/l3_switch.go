@@ -9,7 +9,7 @@ package application
 
 import (
 	"fmt"
-	"git.sds.co.kr/cherry.git/cherryd/internal/device"
+	"git.sds.co.kr/cherry.git/cherryd/internal/controller"
 	"git.sds.co.kr/cherry.git/cherryd/net/protocol"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"net"
@@ -28,7 +28,7 @@ func (r L3Switch) name() string {
 }
 
 // TODO: Remove flows when the port, which is used in the flow, is removed
-func (r *L3Switch) run(eth *protocol.Ethernet, ingress device.Point) (drop bool, err error) {
+func (r *L3Switch) run(eth *protocol.Ethernet, ingress controller.Point) (drop bool, err error) {
 	// FIXME: Is it better to get the raw packet as an input parameter?
 	packet, err := eth.MarshalBinary()
 	if err != nil {
@@ -42,7 +42,7 @@ func (r *L3Switch) run(eth *protocol.Ethernet, ingress device.Point) (drop bool,
 	}
 
 	// TODO: Add test cases for hosts DB
-	destination, ok := device.Hosts.Find(eth.DstMAC)
+	destination, ok := controller.Hosts.Find(eth.DstMAC)
 	if !ok {
 		// XXX: debugging
 		fmt.Printf("Failed to find the destination MAC: %v\n", eth.DstMAC)
@@ -62,7 +62,7 @@ func (r *L3Switch) run(eth *protocol.Ethernet, ingress device.Point) (drop bool,
 	return true, destination.Node.PacketOut(openflow.NewInPort(), action, packet)
 }
 
-func (r L3Switch) installFlowRule(eth *protocol.Ethernet, ingress, destination device.Point) error {
+func (r L3Switch) installFlowRule(eth *protocol.Ethernet, ingress, destination controller.Point) error {
 	// XXX: HP 2920 only does not support Dst. MAC as a packet matching column,
 	// so we implement this L2 MAC learning switch based on L3 IP addresses instead of L2 MAC addresses.
 	if eth.Type != 0x0800 {
@@ -89,7 +89,7 @@ func (r L3Switch) installFlowRule(eth *protocol.Ethernet, ingress, destination d
 		return r._installFlowRule(destination.Port, eth.Type, dstIP, srcIP, &ingress)
 	}
 
-	path := device.Switches.FindPath(ingress.Node, destination.Node)
+	path := controller.Switches.FindPath(ingress.Node, destination.Node)
 	// Empty path means the destination is not connected with this device that sent PACKET_IN.
 	if len(path) == 0 {
 		// XXX: debugging
@@ -104,7 +104,7 @@ func (r L3Switch) installFlowRule(eth *protocol.Ethernet, ingress, destination d
 		if err := r._installFlowRule(inPort, eth.Type, srcIP, dstIP, src); err != nil {
 			return err
 		}
-		if err := r._installFlowRule(src.Port, eth.Type, dstIP, srcIP, &device.Point{src.Node, inPort}); err != nil {
+		if err := r._installFlowRule(src.Port, eth.Type, dstIP, srcIP, &controller.Point{src.Node, inPort}); err != nil {
 			return err
 		}
 		inPort = dst.Port
@@ -113,7 +113,7 @@ func (r L3Switch) installFlowRule(eth *protocol.Ethernet, ingress, destination d
 	return nil
 }
 
-func (r L3Switch) _installFlowRule(inPort uint32, etherType uint16, srcIP, dstIP *net.IPNet, destination *device.Point) error {
+func (r L3Switch) _installFlowRule(inPort uint32, etherType uint16, srcIP, dstIP *net.IPNet, destination *controller.Point) error {
 	match := destination.Node.NewMatch()
 	match.SetInPort(inPort)
 	match.SetEtherType(etherType)
@@ -122,7 +122,7 @@ func (r L3Switch) _installFlowRule(inPort uint32, etherType uint16, srcIP, dstIP
 
 	action := destination.Node.NewAction()
 	action.SetOutput(uint(destination.Port))
-	c := device.FlowModConfig{
+	c := controller.FlowModConfig{
 		IdleTimeout: 30,
 		Priority:    10,
 		Match:       match,

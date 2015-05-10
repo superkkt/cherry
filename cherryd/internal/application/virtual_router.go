@@ -9,7 +9,7 @@ package application
 
 import (
 	"fmt"
-	"git.sds.co.kr/cherry.git/cherryd/internal/device"
+	"git.sds.co.kr/cherry.git/cherryd/internal/controller"
 	"git.sds.co.kr/cherry.git/cherryd/net/protocol"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"net"
@@ -74,7 +74,7 @@ func makeARPReply(request *protocol.ARP) ([]byte, error) {
 	return eth.MarshalBinary()
 }
 
-func handleARP(eth *protocol.Ethernet, ingress device.Point) (drop bool, err error) {
+func handleARP(eth *protocol.Ethernet, ingress controller.Point) (drop bool, err error) {
 	fmt.Printf("Receiving ARP packet..\n")
 
 	arp := new(protocol.ARP)
@@ -115,7 +115,7 @@ func makeICMPEchoReply(src, dst net.IP, req *protocol.ICMPEcho) ([]byte, error) 
 	return ip, nil
 }
 
-func handleIPv4(eth *protocol.Ethernet, ingress device.Point) (drop bool, err error) {
+func handleIPv4(eth *protocol.Ethernet, ingress controller.Point) (drop bool, err error) {
 	fmt.Printf("Receiving IPv4 packet..\n")
 
 	ip := new(protocol.IPv4)
@@ -154,7 +154,7 @@ func handleIPv4(eth *protocol.Ethernet, ingress device.Point) (drop bool, err er
 	return true, ingress.Node.PacketOut(openflow.NewInPort(), action, v)
 }
 
-func (r virtualRouter) run(eth *protocol.Ethernet, ingress device.Point) (drop bool, err error) {
+func (r virtualRouter) run(eth *protocol.Ethernet, ingress controller.Point) (drop bool, err error) {
 	fmt.Printf("VirtualRouter is running..\n")
 
 	switch eth.Type {
