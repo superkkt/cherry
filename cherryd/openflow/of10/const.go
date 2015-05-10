@@ -171,3 +171,9 @@ const (
 	OFPFC_DELETE        = 3 /* Delete all matching flows. */
 	OFPFC_DELETE_STRICT = 4 /* Delete entry strictly matching wildcards and priority. */
 )
+
+const (
+	OFPPR_ADD = iota
+	OFPPR_DELETE
+	OFPPR_MODIFY
+)

@@ -55,6 +55,9 @@ func (r *Device) Port(id uint) (openflow.Port, bool) {
 }
 
 func (r *Device) Ports() []openflow.Port {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
 	ports := make([]openflow.Port, 0)
 	for _, v := range r.ports {
 		ports = append(ports, v)
@@ -66,6 +69,10 @@ func (r *Device) Ports() []openflow.Port {
 func (r *Device) addTransceiver(id uint, t Transceiver) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
+
+	// XXX: debugging
+	fmt.Printf("Adding transceiver: dpid=%v, id=%v\n", r.DPID, id)
+
 	r.transceivers[id] = t
 }
 
@@ -73,16 +80,25 @@ func (r *Device) addTransceiver(id uint, t Transceiver) {
 func (r *Device) removeTransceiver(id uint) int {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
+
+	// XXX: debugging
+	fmt.Printf("Removing transceiver: dpid=%v, id=%v\n", r.DPID, id)
+
 	delete(r.transceivers, id)
 	return len(r.transceivers)
 }
 
 func (r *Device) getTransceiver() Transceiver {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
 	for _, v := range r.transceivers {
 		// Return the first transceiver
 		return v
 	}
 
+	// XXX: debugging
+	fmt.Printf("panic: dpid=%v, len=%v\n", r.DPID, len(r.transceivers))
 	panic("empty transceiver in a device!")
 }
 
@@ -103,7 +119,12 @@ func (r *Device) NewAction() openflow.Action {
 
 func (r *Device) InstallFlowRule(conf FlowModConfig) error {
 	t := r.getTransceiver()
-	return t.addFlowMod(conf)
+	return t.addFlow(conf)
+}
+
+func (r *Device) RemoveFlowRule(match openflow.Match) error {
+	t := r.getTransceiver()
+	return t.removeFlow(match)
 }
 
 func (r *Device) PacketOut(inport openflow.InPort, action openflow.Action, data []byte) error {

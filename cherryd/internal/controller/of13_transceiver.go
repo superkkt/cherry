@@ -23,7 +23,7 @@ type OF13Transceiver struct {
 	flowTableIDs []uint8 // Table IDs that we install flows
 }
 
-func NewOF13Transceiver(stream *openflow.Stream, log Logger, p PacketProcessor) *OF13Transceiver {
+func NewOF13Transceiver(stream *openflow.Stream, log Logger, p Processor) *OF13Transceiver {
 	v := &OF13Transceiver{
 		baseTransceiver: baseTransceiver{
 			stream:    stream,
@@ -67,7 +67,7 @@ func (r *OF13Transceiver) sendPortDescriptionRequest() error {
 	return openflow.WriteMessage(r.stream, msg)
 }
 
-func (r *OF13Transceiver) addFlowMod(conf FlowModConfig) error {
+func (r *OF13Transceiver) addFlow(conf FlowModConfig) error {
 	for _, v := range r.flowTableIDs {
 		c := &of13.FlowModConfig{
 			// TODO: set Cookie
@@ -85,6 +85,20 @@ func (r *OF13Transceiver) addFlowMod(conf FlowModConfig) error {
 	}
 
 	return nil
+}
+
+func (r *OF13Transceiver) removeFlow(match openflow.Match) error {
+	c := &of13.FlowModConfig{
+		TableID: of13.OFPTT_ALL,
+		Match:   match,
+	}
+
+	return openflow.WriteMessage(r.stream, of13.NewFlowModDelete(r.getTransactionID(), c))
+}
+
+func (r *OF13Transceiver) removeAllFlows() error {
+	// All wildcarded match
+	return r.removeFlow(of13.NewMatch())
 }
 
 func (r *OF13Transceiver) newMatch() openflow.Match {
@@ -109,16 +123,6 @@ func (r *OF13Transceiver) flood(inPort openflow.InPort, data []byte) error {
 	action.SetOutput(of13.OFPP_FLOOD)
 	msg := of13.NewPacketOut(r.getTransactionID(), inPort, action, data)
 	return openflow.WriteMessage(r.stream, msg)
-}
-
-func (r *OF13Transceiver) removeAllFlows() error {
-	c := &of13.FlowModConfig{
-		TableID: of13.OFPTT_ALL,
-		// All wildcarded match
-		Match: of13.NewMatch(),
-	}
-
-	return openflow.WriteMessage(r.stream, of13.NewFlowModDelete(r.getTransactionID(), c))
 }
 
 func (r *OF13Transceiver) setTableMiss(tableID uint8, inst of13.Instruction) error {
@@ -148,9 +152,12 @@ func (r *OF13Transceiver) handleFeaturesReply(msg *of13.FeaturesReply) error {
 	r.device.NumTables = uint(msg.NumTables)
 	r.device.addTransceiver(uint(msg.AuxID), r)
 	r.auxID = msg.AuxID
+	r.connected = true
 
 	// XXX: debugging
 	{
+		fmt.Printf("Switch is connected: DPID=%v\n", msg.DPID)
+
 		table := of13.NewTableFeaturesRequest(r.getTransactionID())
 		if err := openflow.WriteMessage(r.stream, table); err != nil {
 			return err
@@ -303,8 +310,9 @@ func (r *OF13Transceiver) handlePortStatus(msg *of13.PortStatus) error {
 		return nil
 	}
 
-	// TODO: Send this event to applications using Event() method
-
+	if err := r.sendPortStatusEvent(msg.Port); err != nil {
+		return err
+	}
 	return r.updatePortStatus(msg.Port)
 }
 
@@ -318,6 +326,9 @@ func (r *OF13Transceiver) handleFlowRemoved(msg *of13.FlowRemoved) error {
 }
 
 func (r *OF13Transceiver) handlePacketIn(msg *of13.PacketIn) error {
+	if !r.connected {
+		return nil
+	}
 	r.handleIncoming(msg.InPort, msg.Data)
 
 	// XXX: debugging
@@ -368,6 +379,7 @@ func (r *OF13Transceiver) cleanup() {
 	}
 
 	if r.device.removeTransceiver(uint(r.auxID)) == 0 {
+		r.connected = false
 		Switches.remove(r.device.DPID)
 	}
 }

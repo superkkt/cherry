@@ -60,6 +60,18 @@ func (r *Topology) Get(dpid uint64) *Device {
 	return r.pool[dpid]
 }
 
+func (r *Topology) GetAll() []*Device {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	v := make([]*Device, 0)
+	for _, device := range r.pool {
+		v = append(v, device)
+	}
+
+	return v
+}
+
 func (r *Topology) FindPath(src, dst *Device) []graph.Path {
 	return r.graph.FindPath(src, dst)
 }
@@ -122,7 +134,18 @@ func (r *HostPool) remove(p Point) {
 	r._remove(p)
 }
 
-func (r *HostPool) Find(mac net.HardwareAddr) (p Point, ok bool) {
+func (r *HostPool) FindMAC(p Point) (mac []net.HardwareAddr, ok bool) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	if p.Node == nil {
+		panic("nil parameter")
+	}
+	mac, ok = r.point[p.ID()]
+	return
+}
+
+func (r *HostPool) FindPoint(mac net.HardwareAddr) (p Point, ok bool) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 

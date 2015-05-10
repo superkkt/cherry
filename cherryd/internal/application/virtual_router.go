@@ -67,7 +67,7 @@ func handleICMP(eth *protocol.Ethernet, ingress controller.Point, ip *protocol.I
 	return true, ingress.Node.PacketOut(openflow.NewInPort(), action, v)
 }
 
-func (r virtualRouter) run(eth *protocol.Ethernet, ingress controller.Point) (drop bool, err error) {
+func (r virtualRouter) processPacket(eth *protocol.Ethernet, ingress controller.Point) (drop bool, err error) {
 	// XXX: debugging
 	fmt.Printf("VirtualRouter is running..\n")
 

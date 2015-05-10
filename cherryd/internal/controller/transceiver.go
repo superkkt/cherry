@@ -33,7 +33,8 @@ type Transceiver interface {
 	newMatch() openflow.Match
 	newAction() openflow.Action
 	sendBarrierRequest() error
-	addFlowMod(conf FlowModConfig) error
+	addFlow(conf FlowModConfig) error
+	removeFlow(match openflow.Match) error
 	packetOut(inport openflow.InPort, action openflow.Action, data []byte) error
 	flood(inPort openflow.InPort, data []byte) error
 }
@@ -45,11 +46,13 @@ type baseTransceiver struct {
 	device       *Device
 	version      uint8
 	lldpExplored atomic.Value
-	processor    PacketProcessor
+	processor    Processor
+	connected    bool
 }
 
-type PacketProcessor interface {
-	Run(eth *protocol.Ethernet, ingress Point) error
+type Processor interface {
+	ProcessPacket(eth *protocol.Ethernet, ingress Point) error
+	ProcessEvent(device *Device, port openflow.Port, mac []net.HardwareAddr) error
 }
 
 func (r *baseTransceiver) getTransactionID() uint32 {
@@ -256,6 +259,16 @@ func (r *baseTransceiver) sendLLDP(port openflow.Port) error {
 	return nil
 }
 
+func (r *baseTransceiver) sendPortStatusEvent(port openflow.Port) error {
+	p := Point{r.device, uint32(port.Number())}
+	mac, ok := Hosts.FindMAC(p)
+	if !ok {
+		return nil
+	}
+
+	return r.processor.ProcessEvent(r.device, port, mac)
+}
+
 func (r *baseTransceiver) updatePortStatus(port openflow.Port) error {
 	if port.IsPortDown() || port.IsLinkDown() {
 		p := Point{r.device, uint32(port.Number())}
@@ -322,10 +335,10 @@ func (r *baseTransceiver) handleIncoming(inPort uint32, packet []byte) error {
 	if r.processor == nil {
 		return nil
 	}
-	return r.processor.Run(eth, p)
+	return r.processor.ProcessPacket(eth, p)
 }
 
-func NewTransceiver(conn net.Conn, log Logger, p PacketProcessor) (Transceiver, error) {
+func NewTransceiver(conn net.Conn, log Logger, p Processor) (Transceiver, error) {
 	stream := openflow.NewStream(conn)
 	stream.SetReadTimeout(5 * time.Second)
 	msg, err := openflow.ReadMessage(stream)

@@ -20,7 +20,7 @@ type OF10Transceiver struct {
 	baseTransceiver
 }
 
-func NewOF10Transceiver(stream *openflow.Stream, log Logger, p PacketProcessor) *OF10Transceiver {
+func NewOF10Transceiver(stream *openflow.Stream, log Logger, p Processor) *OF10Transceiver {
 	v := &OF10Transceiver{
 		baseTransceiver: baseTransceiver{
 			stream:    stream,
@@ -58,7 +58,7 @@ func (r *OF10Transceiver) sendDescriptionRequest() error {
 	return openflow.WriteMessage(r.stream, msg)
 }
 
-func (r *OF10Transceiver) addFlowMod(conf FlowModConfig) error {
+func (r *OF10Transceiver) addFlow(conf FlowModConfig) error {
 	c := &of10.FlowModConfig{
 		// TODO: set Cookie
 		IdleTimeout: conf.IdleTimeout,
@@ -69,6 +69,14 @@ func (r *OF10Transceiver) addFlowMod(conf FlowModConfig) error {
 	}
 	msg := of10.NewFlowModAdd(r.getTransactionID(), c)
 	return openflow.WriteMessage(r.stream, msg)
+}
+
+func (r *OF10Transceiver) removeFlow(match openflow.Match) error {
+	c := &of10.FlowModConfig{
+		Match: match,
+	}
+
+	return openflow.WriteMessage(r.stream, of10.NewFlowModDelete(r.getTransactionID(), c))
 }
 
 func (r *OF10Transceiver) packetOut(inport openflow.InPort, action openflow.Action, data []byte) error {
@@ -106,6 +114,7 @@ func (r *OF10Transceiver) handleFeaturesReply(msg *of10.FeaturesReply) error {
 	r.device.NumBuffers = uint(msg.NumBuffers)
 	r.device.NumTables = uint(msg.NumTables)
 	r.device.addTransceiver(0, r)
+	r.connected = true
 
 	for _, v := range msg.Ports {
 		// Reserved port?
@@ -160,8 +169,9 @@ func (r *OF10Transceiver) handlePortStatus(msg *of10.PortStatus) error {
 		return nil
 	}
 
-	// TODO: Send this event to applications using Event() method
-
+	if err := r.sendPortStatusEvent(msg.Port); err != nil {
+		return err
+	}
 	return r.updatePortStatus(msg.Port)
 }
 
@@ -175,6 +185,9 @@ func (r *OF10Transceiver) handleFlowRemoved(msg *of10.FlowRemoved) error {
 }
 
 func (r *OF10Transceiver) handlePacketIn(msg *of10.PacketIn) error {
+	if !r.connected {
+		return nil
+	}
 	r.handleIncoming(uint32(msg.InPort), msg.Data)
 
 	// XXX: debugging
@@ -221,6 +234,7 @@ func (r *OF10Transceiver) cleanup() {
 	}
 
 	if r.device.removeTransceiver(0) == 0 {
+		r.connected = false
 		Switches.remove(r.device.DPID)
 	}
 }

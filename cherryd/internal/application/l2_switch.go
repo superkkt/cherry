@@ -18,14 +18,14 @@ import (
 )
 
 func init() {
-	Pool.add(new(L2Switch))
+	Pool.add(new(l2Switch))
 }
 
-type L2Switch struct {
+type l2Switch struct {
 	baseProcessor
 }
 
-func (r *L2Switch) name() string {
+func (r *l2Switch) name() string {
 	return "L2Switch"
 }
 
@@ -43,7 +43,7 @@ func flood(node *controller.Device, port uint32, data []byte) error {
 	return node.Flood(v, data)
 }
 
-func (r *L2Switch) run(eth *protocol.Ethernet, ingress controller.Point) (drop bool, err error) {
+func (r *l2Switch) processPacket(eth *protocol.Ethernet, ingress controller.Point) (drop bool, err error) {
 	packet, err := eth.MarshalBinary()
 	if err != nil {
 		return false, err
@@ -55,12 +55,14 @@ func (r *L2Switch) run(eth *protocol.Ethernet, ingress controller.Point) (drop b
 		return true, flood(ingress.Node, ingress.Port, packet)
 	}
 
-	destination, ok := controller.Hosts.Find(eth.DstMAC)
+	destination, ok := controller.Hosts.FindPoint(eth.DstMAC)
 	if !ok {
 		// XXX: debugging
 		fmt.Printf("Failed to find the destination MAC: %v\n", eth.DstMAC)
 		return true, flood(ingress.Node, ingress.Port, packet)
 	}
+	// XXX: debugging
+	fmt.Printf("L2Switch: destination = device: %+v, port: %v\n", *destination.Node, destination.Port)
 
 	if err := r.installFlowRule(eth, ingress, destination); err != nil {
 		return false, err
@@ -84,7 +86,7 @@ func getPoint(path graph.Path) (src, dst *controller.Point) {
 	return edge.P2, edge.P1
 }
 
-func (r L2Switch) installFlowRule(eth *protocol.Ethernet, ingress, destination controller.Point) error {
+func (r l2Switch) installFlowRule(eth *protocol.Ethernet, ingress, destination controller.Point) error {
 	// src and dst nodes are on same node?
 	if ingress.Node.DPID == destination.Node.DPID {
 		if err := r._installFlowRule(ingress.Port, eth.Type, eth.SrcMAC, eth.DstMAC, &destination); err != nil {
@@ -117,7 +119,7 @@ func (r L2Switch) installFlowRule(eth *protocol.Ethernet, ingress, destination c
 	return nil
 }
 
-func (r L2Switch) _installFlowRule(inPort uint32, etherType uint16, srcMAC, dstMAC net.HardwareAddr, destination *controller.Point) error {
+func (r l2Switch) _installFlowRule(inPort uint32, etherType uint16, srcMAC, dstMAC net.HardwareAddr, destination *controller.Point) error {
 	match := destination.Node.NewMatch()
 	match.SetInPort(inPort)
 	match.SetEtherType(etherType)
@@ -134,4 +136,42 @@ func (r L2Switch) _installFlowRule(inPort uint32, etherType uint16, srcMAC, dstM
 	}
 
 	return destination.Node.InstallFlowRule(c)
+}
+
+func (r *l2Switch) processEvent(device *controller.Device, port openflow.Port, mac []net.HardwareAddr) error {
+	if port.IsPortDown() || port.IsLinkDown() {
+		return cleanup(mac)
+	}
+
+	return nil
+}
+
+func removeFlows(mac net.HardwareAddr) error {
+	devices := controller.Switches.GetAll()
+	for _, v := range devices {
+		match := v.NewMatch()
+		match.SetSrcMAC(mac)
+		if err := v.RemoveFlowRule(match); err != nil {
+			return err
+		}
+
+		match = v.NewMatch()
+		match.SetDstMAC(mac)
+		if err := v.RemoveFlowRule(match); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func cleanup(mac []net.HardwareAddr) error {
+	// Remove all flows that have mac addresses in its source or destination
+	for _, v := range mac {
+		if err := removeFlows(v); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
