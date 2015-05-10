@@ -16,39 +16,18 @@ import (
 )
 
 func init() {
-	Pool.add(newProxyARP())
+	Pool.add(new(proxyARP))
 }
 
-type ProxyARP struct {
+type proxyARP struct {
 	baseProcessor
-	routers map[string]net.IP
 }
 
-func newProxyARP() *ProxyARP {
-	v := &ProxyARP{
-		routers: make(map[string]net.IP),
-	}
-
-	// FIXME: Read router IP addresses from DB
-	r1 := net.IPv4(223, 130, 122, 1)
-	r2 := net.IPv4(223, 130, 123, 1)
-	r3 := net.IPv4(223, 130, 124, 1)
-	r4 := net.IPv4(223, 130, 125, 1)
-	r5 := net.IPv4(10, 0, 0, 254)
-	v.routers[r1.String()] = r1
-	v.routers[r2.String()] = r2
-	v.routers[r3.String()] = r3
-	v.routers[r4.String()] = r4
-	v.routers[r5.String()] = r5
-
-	return v
-}
-
-func (r ProxyARP) name() string {
+func (r proxyARP) name() string {
 	return "ProxyARP"
 }
 
-func (r *ProxyARP) run(eth *protocol.Ethernet, ingress controller.Point) (drop bool, err error) {
+func (r *proxyARP) processPacket(eth *protocol.Ethernet, ingress controller.Point) (drop bool, err error) {
 	// XXX: debugging
 	fmt.Printf("ProxyARP is running..\n")
 
@@ -63,16 +42,21 @@ func (r *ProxyARP) run(eth *protocol.Ethernet, ingress controller.Point) (drop b
 	}
 	// ARP request?
 	if arp.Operation != 1 {
-		// XXX: debugging
-		fmt.Printf("ARP Operation: %v\n", arp.Operation)
-		return false, nil
+		// Drop all ARP packets if they are not a reqeust.
+		return true, nil
 	}
-	_, ok := r.routers[arp.TPA.String()]
-	if !ok {
-		return false, nil
+	// Pass ARP announcements packets if it has valid source IP & MAC addresses
+	if isARPAnnouncement(arp) {
+		return r.handleARPAnnouncement(arp)
 	}
 
-	reply, err := makeARPReply(arp)
+	mac, ok := hostDB.MAC(arp.TPA)
+	if !ok {
+		// Unknown hosts. Drop the packet.
+		return true, nil
+	}
+
+	reply, err := makeARPReply(arp, mac)
 	if err != nil {
 		return false, err
 	}
@@ -82,14 +66,36 @@ func (r *ProxyARP) run(eth *protocol.Ethernet, ingress controller.Point) (drop b
 	return true, ingress.Node.PacketOut(openflow.NewInPort(), action, reply)
 }
 
-func makeARPReply(request *protocol.ARP) ([]byte, error) {
-	v := protocol.NewARPReply(virtualMAC, request.SHA, request.TPA, request.SPA)
+func isARPAnnouncement(request *protocol.ARP) bool {
+	// Valid ARP announcement?
+	sameAddr := request.SPA.Equal(request.TPA)
+	zeroTarget := request.THA.String() == "00:00:00:00:00:00"
+	if !sameAddr || !zeroTarget {
+		return false
+	}
+
+	return true
+}
+
+func (r *proxyARP) handleARPAnnouncement(request *protocol.ARP) (drop bool, err error) {
+	// Trusted MAC address?
+	mac, ok := hostDB.MAC(request.SPA)
+	if !ok || mac.String() != request.SHA.String() {
+		// Drop suspicious announcements
+		return true, nil
+	}
+
+	return false, nil
+}
+
+func makeARPReply(request *protocol.ARP, mac net.HardwareAddr) ([]byte, error) {
+	v := protocol.NewARPReply(mac, request.SHA, request.TPA, request.SPA)
 	reply, err := v.MarshalBinary()
 	if err != nil {
 		return nil, err
 	}
 	eth := protocol.Ethernet{
-		SrcMAC:  virtualMAC,
+		SrcMAC:  mac,
 		DstMAC:  request.SHA,
 		Type:    0x0806,
 		Payload: reply,
