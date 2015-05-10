@@ -379,8 +379,7 @@ func (r *OF13Transceiver) cleanup() {
 	}
 
 	if r.device.removeTransceiver(uint(r.auxID)) == 0 {
-		r.connected = false
-		Switches.remove(r.device.DPID)
+		r.baseTransceiver.cleanup()
 	}
 }
 

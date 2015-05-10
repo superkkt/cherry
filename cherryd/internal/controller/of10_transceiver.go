@@ -234,8 +234,7 @@ func (r *OF10Transceiver) cleanup() {
 	}
 
 	if r.device.removeTransceiver(0) == 0 {
-		r.connected = false
-		Switches.remove(r.device.DPID)
+		r.baseTransceiver.cleanup()
 	}
 }
 

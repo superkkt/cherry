@@ -29,7 +29,7 @@ func init() {
 	}
 	Hosts = &HostPool{
 		mac:   make(map[string]Point),
-		point: make(map[string][]net.HardwareAddr),
+		point: make(map[string]switchPort),
 	}
 }
 
@@ -76,10 +76,15 @@ func (r *Topology) FindPath(src, dst *Device) []graph.Path {
 	return r.graph.FindPath(src, dst)
 }
 
+type switchPort struct {
+	point Point
+	mac   []net.HardwareAddr
+}
+
 type HostPool struct {
 	mutex sync.Mutex
 	mac   map[string]Point
-	point map[string][]net.HardwareAddr
+	point map[string]switchPort
 }
 
 func (r *HostPool) add(mac net.HardwareAddr, p Point) {
@@ -105,9 +110,9 @@ func (r *HostPool) add(mac net.HardwareAddr, p Point) {
 
 	v, ok := r.point[p.ID()]
 	if ok {
-		v = append(v, mac)
+		v.mac = append(v.mac, mac)
 	} else {
-		v = []net.HardwareAddr{mac}
+		v = switchPort{point: p, mac: []net.HardwareAddr{mac}}
 	}
 	r.point[p.ID()] = v
 }
@@ -117,7 +122,7 @@ func (r *HostPool) _remove(p Point) {
 	if !ok {
 		return
 	}
-	for _, mac := range v {
+	for _, mac := range v.mac {
 		delete(r.mac, mac.String())
 	}
 	delete(r.point, p.ID())
@@ -130,8 +135,19 @@ func (r *HostPool) remove(p Point) {
 	if p.Node == nil {
 		panic("nil parameter")
 	}
-
 	r._remove(p)
+}
+
+func (r *HostPool) getAllPoints() []Point {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	v := make([]Point, 0)
+	for _, p := range r.point {
+		v = append(v, p.point)
+	}
+
+	return v
 }
 
 func (r *HostPool) FindMAC(p Point) (mac []net.HardwareAddr, ok bool) {
@@ -141,8 +157,12 @@ func (r *HostPool) FindMAC(p Point) (mac []net.HardwareAddr, ok bool) {
 	if p.Node == nil {
 		panic("nil parameter")
 	}
-	mac, ok = r.point[p.ID()]
-	return
+	v, ok := r.point[p.ID()]
+	if !ok {
+		return nil, false
+	}
+
+	return v.mac, true
 }
 
 func (r *HostPool) FindPoint(mac net.HardwareAddr) (p Point, ok bool) {

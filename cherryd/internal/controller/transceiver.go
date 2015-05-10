@@ -338,6 +338,18 @@ func (r *baseTransceiver) handleIncoming(inPort uint32, packet []byte) error {
 	return r.processor.ProcessPacket(eth, p)
 }
 
+func (r *baseTransceiver) cleanup() {
+	r.connected = false
+	points := Hosts.getAllPoints()
+	for _, v := range points {
+		if v.Node.DPID != r.device.DPID {
+			continue
+		}
+		Hosts.remove(v)
+	}
+	Switches.remove(r.device.DPID)
+}
+
 func NewTransceiver(conn net.Conn, log Logger, p Processor) (Transceiver, error) {
 	stream := openflow.NewStream(conn)
 	stream.SetReadTimeout(5 * time.Second)
