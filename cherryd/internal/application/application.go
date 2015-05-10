@@ -11,17 +11,26 @@ import (
 	"fmt"
 	"git.sds.co.kr/cherry.git/cherryd/internal/controller"
 	"git.sds.co.kr/cherry.git/cherryd/net/protocol"
+	"net"
 	"sort"
 	"strings"
 	"sync"
 )
 
 var Pool *Application
+var virtualMAC net.HardwareAddr
 
 func init() {
 	Pool = &Application{
 		p: make([]processor, 0),
 	}
+
+	// Locally Administered Address
+	mac, err := net.ParseMAC("02:DB:CA:FE:00:01")
+	if err != nil {
+		panic("invalid MAC address")
+	}
+	virtualMAC = mac
 }
 
 type processor interface {

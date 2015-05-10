@@ -27,21 +27,18 @@ func (r L3Switch) name() string {
 	return "L3Switch"
 }
 
-// TODO: Remove flows when the port, which is used in the flow, is removed
 func (r *L3Switch) run(eth *protocol.Ethernet, ingress controller.Point) (drop bool, err error) {
-	// FIXME: Is it better to get the raw packet as an input parameter?
 	packet, err := eth.MarshalBinary()
 	if err != nil {
 		return false, err
 	}
 
-	if isARPRequest(eth) {
+	if isBroadcast(eth) {
 		// XXX: debugging
-		fmt.Print("ARP request is received..\n")
+		fmt.Print("Broadcasting..\n")
 		return true, flood(ingress.Node, ingress.Port, packet)
 	}
 
-	// TODO: Add test cases for hosts DB
 	destination, ok := controller.Hosts.Find(eth.DstMAC)
 	if !ok {
 		// XXX: debugging

@@ -15,90 +15,16 @@ import (
 	"net"
 )
 
-var vMAC net.HardwareAddr
-var vIP net.IP
-
 func init() {
 	Pool.add(new(virtualRouter))
-	// Locally Administered Address
-	mac, err := net.ParseMAC("02:DB:CA:FE:00:01")
-	if err != nil {
-		panic("invalid MAC address")
-	}
-	vMAC = mac
-	vIP = net.IPv4(223, 130, 122, 1)
 }
 
 type virtualRouter struct {
-	prior uint
-	state bool
+	baseProcessor
 }
 
 func (r virtualRouter) name() string {
 	return "VirtualRouter"
-}
-
-func (r virtualRouter) priority() uint {
-	return r.prior
-}
-
-func (r *virtualRouter) setPriority(p uint) {
-	r.prior = p
-}
-
-func (r *virtualRouter) enable() {
-	r.state = true
-}
-
-func (r *virtualRouter) disable() {
-	r.state = false
-}
-
-func (r virtualRouter) enabled() bool {
-	return r.state
-}
-
-func makeARPReply(request *protocol.ARP) ([]byte, error) {
-	v := protocol.NewARPReply(vMAC, request.SHA, request.TPA, request.SPA)
-	reply, err := v.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
-	eth := protocol.Ethernet{
-		SrcMAC:  vMAC,
-		DstMAC:  request.SHA,
-		Type:    0x0806,
-		Payload: reply,
-	}
-
-	return eth.MarshalBinary()
-}
-
-func handleARP(eth *protocol.Ethernet, ingress controller.Point) (drop bool, err error) {
-	fmt.Printf("Receiving ARP packet..\n")
-
-	arp := new(protocol.ARP)
-	if err := arp.UnmarshalBinary(eth.Payload); err != nil {
-		return false, err
-	}
-	// ARP request?
-	if arp.Operation != 1 {
-		fmt.Printf("ARP Operation: %v\n", arp.Operation)
-		return false, nil
-	}
-	fmt.Printf("vIP: %v, ARP TPA: %v\n", vIP, arp.TPA)
-	if !arp.TPA.Equal(vIP) {
-		return false, nil
-	}
-
-	reply, err := makeARPReply(arp)
-	if err != nil {
-		return false, err
-	}
-	action := ingress.Node.NewAction()
-	action.SetOutput(uint(ingress.Port))
-
-	return true, ingress.Node.PacketOut(openflow.NewInPort(), action, reply)
 }
 
 func makeICMPEchoReply(src, dst net.IP, req *protocol.ICMPEcho) ([]byte, error) {
@@ -115,20 +41,7 @@ func makeICMPEchoReply(src, dst net.IP, req *protocol.ICMPEcho) ([]byte, error) 
 	return ip, nil
 }
 
-func handleIPv4(eth *protocol.Ethernet, ingress controller.Point) (drop bool, err error) {
-	fmt.Printf("Receiving IPv4 packet..\n")
-
-	ip := new(protocol.IPv4)
-	if err := ip.UnmarshalBinary(eth.Payload); err != nil {
-		return false, err
-	}
-	fmt.Printf("IPv4: %+v\n", ip)
-
-	// ICMP?
-	if ip.Protocol != 1 || !ip.DstIP.Equal(vIP) {
-		return false, nil
-	}
-
+func handleICMP(eth *protocol.Ethernet, ingress controller.Point, ip *protocol.IPv4) (drop bool, err error) {
 	icmp := new(protocol.ICMPEcho)
 	if err := icmp.UnmarshalBinary(ip.Payload); err != nil {
 		return false, err
@@ -155,17 +68,27 @@ func handleIPv4(eth *protocol.Ethernet, ingress controller.Point) (drop bool, er
 }
 
 func (r virtualRouter) run(eth *protocol.Ethernet, ingress controller.Point) (drop bool, err error) {
+	// XXX: debugging
 	fmt.Printf("VirtualRouter is running..\n")
 
-	switch eth.Type {
-	// ARP
-	case 0x0806:
-		return handleARP(eth, ingress)
-	// IPv4
-	case 0x0800:
-		return handleIPv4(eth, ingress)
-	default:
+	// IPv4 packet to the virtual router?
+	if eth.Type != 0x0800 || eth.DstMAC.String() != virtualMAC.String() {
 		return false, nil
 	}
 
+	ip := new(protocol.IPv4)
+	if err := ip.UnmarshalBinary(eth.Payload); err != nil {
+		return false, err
+	}
+	// XXX: debugging
+	fmt.Printf("IPv4: %+v\n", ip)
+
+	// ICMP?
+	if ip.Protocol == 1 {
+		return handleICMP(eth, ingress, ip)
+	}
+
+	// TODO: Do virtual routing
+
+	return false, nil
 }
