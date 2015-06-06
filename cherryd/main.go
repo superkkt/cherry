@@ -119,7 +119,7 @@ func enableApplications(config *Config) error {
 }
 
 func main() {
-	runtime.GOMAXPROCS(runtime.NumCPU() * 2)
+	runtime.GOMAXPROCS(runtime.NumCPU())
 	flag.Parse()
 
 	conf := NewConfig()
