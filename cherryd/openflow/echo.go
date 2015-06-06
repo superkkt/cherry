@@ -7,49 +7,54 @@
 
 package openflow
 
-type Echo struct {
+import (
+	"encoding"
+	"errors"
+)
+
+type Echo interface {
+	Header
+	Data() []byte
+	SetData(data []byte) error
+	encoding.BinaryMarshaler
+	encoding.BinaryUnmarshaler
+}
+
+type EchoRequest interface {
+	Echo
+}
+
+type EchoReply interface {
+	Echo
+}
+
+type BaseEcho struct {
 	Message
-	Data []byte
+	data []byte
 }
 
-func (r *Echo) MarshalBinary() ([]byte, error) {
-	r.SetPayload(r.Data)
-	return r.Message.MarshalBinary()
+func (r *BaseEcho) Data() []byte {
+	return r.data
 }
 
-func (r *Echo) UnmarshalBinary(data []byte) error {
-	if err := r.Message.UnmarshalBinary(data); err != nil {
-		return err
+func (r *BaseEcho) SetData(data []byte) error {
+	if data == nil {
+		return errors.New("data is nil")
 	}
-	r.Data = r.Payload()
-
+	r.data = data
 	return nil
 }
 
-type EchoRequest struct {
-	Echo
+func (r *BaseEcho) MarshalBinary() ([]byte, error) {
+	r.SetPayload(r.data)
+	return r.Message.MarshalBinary()
 }
 
-func NewEchoRequest(version uint8, xid uint32, data []byte) *EchoRequest {
-	return &EchoRequest{
-		Echo{
-			// OFPT_ECHO_REQUEST
-			Message: NewMessage(version, 0x02, xid),
-			Data:    data,
-		},
+func (r *BaseEcho) UnmarshalBinary(data []byte) error {
+	if err := r.Message.UnmarshalBinary(data); err != nil {
+		return err
 	}
-}
+	r.data = r.Payload()
 
-type EchoReply struct {
-	Echo
-}
-
-func NewEchoReply(version uint8, xid uint32, data []byte) *EchoReply {
-	return &EchoReply{
-		Echo{
-			// OFPT_ECHO_REPLY
-			Message: NewMessage(version, 0x03, xid),
-			Data:    data,
-		},
-	}
+	return nil
 }

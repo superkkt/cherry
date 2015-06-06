@@ -28,19 +28,19 @@ type Port struct {
 	current, advertised, supported, peer uint32
 }
 
-func (r *Port) Number() uint {
+func (r Port) Number() uint {
 	return uint(r.number)
 }
 
-func (r *Port) MAC() net.HardwareAddr {
+func (r Port) MAC() net.HardwareAddr {
 	return r.mac
 }
 
-func (r *Port) Name() string {
+func (r Port) Name() string {
 	return r.name
 }
 
-func (r *Port) IsPortDown() bool {
+func (r Port) IsPortDown() bool {
 	if r.config&OFPPC_PORT_DOWN != 0 {
 		return true
 	}
@@ -48,7 +48,7 @@ func (r *Port) IsPortDown() bool {
 	return false
 }
 
-func (r *Port) IsLinkDown() bool {
+func (r Port) IsLinkDown() bool {
 	if r.state&OFPPS_LINK_DOWN != 0 {
 		return true
 	}
@@ -56,60 +56,37 @@ func (r *Port) IsLinkDown() bool {
 	return false
 }
 
-func (r *Port) Config() uint32 {
-	return r.config
+func (r Port) IsCopper() bool {
+	return r.current&OFPPF_COPPER != 0
 }
 
-func (r *Port) Advertise() uint32 {
-	return r.advertised
+func (r Port) IsFiber() bool {
+	return r.current&OFPPF_FIBER != 0
 }
 
-type PortFeatureState struct {
-	OFPPF_10MB_HD    bool
-	OFPPF_10MB_FD    bool
-	OFPPF_100MB_HD   bool
-	OFPPF_100MB_FD   bool
-	OFPPF_1GB_HD     bool
-	OFPPF_1GB_FD     bool
-	OFPPF_10GB_FD    bool
-	OFPPF_COPPER     bool
-	OFPPF_FIBER      bool
-	OFPPF_AUTONEG    bool
-	OFPPF_PAUSE      bool
-	OFPPF_PAUSE_ASYM bool
+func (r Port) IsAutoNego() bool {
+	return r.current&OFPPF_AUTONEG != 0
 }
 
-// TODO:
-// Implement functions to return states such as OFPPS_STP_LISTEN, OFPPS_STP_LEARN,
-// OFPPS_STP_FORWARD and OFPPS_STP_BLOCK.
-
-func getFeatures(v uint32) *PortFeatureState {
-	return &PortFeatureState{
-		OFPPF_10MB_HD:    v&OFPPF_10MB_HD != 0,
-		OFPPF_10MB_FD:    v&OFPPF_10MB_FD != 0,
-		OFPPF_100MB_HD:   v&OFPPF_100MB_HD != 0,
-		OFPPF_100MB_FD:   v&OFPPF_100MB_FD != 0,
-		OFPPF_1GB_HD:     v&OFPPF_1GB_HD != 0,
-		OFPPF_1GB_FD:     v&OFPPF_1GB_FD != 0,
-		OFPPF_10GB_FD:    v&OFPPF_10GB_FD != 0,
-		OFPPF_COPPER:     v&OFPPF_COPPER != 0,
-		OFPPF_FIBER:      v&OFPPF_FIBER != 0,
-		OFPPF_AUTONEG:    v&OFPPF_AUTONEG != 0,
-		OFPPF_PAUSE:      v&OFPPF_PAUSE != 0,
-		OFPPF_PAUSE_ASYM: v&OFPPF_PAUSE_ASYM != 0,
+func (r Port) Speed() uint64 {
+	switch {
+	case r.current&OFPPF_10MB_HD != 0:
+		return 5
+	case r.current&OFPPF_10MB_FD != 0:
+		return 10
+	case r.current&OFPPF_100MB_HD != 0:
+		return 50
+	case r.current&OFPPF_100MB_FD != 0:
+		return 100
+	case r.current&OFPPF_1GB_HD != 0:
+		return 500
+	case r.current&OFPPF_1GB_FD != 0:
+		return 1000
+	case r.current&OFPPF_10GB_FD != 0:
+		return 10000
+	default:
+		return 0
 	}
-}
-
-func (r *Port) GetCurrentFeatures() *PortFeatureState {
-	return getFeatures(r.current)
-}
-
-func (r *Port) GetAdvertisedFeatures() *PortFeatureState {
-	return getFeatures(r.advertised)
-}
-
-func (r *Port) GetSupportedFeatures() *PortFeatureState {
-	return getFeatures(r.supported)
 }
 
 func (r *Port) UnmarshalBinary(data []byte) error {
@@ -129,25 +106,4 @@ func (r *Port) UnmarshalBinary(data []byte) error {
 	r.peer = binary.BigEndian.Uint32(data[44:48])
 
 	return nil
-}
-
-func (r *Port) Speed() uint64 {
-	switch {
-	case r.current&OFPPF_10MB_HD != 0:
-		return 5
-	case r.current&OFPPF_10MB_FD != 0:
-		return 10
-	case r.current&OFPPF_100MB_HD != 0:
-		return 50
-	case r.current&OFPPF_100MB_FD != 0:
-		return 100
-	case r.current&OFPPF_1GB_HD != 0:
-		return 500
-	case r.current&OFPPF_1GB_FD != 0:
-		return 1000
-	case r.current&OFPPF_10GB_FD != 0:
-		return 10000
-	default:
-		return 100 // fallback
-	}
 }

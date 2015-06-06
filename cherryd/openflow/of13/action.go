@@ -19,26 +19,26 @@ type Action struct {
 	*openflow.BaseAction
 }
 
-func NewAction() *Action {
+func NewAction() openflow.Action {
 	return &Action{
 		openflow.NewBaseAction(),
 	}
 }
 
-func marshalOutput(p uint) ([]byte, error) {
+func marshalOutput(p openflow.OutPort) ([]byte, error) {
 	v := make([]byte, 16)
 	binary.BigEndian.PutUint16(v[0:2], uint16(OFPAT_OUTPUT))
 	binary.BigEndian.PutUint16(v[2:4], 16)
 
 	var port uint32
 	switch p {
-	case openflow.PortTable:
+	case openflow.OutToTable:
 		port = OFPP_TABLE
-	case openflow.PortAll:
+	case openflow.OutToAll:
 		port = OFPP_ALL
-	case openflow.PortController:
+	case openflow.OutToController:
 		port = OFPP_CONTROLLER
-	case openflow.PortAny:
+	case openflow.OutToNone:
 		port = OFPP_ANY
 	default:
 		port = uint32(p)
@@ -52,7 +52,7 @@ func marshalOutput(p uint) ([]byte, error) {
 
 func marshalMAC(t uint8, mac net.HardwareAddr) ([]byte, error) {
 	if mac == nil || len(mac) < 6 {
-		return nil, errors.New("invalid MAC address")
+		return nil, openflow.ErrInvalidMACAddress
 	}
 
 	tlv, err := marshalHardwareAddrTLV(t, mac)
@@ -92,7 +92,7 @@ func (r *Action) MarshalBinary() ([]byte, error) {
 		result = append(result, v...)
 	}
 
-	ports := r.Output()
+	ports := r.OutPort()
 	for _, v := range ports {
 		v, err := marshalOutput(v)
 		if err != nil {
@@ -118,7 +118,7 @@ func (r *Action) UnmarshalBinary(data []byte) error {
 			if len(buf) < 8 {
 				return openflow.ErrInvalidPacketLength
 			}
-			if err := r.SetOutput(uint(binary.BigEndian.Uint32(buf[4:8]))); err != nil {
+			if err := r.SetOutPort(openflow.OutPort(binary.BigEndian.Uint32(buf[4:8]))); err != nil {
 				return err
 			}
 		case OFPAT_SET_FIELD:

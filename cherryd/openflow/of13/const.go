@@ -51,20 +51,123 @@ const (
 )
 
 const (
-	OFPC_FLOW_STATS   = 1 << 0 /* Flow statistics. */
-	OFPC_TABLE_STATS  = 1 << 1 /* Table statistics. */
-	OFPC_PORT_STATS   = 1 << 2 /* Port statistics. */
-	OFPC_GROUP_STATS  = 1 << 3 /* Group statistics. */
-	OFPC_IP_REASM     = 1 << 5 /* Can reassemble IP fragments. */
-	OFPC_QUEUE_STATS  = 1 << 6 /* Queue statistics. */
-	OFPC_PORT_BLOCKED = 1 << 8 /* Switch will block looping ports. */
+	OFPAT_OUTPUT    = 0
+	OFPAT_SET_FIELD = 25
 )
 
 const (
-	OFPC_FRAG_NORMAL = iota /* No special handling for fragments. */
-	OFPC_FRAG_DROP          /* Drop fragments. */
-	OFPC_FRAG_REASM         /* Reassemble (only if OFPC_IP_REASM set). */
-	OFPC_FRAG_MASK
+	/* Maximum number of physical and logical switch ports. */
+	OFPP_MAX = 0xffffff00
+	/* Reserved OpenFlow Port (fake output "ports"). */
+	OFPP_IN_PORT = 0xfffffff8
+	OFPP_TABLE   = 0xfffffff9
+	OFPP_NORMAL  = 0xfffffffa /* Process with normal L2/L3 switching. */
+	/* All physical ports in VLAN, except input port and those blocked or link down. */
+	OFPP_FLOOD      = 0xfffffffb
+	OFPP_ALL        = 0xfffffffc /* All physical ports except input port. */
+	OFPP_CONTROLLER = 0xfffffffd /* Send to controller. */
+	OFPP_LOCAL      = 0xfffffffe /* Local openflow "port". */
+	OFPP_ANY        = 0xffffffff /* Wildcard */
+)
+
+const (
+	OFPXMT_OFB_IN_PORT = iota
+	OFPXMT_OFB_IN_PHY_PORT
+	OFPXMT_OFB_METADATA
+	OFPXMT_OFB_ETH_DST
+	OFPXMT_OFB_ETH_SRC
+	OFPXMT_OFB_ETH_TYPE
+	OFPXMT_OFB_VLAN_VID
+	OFPXMT_OFB_VLAN_PCP
+	OFPXMT_OFB_IP_DSCP
+	OFPXMT_OFB_IP_ECN
+	OFPXMT_OFB_IP_PROTO
+	OFPXMT_OFB_IPV4_SRC
+	OFPXMT_OFB_IPV4_DST
+	OFPXMT_OFB_TCP_SRC
+	OFPXMT_OFB_TCP_DST
+	OFPXMT_OFB_UDP_SRC
+	OFPXMT_OFB_UDP_DST
+	OFPXMT_OFB_SCTP_SRC
+	OFPXMT_OFB_SCTP_DST
+	OFPXMT_OFB_ICMPV4_TYPE
+	OFPXMT_OFB_ICMPV4_CODE
+	OFPXMT_OFB_ARP_OP
+	OFPXMT_OFB_ARP_SPA
+	OFPXMT_OFB_ARP_TPA
+	OFPXMT_OFB_ARP_SHA
+	OFPXMT_OFB_ARP_THA
+	OFPXMT_OFB_IPV6_SRC
+	OFPXMT_OFB_IPV6_DST
+	OFPXMT_OFB_IPV6_FLABEL
+	OFPXMT_OFB_ICMPV6_TYPE
+	OFPXMT_OFB_ICMPV6_CODE
+	OFPXMT_OFB_IPV6_ND_TARGET
+	OFPXMT_OFB_IPV6_ND_SLL
+	OFPXMT_OFB_IPV6_ND_TLL
+	OFPXMT_OFB_MPLS_LABEL
+	OFPXMT_OFB_MPLS_TC
+	OFPXMT_OFP_MPLS_BOS
+	OFPXMT_OFB_PBB_ISID
+	OFPXMT_OFB_TUNNEL_ID
+	OFPXMT_OFB_IPV6_EXTHDR
+)
+
+const (
+	OFPMT_STANDARD = 0
+	OFPMT_OXM      = 1
+)
+
+const (
+	OFPFC_ADD           = 0 /* New flow. */
+	OFPFC_MODIFY        = 1 /* Modify all matching flows. */
+	OFPFC_MODIFY_STRICT = 2 /* Modify entry strictly matching wildcards and priority. */
+	OFPFC_DELETE        = 3 /* Delete all matching flows. */
+	OFPFC_DELETE_STRICT = 4 /* Delete entry strictly matching wildcards and priority */
+)
+
+const (
+	OFP_NO_BUFFER = 0xffffffff
+)
+
+const (
+	OFPFF_SEND_FLOW_REM = 1 << 0 /* Send flow removed message when flow expires or is deleted. */
+	OFPFF_CHECK_OVERLAP = 1 << 1 /* Check for overlapping entries first. */
+	OFPFF_RESET_COUNTS  = 1 << 2 /* Reset flow packet and byte counts. */
+	OFPFF_NO_PKT_COUNTS = 1 << 3 /* Don't keep track of packet count. */
+	OFPFF_NO_BYT_COUNTS = 1 << 4 /* Don't keep track of byte count. */
+)
+
+const (
+	OFPPC_PORT_DOWN    = 1 << 0 /* Port is administratively down. */
+	OFPPC_NO_RECV      = 1 << 2
+	OFPPC_NO_FWD       = 1 << 5
+	OFPPC_NO_PACKET_IN = 1 << 6
+)
+
+const (
+	OFPPS_LINK_DOWN = 1 << 0 /* No physical link present. */
+	OFPPS_BLOCKED   = 1 << 1
+	OFPPS_LIVE      = 1 << 2
+)
+
+const (
+	OFPPF_10MB_HD    = 1 << 0
+	OFPPF_10MB_FD    = 1 << 1
+	OFPPF_100MB_HD   = 1 << 2
+	OFPPF_100MB_FD   = 1 << 3
+	OFPPF_1GB_HD     = 1 << 4
+	OFPPF_1GB_FD     = 1 << 5
+	OFPPF_10GB_FD    = 1 << 6
+	OFPPF_40GB_FD    = 1 << 7
+	OFPPF_100GB_FD   = 1 << 8
+	OFPPF_1TB_FD     = 1 << 9
+	OFPPF_OTHER      = 1 << 10
+	OFPPF_COPPER     = 1 << 11
+	OFPPF_FIBER      = 1 << 12
+	OFPPF_AUTONEG    = 1 << 13
+	OFPPF_PAUSE      = 1 << 14
+	OFPPF_PAUSE_ASYM = 1 << 15
 )
 
 const (
@@ -135,148 +238,18 @@ const (
 )
 
 const (
-	OFPPC_PORT_DOWN    = 1 << 0 /* Port is administratively down. */
-	OFPPC_NO_RECV      = 1 << 2
-	OFPPC_NO_FWD       = 1 << 5
-	OFPPC_NO_PACKET_IN = 1 << 6
-)
-
-const (
-	OFPPS_LINK_DOWN = 1 << 0 /* No physical link present. */
-	OFPPS_BLOCKED   = 1 << 1
-	OFPPS_LIVE      = 1 << 2
-)
-
-const (
-	OFPPF_10MB_HD    = 1 << 0
-	OFPPF_10MB_FD    = 1 << 1
-	OFPPF_100MB_HD   = 1 << 2
-	OFPPF_100MB_FD   = 1 << 3
-	OFPPF_1GB_HD     = 1 << 4
-	OFPPF_1GB_FD     = 1 << 5
-	OFPPF_10GB_FD    = 1 << 6
-	OFPPF_40GB_FD    = 1 << 7
-	OFPPF_100GB_FD   = 1 << 8
-	OFPPF_1TB_FD     = 1 << 9
-	OFPPF_OTHER      = 1 << 10
-	OFPPF_COPPER     = 1 << 11
-	OFPPF_FIBER      = 1 << 12
-	OFPPF_AUTONEG    = 1 << 13
-	OFPPF_PAUSE      = 1 << 14
-	OFPPF_PAUSE_ASYM = 1 << 15
-)
-
-const (
-	OFPXMT_OFB_IN_PORT = iota
-	OFPXMT_OFB_IN_PHY_PORT
-	OFPXMT_OFB_METADATA
-	OFPXMT_OFB_ETH_DST
-	OFPXMT_OFB_ETH_SRC
-	OFPXMT_OFB_ETH_TYPE
-	OFPXMT_OFB_VLAN_VID
-	OFPXMT_OFB_VLAN_PCP
-	OFPXMT_OFB_IP_DSCP
-	OFPXMT_OFB_IP_ECN
-	OFPXMT_OFB_IP_PROTO
-	OFPXMT_OFB_IPV4_SRC
-	OFPXMT_OFB_IPV4_DST
-	OFPXMT_OFB_TCP_SRC
-	OFPXMT_OFB_TCP_DST
-	OFPXMT_OFB_UDP_SRC
-	OFPXMT_OFB_UDP_DST
-	OFPXMT_OFB_SCTP_SRC
-	OFPXMT_OFB_SCTP_DST
-	OFPXMT_OFB_ICMPV4_TYPE
-	OFPXMT_OFB_ICMPV4_CODE
-	OFPXMT_OFB_ARP_OP
-	OFPXMT_OFB_ARP_SPA
-	OFPXMT_OFB_ARP_TPA
-	OFPXMT_OFB_ARP_SHA
-	OFPXMT_OFB_ARP_THA
-	OFPXMT_OFB_IPV6_SRC
-	OFPXMT_OFB_IPV6_DST
-	OFPXMT_OFB_IPV6_FLABEL
-	OFPXMT_OFB_ICMPV6_TYPE
-	OFPXMT_OFB_ICMPV6_CODE
-	OFPXMT_OFB_IPV6_ND_TARGET
-	OFPXMT_OFB_IPV6_ND_SLL
-	OFPXMT_OFB_IPV6_ND_TLL
-	OFPXMT_OFB_MPLS_LABEL
-	OFPXMT_OFB_MPLS_TC
-	OFPXMT_OFP_MPLS_BOS
-	OFPXMT_OFB_PBB_ISID
-	OFPXMT_OFB_TUNNEL_ID
-	OFPXMT_OFB_IPV6_EXTHDR
-)
-
-const (
-	OFPMT_STANDARD = 0
-	OFPMT_OXM      = 1
-)
-
-const (
-	OFPAT_OUTPUT    = 0
-	OFPAT_SET_FIELD = 25
-)
-
-const (
 	OFPG_ANY = 0xffffffff
 )
 
 const (
-	OFPFC_ADD           = 0 /* New flow. */
-	OFPFC_MODIFY        = 1 /* Modify all matching flows. */
-	OFPFC_MODIFY_STRICT = 2 /* Modify entry strictly matching wildcards and priority. */
-	OFPFC_DELETE        = 3 /* Delete all matching flows. */
-	OFPFC_DELETE_STRICT = 4 /* Delete entry strictly matching wildcards and priority */
+	OFPC_FRAG_NORMAL = 0      /* No special handling for fragments. */
+	OFPC_FRAG_DROP   = 1 << 0 /* Drop fragments. */
+	OFPC_FRAG_REASM  = 1 << 1 /* Reassemble (only if OFPC_IP_REASM set). */
+	OFPC_FRAG_MASK   = 3
 )
 
 const (
-	OFPIT_GOTO_TABLE     = 1      /* Setup the next table in the lookup pipeline */
-	OFPIT_WRITE_METADATA = 2      /* Setup the metadata field for use later in pipeline */
-	OFPIT_WRITE_ACTIONS  = 3      /* Write the action(s) onto the datapath action set */
-	OFPIT_APPLY_ACTIONS  = 4      /* Applies the action(s) immediately */
-	OFPIT_CLEAR_ACTIONS  = 5      /* Clears all actions from the datapath action set */
-	OFPIT_METER          = 6      /* Apply meter (rate limiter) */
-	OFPIT_EXPERIMENTER   = 0xFFFF /* Experimenter instruction */
-)
-
-const (
-	OFP_NO_BUFFER = 0xffffffff
-)
-
-const (
-	OFPFF_SEND_FLOW_REM = 1 << 0 /* Send flow removed message when flow expires or is deleted. */
-	OFPFF_CHECK_OVERLAP = 1 << 1 /* Check for overlapping entries first. */
-	OFPFF_RESET_COUNTS  = 1 << 2 /* Reset flow packet and byte counts. */
-	OFPFF_NO_PKT_COUNTS = 1 << 3 /* Don't keep track of packet count. */
-	OFPFF_NO_BYT_COUNTS = 1 << 4 /* Don't keep track of byte count. */
-)
-
-const (
-	/* Last usable table number. */
-	OFPTT_MAX = 0xfe
-	/* Fake tables. */
-	OFPTT_ALL = 0xff /* Wildcard table used for table config, flow stats and flow deletes. */
-)
-
-const (
-	OFPPR_ADD    = 0 /* The port was added. */
-	OFPPR_DELETE = 1 /* The port was removed. */
-	OFPPR_MODIFY = 2 /* Some attribute of the port has changed. */
-)
-
-const (
-	/* Maximum number of physical and logical switch ports. */
-	OFPP_MAX = 0xffffff00
-	/* Reserved OpenFlow Port (fake output "ports"). */
-	OFPP_IN_PORT = 0xfffffff8
-	OFPP_TABLE   = 0xfffffff9
-	OFPP_NORMAL  = 0xfffffffa /* Process with normal L2/L3 switching. */
-	/* All physical ports in VLAN, except input port and those blocked or link down. */
-	OFPP_FLOOD      = 0xfffffffb
-	OFPP_ALL        = 0xfffffffc /* All physical ports except input port. */
-	OFPP_CONTROLLER = 0xfffffffd /* Send to controller. */
-	OFPP_LOCAL      = 0xfffffffe /* Local openflow "port". */
-	OFPP_ANY        = 0xffffffff /* Wildcard */
+	OFPPR_ADD    = 0
+	OFPPR_DELETE = 1
+	OFPPR_MODIFY = 2
 )

@@ -15,9 +15,9 @@ type BarrierRequest struct {
 	openflow.Message
 }
 
-func NewBarrierRequest(xid uint32) *BarrierRequest {
+func NewBarrierRequest(xid uint32) openflow.BarrierRequest {
 	return &BarrierRequest{
-		Message: openflow.NewMessage(openflow.Ver10, OFPT_BARRIER_REQUEST, xid),
+		Message: openflow.NewMessage(openflow.OF10_VERSION, OFPT_BARRIER_REQUEST, xid),
 	}
 }
 

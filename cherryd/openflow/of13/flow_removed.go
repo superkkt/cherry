@@ -14,17 +14,61 @@ import (
 
 type FlowRemoved struct {
 	openflow.Message
-	Cookie          uint64
-	Priority        uint16
-	Reason          uint8
-	TableID         uint8
-	DurationSec     uint32
-	DurationNanoSec uint32
-	IdleTimeout     uint16
-	HardTimeout     uint16
-	PacketCount     uint64
-	ByteCount       uint64
-	Match           openflow.Match
+	cookie          uint64
+	priority        uint16
+	reason          uint8
+	tableID         uint8
+	durationSec     uint32
+	durationNanoSec uint32
+	idleTimeout     uint16
+	hardTimeout     uint16
+	packetCount     uint64
+	byteCount       uint64
+	match           openflow.Match
+}
+
+func (r FlowRemoved) Cookie() uint64 {
+	return r.cookie
+}
+
+func (r FlowRemoved) Priority() uint16 {
+	return r.priority
+}
+
+func (r FlowRemoved) Reason() uint8 {
+	return r.reason
+}
+
+func (r FlowRemoved) TableID() uint8 {
+	return r.tableID
+}
+
+func (r FlowRemoved) DurationSec() uint32 {
+	return r.durationSec
+}
+
+func (r FlowRemoved) DurationNanoSec() uint32 {
+	return r.durationNanoSec
+}
+
+func (r FlowRemoved) IdleTimeout() uint16 {
+	return r.idleTimeout
+}
+
+func (r FlowRemoved) HardTimeout() uint16 {
+	return r.hardTimeout
+}
+
+func (r FlowRemoved) PacketCount() uint64 {
+	return r.packetCount
+}
+
+func (r FlowRemoved) ByteCount() uint64 {
+	return r.byteCount
+}
+
+func (r FlowRemoved) Match() openflow.Match {
+	return r.match
 }
 
 func (r *FlowRemoved) UnmarshalBinary(data []byte) error {
@@ -36,18 +80,18 @@ func (r *FlowRemoved) UnmarshalBinary(data []byte) error {
 	if payload == nil || len(payload) < 48 {
 		return openflow.ErrInvalidPacketLength
 	}
-	r.Cookie = binary.BigEndian.Uint64(payload[0:8])
-	r.Priority = binary.BigEndian.Uint16(payload[8:10])
-	r.Reason = payload[10]
-	r.TableID = payload[11]
-	r.DurationSec = binary.BigEndian.Uint32(payload[12:16])
-	r.DurationNanoSec = binary.BigEndian.Uint32(payload[16:20])
-	r.IdleTimeout = binary.BigEndian.Uint16(payload[20:22])
-	r.HardTimeout = binary.BigEndian.Uint16(payload[22:24])
-	r.PacketCount = binary.BigEndian.Uint64(payload[24:32])
-	r.ByteCount = binary.BigEndian.Uint64(payload[32:40])
-	r.Match = NewMatch()
-	if err := r.Match.UnmarshalBinary(payload[40:]); err != nil {
+	r.cookie = binary.BigEndian.Uint64(payload[0:8])
+	r.priority = binary.BigEndian.Uint16(payload[8:10])
+	r.reason = payload[10]
+	r.tableID = payload[11]
+	r.durationSec = binary.BigEndian.Uint32(payload[12:16])
+	r.durationNanoSec = binary.BigEndian.Uint32(payload[16:20])
+	r.idleTimeout = binary.BigEndian.Uint16(payload[20:22])
+	r.hardTimeout = binary.BigEndian.Uint16(payload[22:24])
+	r.packetCount = binary.BigEndian.Uint64(payload[24:32])
+	r.byteCount = binary.BigEndian.Uint64(payload[32:40])
+	r.match = NewMatch()
+	if err := r.match.UnmarshalBinary(payload[40:]); err != nil {
 		return err
 	}
 

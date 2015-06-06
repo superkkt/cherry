@@ -49,21 +49,77 @@ const (
 )
 
 const (
-	OFPC_FLOW_STATS   = 1 << 0 /* Flow statistics. */
-	OFPC_TABLE_STATS  = 1 << 1 /* Table statistics. */
-	OFPC_PORT_STATS   = 1 << 2 /* Port statistics. */
-	OFPC_STP          = 1 << 3 /* 802.1d spanning tree. */
-	OFPC_RESERVED     = 1 << 4 /* Reserved, must be zero. */
-	OFPC_IP_REASM     = 1 << 5 /* Can reassemble IP fragments. */
-	OFPC_QUEUE_STATS  = 1 << 6 /* Queue statistics. */
-	OFPC_ARP_MATCH_IP = 1 << 7 /* Match IP addresses in ARP pkts. */
+	OFPP_MAX        = 0xff00
+	OFPP_TABLE      = 0xfff9
+	OFPP_FLOOD      = 0xfffb
+	OFPP_ALL        = 0xfffc
+	OFPP_CONTROLLER = 0xfffd
+	OFPP_NONE       = 0xffff
 )
 
 const (
-	OFPC_FRAG_NORMAL = iota /* No special handling for fragments. */
-	OFPC_FRAG_DROP          /* Drop fragments. */
-	OFPC_FRAG_REASM         /* Reassemble (only if OFPC_IP_REASM set). */
-	OFPC_FRAG_MASK
+	OFPFW_IN_PORT     = 1 << 0  /* Switch input port. */
+	OFPFW_DL_VLAN     = 1 << 1  /* VLAN id. */
+	OFPFW_DL_SRC      = 1 << 2  /* Ethernet source address. */
+	OFPFW_DL_DST      = 1 << 3  /* Ethernet destination address. */
+	OFPFW_DL_TYPE     = 1 << 4  /* Ethernet frame type. */
+	OFPFW_NW_PROTO    = 1 << 5  /* IP protocol. */
+	OFPFW_TP_SRC      = 1 << 6  /* TCP/UDP source port. */
+	OFPFW_TP_DST      = 1 << 7  /* TCP/UDP destination port. */
+	OFPFW_DL_VLAN_PCP = 1 << 20 /* VLAN priority. */
+	OFPFW_NW_TOS      = 1 << 21 /* IP ToS (DSCP field, 6 bits). */
+)
+
+const (
+	OFPPF_10MB_HD    = 1 << 0  /* 10 Mb half-duplex rate support. */
+	OFPPF_10MB_FD    = 1 << 1  /* 10 Mb full-duplex rate support. */
+	OFPPF_100MB_HD   = 1 << 2  /* 100 Mb half-duplex rate support. */
+	OFPPF_100MB_FD   = 1 << 3  /* 100 Mb full-duplex rate support. */
+	OFPPF_1GB_HD     = 1 << 4  /* 1 Gb half-duplex rate support. */
+	OFPPF_1GB_FD     = 1 << 5  /* 1 Gb full-duplex rate support. */
+	OFPPF_10GB_FD    = 1 << 6  /* 10 Gb full-duplex rate support. */
+	OFPPF_COPPER     = 1 << 7  /* Copper medium. */
+	OFPPF_FIBER      = 1 << 8  /* Fiber medium. */
+	OFPPF_AUTONEG    = 1 << 9  /* Auto-negotiation. */
+	OFPPF_PAUSE      = 1 << 10 /* Pause. */
+	OFPPF_PAUSE_ASYM = 1 << 11 /* Asymmetric pause. */
+)
+
+const (
+	OFPPC_PORT_DOWN    = 1 << 0
+	OFPPC_NO_STP       = 1 << 1
+	OFPPC_NO_RECV      = 1 << 2
+	OFPPC_NO_RECV_STP  = 1 << 3
+	OFPPC_NO_FLOOD     = 1 << 4
+	OFPPC_NO_FWD       = 1 << 5
+	OFPPC_NO_PACKET_IN = 1 << 6
+)
+
+const (
+	OFPPS_LINK_DOWN   = 1 << 0
+	OFPPS_STP_LISTEN  = 0 << 8 /* Not learning or relaying frames. */
+	OFPPS_STP_LEARN   = 1 << 8 /* Learning but not relaying frames. */
+	OFPPS_STP_FORWARD = 2 << 8 /* Learning and relaying frames. */
+	OFPPS_STP_BLOCK   = 3 << 8 /* Not part of spanning tree. */
+	OFPPS_STP_MASK    = 3 << 8 /* Bit mask for OFPPS_STP_* values. */
+)
+
+const (
+	OFPFF_SEND_FLOW_REM = 1 << 0 /* Send flow removed message when flow expires or is deleted. */
+	OFPFF_CHECK_OVERLAP = 1 << 1 /* Check for overlapping entries first. */
+	OFPFF_EMERG         = 1 << 2 /* Remark this is for emergency. */
+)
+
+const (
+	OFP_NO_BUFFER = 0xffffffff
+)
+
+const (
+	OFPFC_ADD           = 0 /* New flow. */
+	OFPFC_MODIFY        = 1 /* Modify all matching flows. */
+	OFPFC_MODIFY_STRICT = 2 /* Modify entry strictly matching wildcards and priority. */
+	OFPFC_DELETE        = 3 /* Delete all matching flows. */
+	OFPFC_DELETE_STRICT = 4 /* Delete entry strictly matching wildcards and priority. */
 )
 
 const (
@@ -99,81 +155,14 @@ const (
 )
 
 const (
-	OFPPC_PORT_DOWN    = 1 << 0
-	OFPPC_NO_STP       = 1 << 1
-	OFPPC_NO_RECV      = 1 << 2
-	OFPPC_NO_RECV_STP  = 1 << 3
-	OFPPC_NO_FLOOD     = 1 << 4
-	OFPPC_NO_FWD       = 1 << 5
-	OFPPC_NO_PACKET_IN = 1 << 6
+	OFPC_FRAG_NORMAL = iota /* No special handling for fragments. */
+	OFPC_FRAG_DROP          /* Drop fragments. */
+	OFPC_FRAG_REASM         /* Reassemble (only if OFPC_IP_REASM set). */
+	OFPC_FRAG_MASK
 )
 
 const (
-	OFPPS_LINK_DOWN   = 1 << 0
-	OFPPS_STP_LISTEN  = 0 << 8 /* Not learning or relaying frames. */
-	OFPPS_STP_LEARN   = 1 << 8 /* Learning but not relaying frames. */
-	OFPPS_STP_FORWARD = 2 << 8 /* Learning and relaying frames. */
-	OFPPS_STP_BLOCK   = 3 << 8 /* Not part of spanning tree. */
-	OFPPS_STP_MASK    = 3 << 8 /* Bit mask for OFPPS_STP_* values. */
-)
-
-const (
-	OFPPF_10MB_HD    = 1 << 0  /* 10 Mb half-duplex rate support. */
-	OFPPF_10MB_FD    = 1 << 1  /* 10 Mb full-duplex rate support. */
-	OFPPF_100MB_HD   = 1 << 2  /* 100 Mb half-duplex rate support. */
-	OFPPF_100MB_FD   = 1 << 3  /* 100 Mb full-duplex rate support. */
-	OFPPF_1GB_HD     = 1 << 4  /* 1 Gb half-duplex rate support. */
-	OFPPF_1GB_FD     = 1 << 5  /* 1 Gb full-duplex rate support. */
-	OFPPF_10GB_FD    = 1 << 6  /* 10 Gb full-duplex rate support. */
-	OFPPF_COPPER     = 1 << 7  /* Copper medium. */
-	OFPPF_FIBER      = 1 << 8  /* Fiber medium. */
-	OFPPF_AUTONEG    = 1 << 9  /* Auto-negotiation. */
-	OFPPF_PAUSE      = 1 << 10 /* Pause. */
-	OFPPF_PAUSE_ASYM = 1 << 11 /* Asymmetric pause. */
-)
-
-const (
-	OFPFW_IN_PORT     = 1 << 0  /* Switch input port. */
-	OFPFW_DL_VLAN     = 1 << 1  /* VLAN id. */
-	OFPFW_DL_SRC      = 1 << 2  /* Ethernet source address. */
-	OFPFW_DL_DST      = 1 << 3  /* Ethernet destination address. */
-	OFPFW_DL_TYPE     = 1 << 4  /* Ethernet frame type. */
-	OFPFW_NW_PROTO    = 1 << 5  /* IP protocol. */
-	OFPFW_TP_SRC      = 1 << 6  /* TCP/UDP source port. */
-	OFPFW_TP_DST      = 1 << 7  /* TCP/UDP destination port. */
-	OFPFW_DL_VLAN_PCP = 1 << 20 /* VLAN priority. */
-	OFPFW_NW_TOS      = 1 << 21 /* IP ToS (DSCP field, 6 bits). */
-)
-
-const (
-	OFPP_MAX        = 0xff00
-	OFPP_TABLE      = 0xfff9
-	OFPP_FLOOD      = 0xfffb
-	OFPP_ALL        = 0xfffc
-	OFPP_CONTROLLER = 0xfffd
-	OFPP_NONE       = 0xffff
-)
-
-const (
-	OFPFF_SEND_FLOW_REM = 1 << 0 /* Send flow removed message when flow expires or is deleted. */
-	OFPFF_CHECK_OVERLAP = 1 << 1 /* Check for overlapping entries first. */
-	OFPFF_EMERG         = 1 << 2 /* Remark this is for emergency. */
-)
-
-const (
-	OFP_NO_BUFFER = 0xffffffff
-)
-
-const (
-	OFPFC_ADD           = 0 /* New flow. */
-	OFPFC_MODIFY        = 1 /* Modify all matching flows. */
-	OFPFC_MODIFY_STRICT = 2 /* Modify entry strictly matching wildcards and priority. */
-	OFPFC_DELETE        = 3 /* Delete all matching flows. */
-	OFPFC_DELETE_STRICT = 4 /* Delete entry strictly matching wildcards and priority. */
-)
-
-const (
-	OFPPR_ADD = iota
-	OFPPR_DELETE
-	OFPPR_MODIFY
+	OFPPR_ADD    = 0
+	OFPPR_DELETE = 1
+	OFPPR_MODIFY = 2
 )

@@ -14,13 +14,6 @@ import (
 	"net"
 )
 
-var (
-	ErrInvalidMAC            = errors.New("invalid MAC address")
-	ErrInvalidIP             = errors.New("invalid IP address")
-	ErrUnsupportedIPProtocol = errors.New("Unsupported IP protocol")
-	ErrUnsupportedEtherType  = errors.New("Unsupported Ethernet type")
-)
-
 type Wildcard struct {
 	InPort    bool /* Switch input port. */
 	VLANID    bool /* VLAN id. */
@@ -157,7 +150,7 @@ type Match struct {
 }
 
 // NewMatch returns a Match whose fields are all wildcarded
-func NewMatch() *Match {
+func NewMatch() openflow.Match {
 	return &Match{
 		wildcards: newWildcardAll(),
 		srcMAC:    openflow.ZeroMAC,
@@ -176,11 +169,11 @@ func (r *Match) SetWildcardSrcPort() error {
 func (r *Match) SetSrcPort(p uint16) error {
 	// IPv4?
 	if r.etherType != 0x0800 {
-		return ErrUnsupportedEtherType
+		return openflow.ErrUnsupportedEtherType
 	}
 	// TCP or UDP?
 	if r.protocol != 0x06 && r.protocol != 0x11 {
-		return ErrUnsupportedIPProtocol
+		return openflow.ErrUnsupportedIPProtocol
 	}
 
 	r.srcPort = p
@@ -201,11 +194,11 @@ func (r *Match) SetWildcardDstPort() error {
 func (r *Match) SetDstPort(p uint16) error {
 	// IPv4?
 	if r.etherType != 0x0800 {
-		return ErrUnsupportedEtherType
+		return openflow.ErrUnsupportedEtherType
 	}
 	// TCP or UDP?
 	if r.protocol != 0x06 && r.protocol != 0x11 {
-		return ErrUnsupportedIPProtocol
+		return openflow.ErrUnsupportedIPProtocol
 	}
 
 	r.dstPort = p
@@ -258,7 +251,7 @@ func (r *Match) SetWildcardIPProtocol() error {
 func (r *Match) SetIPProtocol(p uint8) error {
 	// IPv4?
 	if r.etherType != 0x0800 {
-		return ErrUnsupportedEtherType
+		return openflow.ErrUnsupportedEtherType
 	}
 
 	r.protocol = p
@@ -276,14 +269,16 @@ func (r *Match) SetWildcardInPort() error {
 	return nil
 }
 
-func (r *Match) SetInPort(port uint32) error {
-	r.inPort = uint16(port)
+func (r *Match) SetInPort(port openflow.InPort) error {
+	r.inPort = uint16(port.Port())
 	r.wildcards.InPort = false
 	return nil
 }
 
-func (r *Match) InPort() (wildcard bool, inport uint32) {
-	return r.wildcards.InPort, uint32(r.inPort)
+func (r *Match) InPort() (wildcard bool, inport openflow.InPort) {
+	v := openflow.NewInPort()
+	v.SetPort(uint32(r.inPort))
+	return r.wildcards.InPort, v
 }
 
 func (r *Match) SetWildcardSrcMAC() error {
@@ -294,7 +289,7 @@ func (r *Match) SetWildcardSrcMAC() error {
 
 func (r *Match) SetSrcMAC(mac net.HardwareAddr) error {
 	if mac == nil || len(mac) == 0 {
-		return ErrInvalidMAC
+		return openflow.ErrInvalidMACAddress
 	}
 	r.srcMAC = make([]byte, len(mac))
 	copy(r.srcMAC, mac)
@@ -315,7 +310,7 @@ func (r *Match) SetWildcardDstMAC() error {
 
 func (r *Match) SetDstMAC(mac net.HardwareAddr) error {
 	if mac == nil || len(mac) == 0 {
-		return ErrInvalidMAC
+		return openflow.ErrInvalidMACAddress
 	}
 	r.dstMAC = make([]byte, len(mac))
 	copy(r.dstMAC, mac)
@@ -330,11 +325,11 @@ func (r *Match) DstMAC() (wildcard bool, mac net.HardwareAddr) {
 
 func (r *Match) SetSrcIP(ip *net.IPNet) error {
 	if ip == nil || ip.IP == nil || len(ip.IP) == 0 {
-		return ErrInvalidIP
+		return openflow.ErrInvalidIPAddress
 	}
 	// IPv4?
 	if r.etherType != 0x0800 {
-		return ErrUnsupportedEtherType
+		return openflow.ErrUnsupportedEtherType
 	}
 
 	r.srcIP = make([]byte, len(ip.IP))
@@ -362,11 +357,11 @@ func (r *Match) SrcIP() *net.IPNet {
 
 func (r *Match) SetDstIP(ip *net.IPNet) error {
 	if ip == nil || ip.IP == nil || len(ip.IP) == 0 {
-		return ErrInvalidIP
+		return openflow.ErrInvalidIPAddress
 	}
 	// IPv4?
 	if r.etherType != 0x0800 {
-		return ErrUnsupportedEtherType
+		return openflow.ErrUnsupportedEtherType
 	}
 
 	r.dstIP = make([]byte, len(ip.IP))

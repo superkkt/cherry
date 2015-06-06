@@ -9,7 +9,6 @@ package of10
 
 import (
 	"encoding/binary"
-	"errors"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"net"
 )
@@ -18,26 +17,26 @@ type Action struct {
 	*openflow.BaseAction
 }
 
-func NewAction() *Action {
+func NewAction() openflow.Action {
 	return &Action{
 		openflow.NewBaseAction(),
 	}
 }
 
-func marshalOutput(p uint) ([]byte, error) {
+func marshalOutPort(p openflow.OutPort) ([]byte, error) {
 	v := make([]byte, 8)
 	binary.BigEndian.PutUint16(v[0:2], uint16(OFPAT_OUTPUT))
 	binary.BigEndian.PutUint16(v[2:4], 8)
 
 	var port uint16
 	switch p {
-	case openflow.PortTable:
+	case openflow.OutToTable:
 		port = OFPP_TABLE
-	case openflow.PortAll:
+	case openflow.OutToAll:
 		port = OFPP_ALL
-	case openflow.PortController:
+	case openflow.OutToController:
 		port = OFPP_CONTROLLER
-	case openflow.PortAny:
+	case openflow.OutToNone:
 		port = OFPP_NONE
 	default:
 		port = uint16(p)
@@ -51,7 +50,7 @@ func marshalOutput(p uint) ([]byte, error) {
 
 func marshalMAC(t uint16, mac net.HardwareAddr) ([]byte, error) {
 	if mac == nil || len(mac) < 6 {
-		return nil, errors.New("invalid MAC address")
+		return nil, openflow.ErrInvalidMACAddress
 	}
 
 	v := make([]byte, 16)
@@ -81,9 +80,9 @@ func (r *Action) MarshalBinary() ([]byte, error) {
 		result = append(result, v...)
 	}
 
-	ports := r.Output()
+	ports := r.OutPort()
 	for _, v := range ports {
-		v, err := marshalOutput(v)
+		v, err := marshalOutPort(v)
 		if err != nil {
 			return nil, err
 		}
@@ -107,7 +106,7 @@ func (r *Action) UnmarshalBinary(data []byte) error {
 			if len(buf) < 8 {
 				return openflow.ErrInvalidPacketLength
 			}
-			if err := r.SetOutput(uint(binary.BigEndian.Uint16(buf[4:6]))); err != nil {
+			if err := r.SetOutPort(openflow.OutPort(binary.BigEndian.Uint16(buf[4:6]))); err != nil {
 				return err
 			}
 		case OFPAT_SET_DL_SRC:

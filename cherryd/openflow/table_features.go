@@ -7,7 +7,13 @@
 
 package openflow
 
-const (
-	OF10_VERSION = 0x01
-	OF13_VERSION = 0x04
+import (
+	"encoding"
 )
+
+type TableFeaturesRequest interface {
+	Header
+	encoding.BinaryMarshaler
+}
+
+// TODO: Implement TableFeaturesReply

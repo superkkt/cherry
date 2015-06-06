@@ -9,33 +9,72 @@ package of10
 
 import (
 	"encoding/binary"
+	"fmt"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 )
 
 type Config struct {
-	openflow.Message
-	Flags       uint16
-	MissSendLen uint16
+	flags          uint16
+	missSendLength uint16
+}
+
+func (r Config) Flags() openflow.ConfigFlag {
+	switch r.flags {
+	case OFPC_FRAG_NORMAL:
+		return openflow.FragNormal
+	case OFPC_FRAG_DROP:
+		return openflow.FragDrop
+	case OFPC_FRAG_REASM:
+		return openflow.FragReasm
+	case OFPC_FRAG_MASK:
+		return openflow.FragMask
+	default:
+		panic(fmt.Sprintf("unexpected config flag: %v", r.flags))
+	}
+}
+
+func (r *Config) SetFlags(flags openflow.ConfigFlag) {
+	switch flags {
+	case openflow.FragNormal:
+		r.flags = OFPC_FRAG_NORMAL
+	case openflow.FragDrop:
+		r.flags = OFPC_FRAG_DROP
+	case openflow.FragReasm:
+		r.flags = OFPC_FRAG_REASM
+	case openflow.FragMask:
+		r.flags = OFPC_FRAG_MASK
+	default:
+		panic(fmt.Sprintf("unexpected config flag: %v", flags))
+	}
+}
+
+func (r Config) MissSendLength() uint16 {
+	return r.missSendLength
+}
+
+func (r *Config) SetMissSendLength(length uint16) {
+	r.missSendLength = length
 }
 
 type SetConfig struct {
+	openflow.Message
 	Config
 }
 
-func NewSetConfig(xid uint32, flags, missSendLen uint16) *SetConfig {
+func NewSetConfig(xid uint32) openflow.SetConfig {
 	return &SetConfig{
-		Config{
-			Message:     openflow.NewMessage(openflow.Ver10, OFPT_SET_CONFIG, xid),
-			Flags:       flags,
-			MissSendLen: missSendLen,
+		Message: openflow.NewMessage(openflow.OF10_VERSION, OFPT_SET_CONFIG, xid),
+		Config: Config{
+			flags:          OFPC_FRAG_NORMAL,
+			missSendLength: 0xFFFF,
 		},
 	}
 }
 
 func (r *SetConfig) MarshalBinary() ([]byte, error) {
 	v := make([]byte, 4)
-	binary.BigEndian.PutUint16(v[0:2], r.Flags)
-	binary.BigEndian.PutUint16(v[2:4], r.MissSendLen)
+	binary.BigEndian.PutUint16(v[0:2], r.flags)
+	binary.BigEndian.PutUint16(v[2:4], r.missSendLength)
 	r.SetPayload(v)
 
 	return r.Message.MarshalBinary()
@@ -45,9 +84,9 @@ type GetConfigRequest struct {
 	openflow.Message
 }
 
-func NewGetConfigRequest(xid uint32) *GetConfigRequest {
+func NewGetConfigRequest(xid uint32) openflow.GetConfigRequest {
 	return &GetConfigRequest{
-		Message: openflow.NewMessage(openflow.Ver10, OFPT_GET_CONFIG_REQUEST, xid),
+		Message: openflow.NewMessage(openflow.OF10_VERSION, OFPT_GET_CONFIG_REQUEST, xid),
 	}
 }
 
@@ -56,6 +95,7 @@ func (r *GetConfigRequest) MarshalBinary() ([]byte, error) {
 }
 
 type GetConfigReply struct {
+	openflow.Message
 	Config
 }
 
@@ -68,8 +108,8 @@ func (r *GetConfigReply) UnmarshalBinary(data []byte) error {
 	if payload == nil || len(payload) < 4 {
 		return openflow.ErrInvalidPacketLength
 	}
-	r.Flags = binary.BigEndian.Uint16(payload[0:2])
-	r.MissSendLen = binary.BigEndian.Uint16(payload[2:4])
+	r.flags = binary.BigEndian.Uint16(payload[0:2])
+	r.missSendLength = binary.BigEndian.Uint16(payload[2:4])
 
 	return nil
 }

@@ -8,36 +8,38 @@
 package openflow
 
 import (
+	"encoding"
 	"encoding/binary"
-	"errors"
 )
 
-var (
-	ErrInvalidPacketLength = errors.New("invalid packet length")
-	ErrUnsupportedVersion  = errors.New("unsupported protocol version")
-	ErrUnsupportedMessage  = errors.New("unsupported message type")
-)
-
-func IsTimeout(err error) bool {
-	type Timeout interface {
-		Timeout() bool
-	}
-
-	if v, ok := err.(Timeout); ok {
-		return v.Timeout()
-	}
-
-	return false
+type Error interface {
+	Header
+	Class() uint16 // Error type
+	Code() uint16
+	Data() []byte
+	encoding.BinaryUnmarshaler
 }
 
-type Error struct {
+type BaseError struct {
 	Message
-	Class uint16 // Error type
-	Code  uint16
-	Data  []byte
+	class uint16
+	code  uint16
+	data  []byte
 }
 
-func (r *Error) UnmarshalBinary(data []byte) error {
+func (r BaseError) Class() uint16 {
+	return r.class
+}
+
+func (r BaseError) Code() uint16 {
+	return r.code
+}
+
+func (r BaseError) Data() []byte {
+	return r.data
+}
+
+func (r *BaseError) UnmarshalBinary(data []byte) error {
 	if err := r.Message.UnmarshalBinary(data); err != nil {
 		return err
 	}
@@ -46,10 +48,10 @@ func (r *Error) UnmarshalBinary(data []byte) error {
 	if payload == nil || len(payload) < 4 {
 		return ErrInvalidPacketLength
 	}
-	r.Class = binary.BigEndian.Uint16(payload[0:2])
-	r.Code = binary.BigEndian.Uint16(payload[2:4])
+	r.class = binary.BigEndian.Uint16(payload[0:2])
+	r.code = binary.BigEndian.Uint16(payload[2:4])
 	if len(payload) > 4 {
-		r.Data = payload[4:]
+		r.data = payload[4:]
 	}
 
 	return nil

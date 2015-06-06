@@ -14,15 +14,61 @@ import (
 
 type FlowRemoved struct {
 	openflow.Message
-	Match           openflow.Match
-	Cookie          uint64
-	Priority        uint16
-	Reason          uint8
-	DurationSec     uint32
-	DurationNanoSec uint32
-	IdleTimeout     uint16
-	PacketCount     uint64
-	ByteCount       uint64
+	match           openflow.Match
+	cookie          uint64
+	priority        uint16
+	reason          uint8
+	durationSec     uint32
+	durationNanoSec uint32
+	idleTimeout     uint16
+	packetCount     uint64
+	byteCount       uint64
+}
+
+func (r FlowRemoved) Cookie() uint64 {
+	return r.cookie
+}
+
+func (r FlowRemoved) Priority() uint16 {
+	return r.priority
+}
+
+func (r FlowRemoved) Reason() uint8 {
+	return r.reason
+}
+
+func (r FlowRemoved) TableID() uint8 {
+	// OpenFlow 1.0 does not have table ID
+	return 0
+}
+
+func (r FlowRemoved) DurationSec() uint32 {
+	return r.durationSec
+}
+
+func (r FlowRemoved) DurationNanoSec() uint32 {
+	return r.durationNanoSec
+}
+
+func (r FlowRemoved) IdleTimeout() uint16 {
+	return r.idleTimeout
+}
+
+func (r FlowRemoved) HardTimeout() uint16 {
+	// OpenFlow 1.0 does not have hard timeout value in the flow removed message
+	return 0
+}
+
+func (r FlowRemoved) PacketCount() uint64 {
+	return r.packetCount
+}
+
+func (r FlowRemoved) ByteCount() uint64 {
+	return r.byteCount
+}
+
+func (r FlowRemoved) Match() openflow.Match {
+	return r.match
 }
 
 func (r *FlowRemoved) UnmarshalBinary(data []byte) error {
@@ -34,20 +80,20 @@ func (r *FlowRemoved) UnmarshalBinary(data []byte) error {
 	if payload == nil || len(payload) < 80 {
 		return openflow.ErrInvalidPacketLength
 	}
-	r.Match = NewMatch()
-	if err := r.Match.UnmarshalBinary(payload[0:40]); err != nil {
+	r.match = NewMatch()
+	if err := r.match.UnmarshalBinary(payload[0:40]); err != nil {
 		return err
 	}
-	r.Cookie = binary.BigEndian.Uint64(payload[40:48])
-	r.Priority = binary.BigEndian.Uint16(payload[48:50])
-	r.Reason = payload[50]
+	r.cookie = binary.BigEndian.Uint64(payload[40:48])
+	r.priority = binary.BigEndian.Uint16(payload[48:50])
+	r.reason = payload[50]
 	// payload[51] is padding
-	r.DurationSec = binary.BigEndian.Uint32(payload[52:56])
-	r.DurationNanoSec = binary.BigEndian.Uint32(payload[56:60])
-	r.IdleTimeout = binary.BigEndian.Uint16(payload[60:62])
+	r.durationSec = binary.BigEndian.Uint32(payload[52:56])
+	r.durationNanoSec = binary.BigEndian.Uint32(payload[56:60])
+	r.idleTimeout = binary.BigEndian.Uint16(payload[60:62])
 	// payload[62:64] is padding
-	r.PacketCount = binary.BigEndian.Uint64(payload[64:72])
-	r.ByteCount = binary.BigEndian.Uint64(payload[72:80])
+	r.packetCount = binary.BigEndian.Uint64(payload[64:72])
+	r.byteCount = binary.BigEndian.Uint64(payload[72:80])
 
 	return nil
 }

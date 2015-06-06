@@ -13,8 +13,25 @@ import (
 
 type PortStatus struct {
 	openflow.Message
-	Reason uint8
-	Port   *Port
+	reason uint8
+	port   openflow.Port
+}
+
+func (r PortStatus) Reason() openflow.PortReason {
+	switch r.reason {
+	case OFPPR_ADD:
+		return openflow.PortAdded
+	case OFPPR_DELETE:
+		return openflow.PortDeleted
+	case OFPPR_MODIFY:
+		return openflow.PortModified
+	default:
+		return openflow.PortReason(r.reason)
+	}
+}
+
+func (r PortStatus) Port() openflow.Port {
+	return r.port
 }
 
 func (r *PortStatus) UnmarshalBinary(data []byte) error {
@@ -26,10 +43,10 @@ func (r *PortStatus) UnmarshalBinary(data []byte) error {
 	if payload == nil || len(payload) < 56 {
 		return openflow.ErrInvalidPacketLength
 	}
-	r.Reason = payload[0]
+	r.reason = payload[0]
 	// payload[1:8] is padding
-	r.Port = new(Port)
-	if err := r.Port.UnmarshalBinary(payload[8:]); err != nil {
+	r.port = new(Port)
+	if err := r.port.UnmarshalBinary(payload[8:]); err != nil {
 		return err
 	}
 

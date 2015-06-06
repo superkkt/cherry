@@ -7,21 +7,24 @@
 
 package openflow
 
-type Hello struct {
+import (
+	"encoding"
+)
+
+type Hello interface {
+	Header
+	encoding.BinaryMarshaler
+	encoding.BinaryUnmarshaler
+}
+
+type BaseHello struct {
 	Message
 }
 
-func NewHello(version uint8, xid uint32) *Hello {
-	return &Hello{
-		// OFPT_HELLO
-		Message: NewMessage(version, 0x0, xid),
-	}
-}
-
-func (r *Hello) MarshalBinary() ([]byte, error) {
+func (r *BaseHello) MarshalBinary() ([]byte, error) {
 	return r.Message.MarshalBinary()
 }
 
-func (r *Hello) UnmarshalBinary(data []byte) error {
+func (r *BaseHello) UnmarshalBinary(data []byte) error {
 	return r.Message.UnmarshalBinary(data)
 }

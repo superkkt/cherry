@@ -15,9 +15,12 @@ import (
 type Match interface {
 	encoding.BinaryMarshaler
 	encoding.BinaryUnmarshaler
+	// SetWildcardInPort sets switch port number as a wildcard
 	SetWildcardInPort() error
-	SetInPort(port uint32) error
-	InPort() (wildcard bool, inport uint32)
+	// SetInPort sets switch port number
+	SetInPort(port InPort) error
+	// InPort returns switch port number
+	InPort() (wildcard bool, inport InPort)
 	SetWildcardEtherType() error
 	SetEtherType(t uint16) error
 	EtherType() (wildcard bool, etherType uint16)
@@ -40,10 +43,16 @@ type Match interface {
 	SrcIP() *net.IPNet
 	SetDstIP(ip *net.IPNet) error
 	DstIP() *net.IPNet
+	// SetWildcardSrcPort sets protocol (TCP or UDP) source port number as a wildcard
 	SetWildcardSrcPort() error
+	// SetSrcPort sets protocol (TCP or UDP) source port number
 	SetSrcPort(p uint16) error
+	// SrcPort returns protocol (TCP or UDP) source port number
 	SrcPort() (wildcard bool, port uint16)
+	// SetWildcardDstPort sets protocol (TCP or UDP) destination port number as a wildcard
 	SetWildcardDstPort() error
+	// SetDstPort sets protocol (TCP or UDP) destination port number
 	SetDstPort(p uint16) error
+	// DstPort returns protocol (TCP or UDP) destination port number
 	DstPort() (wildcard bool, port uint16)
 }

@@ -13,69 +13,123 @@ import (
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 )
 
-type FlowModConfig struct {
-	Cookie      uint64
-	CookieMask  uint64
-	TableID     uint8
-	IdleTimeout uint16
-	HardTimeout uint16
-	Priority    uint16
-	Match       openflow.Match
-	Instruction Instruction
-}
-
 type FlowMod struct {
 	openflow.Message
-	command uint8
-	config  *FlowModConfig
+	command     uint8
+	cookie      uint64
+	cookieMask  uint64
+	tableID     uint8
+	idleTimeout uint16
+	hardTimeout uint16
+	priority    uint16
+	match       openflow.Match
+	action      openflow.Instruction
 }
 
-func newFlowMod(xid uint32, command uint8, config *FlowModConfig) *FlowMod {
+func NewFlowMod(xid uint32, cmd uint8) openflow.FlowMod {
 	return &FlowMod{
-		Message: openflow.NewMessage(openflow.Ver13, OFPT_FLOW_MOD, xid),
-		command: command,
-		config:  config,
+		Message: openflow.NewMessage(openflow.OF13_VERSION, OFPT_FLOW_MOD, xid),
+		command: cmd,
 	}
 }
 
-func NewFlowModAdd(xid uint32, config *FlowModConfig) *FlowMod {
-	return newFlowMod(xid, OFPFC_ADD, config)
+func (r FlowMod) Cookie() uint64 {
+	return r.cookie
 }
 
-func NewFlowModModify(xid uint32, config *FlowModConfig) *FlowMod {
-	return newFlowMod(xid, OFPFC_MODIFY, config)
+func (r *FlowMod) SetCookie(cookie uint64) error {
+	r.cookie = cookie
+	return nil
 }
 
-func NewFlowModDelete(xid uint32, config *FlowModConfig) *FlowMod {
-	return newFlowMod(xid, OFPFC_DELETE, config)
+func (r FlowMod) CookieMask() uint64 {
+	return r.cookieMask
+}
+
+func (r *FlowMod) SetCookieMask(mask uint64) error {
+	r.cookieMask = mask
+	return nil
+}
+
+func (r FlowMod) TableID() uint8 {
+	return r.tableID
+}
+
+func (r *FlowMod) SetTableID(id uint8) error {
+	r.tableID = id
+	return nil
+}
+
+func (r FlowMod) IdleTimeout() uint16 {
+	return r.idleTimeout
+}
+
+func (r *FlowMod) SetIdleTimeout(timeout uint16) error {
+	r.idleTimeout = timeout
+	return nil
+}
+
+func (r FlowMod) HardTimeout() uint16 {
+	return r.hardTimeout
+}
+
+func (r *FlowMod) SetHardTimeout(timeout uint16) error {
+	r.hardTimeout = timeout
+	return nil
+}
+
+func (r FlowMod) Priority() uint16 {
+	return r.priority
+}
+
+func (r *FlowMod) SetPriority(priority uint16) error {
+	r.priority = priority
+	return nil
+}
+
+func (r FlowMod) FlowMatch() openflow.Match {
+	return r.match
+}
+
+func (r *FlowMod) SetFlowMatch(match openflow.Match) error {
+	if match == nil {
+		return errors.New("flow match is nil")
+	}
+	r.match = match
+	return nil
+}
+
+func (r FlowMod) FlowAction() openflow.Instruction {
+	return r.action
+}
+
+func (r *FlowMod) SetFlowAction(action openflow.Instruction) error {
+	r.action = action
+	return nil
 }
 
 func (r *FlowMod) MarshalBinary() ([]byte, error) {
-	if r.config.Match == nil {
-		return nil, errors.New("empty flow match")
-	}
-
 	v := make([]byte, 40)
-	binary.BigEndian.PutUint64(v[0:8], r.config.Cookie)
-	binary.BigEndian.PutUint64(v[8:16], r.config.CookieMask)
-	v[16] = r.config.TableID
+	binary.BigEndian.PutUint64(v[0:8], r.cookie)
+	binary.BigEndian.PutUint64(v[8:16], r.cookieMask)
+	v[16] = r.tableID
 	v[17] = r.command
-	binary.BigEndian.PutUint16(v[18:20], r.config.IdleTimeout)
-	binary.BigEndian.PutUint16(v[20:22], r.config.HardTimeout)
-	binary.BigEndian.PutUint16(v[22:24], r.config.Priority)
+	binary.BigEndian.PutUint16(v[18:20], r.idleTimeout)
+	binary.BigEndian.PutUint16(v[20:22], r.hardTimeout)
+	binary.BigEndian.PutUint16(v[22:24], r.priority)
 	binary.BigEndian.PutUint32(v[24:28], OFP_NO_BUFFER)
 	binary.BigEndian.PutUint32(v[28:32], OFPP_ANY)
 	binary.BigEndian.PutUint32(v[32:36], OFPP_ANY)
 	// XXX: EdgeCore AS4600-54T switch does not support OFPFF_CHECK_OVERLAP
 	binary.BigEndian.PutUint16(v[36:38], OFPFF_SEND_FLOW_REM)
 	// v[38:40] is padding
-	match, err := r.config.Match.MarshalBinary()
+	match, err := r.match.MarshalBinary()
 	if err != nil {
 		return nil, err
 	}
 	v = append(v, match...)
-	if r.config.Instruction != nil {
-		ins, err := r.config.Instruction.MarshalBinary()
+	if r.action != nil {
+		ins, err := r.action.MarshalBinary()
 		if err != nil {
 			return nil, err
 		}

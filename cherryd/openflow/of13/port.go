@@ -29,19 +29,19 @@ type Port struct {
 	currentSpeed, maxSpeed               uint32
 }
 
-func (r *Port) Number() uint {
+func (r Port) Number() uint {
 	return uint(r.number)
 }
 
-func (r *Port) MAC() net.HardwareAddr {
+func (r Port) MAC() net.HardwareAddr {
 	return r.mac
 }
 
-func (r *Port) Name() string {
+func (r Port) Name() string {
 	return r.name
 }
 
-func (r *Port) IsPortDown() bool {
+func (r Port) IsPortDown() bool {
 	if r.config&OFPPC_PORT_DOWN != 0 {
 		return true
 	}
@@ -49,7 +49,7 @@ func (r *Port) IsPortDown() bool {
 	return false
 }
 
-func (r *Port) IsLinkDown() bool {
+func (r Port) IsLinkDown() bool {
 	if r.state&OFPPS_LINK_DOWN != 0 {
 		return true
 	}
@@ -57,85 +57,16 @@ func (r *Port) IsLinkDown() bool {
 	return false
 }
 
-func (r *Port) Config() uint32 {
-	return r.config
+func (r Port) IsCopper() bool {
+	return r.current&OFPPF_COPPER != 0
 }
 
-func (r *Port) Advertise() uint32 {
-	return r.advertised
+func (r Port) IsFiber() bool {
+	return r.current&OFPPF_FIBER != 0
 }
 
-type PortFeatureState struct {
-	OFPPF_10MB_HD    bool
-	OFPPF_10MB_FD    bool
-	OFPPF_100MB_HD   bool
-	OFPPF_100MB_FD   bool
-	OFPPF_1GB_HD     bool
-	OFPPF_1GB_FD     bool
-	OFPPF_10GB_FD    bool
-	OFPPF_40GB_FD    bool
-	OFPPF_100GB_FD   bool
-	OFPPF_1TB_FD     bool
-	OFPPF_OTHER      bool
-	OFPPF_COPPER     bool
-	OFPPF_FIBER      bool
-	OFPPF_AUTONEG    bool
-	OFPPF_PAUSE      bool
-	OFPPF_PAUSE_ASYM bool
-}
-
-func getFeatures(v uint32) *PortFeatureState {
-	return &PortFeatureState{
-		OFPPF_10MB_HD:    v&OFPPF_10MB_HD != 0,
-		OFPPF_10MB_FD:    v&OFPPF_10MB_FD != 0,
-		OFPPF_100MB_HD:   v&OFPPF_100MB_HD != 0,
-		OFPPF_100MB_FD:   v&OFPPF_100MB_FD != 0,
-		OFPPF_1GB_HD:     v&OFPPF_1GB_HD != 0,
-		OFPPF_1GB_FD:     v&OFPPF_1GB_FD != 0,
-		OFPPF_10GB_FD:    v&OFPPF_10GB_FD != 0,
-		OFPPF_40GB_FD:    v&OFPPF_40GB_FD != 0,
-		OFPPF_100GB_FD:   v&OFPPF_100GB_FD != 0,
-		OFPPF_1TB_FD:     v&OFPPF_1TB_FD != 0,
-		OFPPF_OTHER:      v&OFPPF_OTHER != 0,
-		OFPPF_COPPER:     v&OFPPF_COPPER != 0,
-		OFPPF_FIBER:      v&OFPPF_FIBER != 0,
-		OFPPF_AUTONEG:    v&OFPPF_AUTONEG != 0,
-		OFPPF_PAUSE:      v&OFPPF_PAUSE != 0,
-		OFPPF_PAUSE_ASYM: v&OFPPF_PAUSE_ASYM != 0,
-	}
-}
-
-func (r *Port) GetCurrentFeatures() *PortFeatureState {
-	return getFeatures(r.current)
-}
-
-func (r *Port) GetAdvertisedFeatures() *PortFeatureState {
-	return getFeatures(r.advertised)
-}
-
-func (r *Port) GetSupportedFeatures() *PortFeatureState {
-	return getFeatures(r.supported)
-}
-
-func (r *Port) UnmarshalBinary(data []byte) error {
-	if len(data) < 64 {
-		return openflow.ErrInvalidPacketLength
-	}
-
-	r.number = binary.BigEndian.Uint32(data[0:4])
-	r.mac = make(net.HardwareAddr, 6)
-	copy(r.mac, data[8:14])
-	r.name = strings.TrimRight(string(data[16:32]), "\x00")
-	r.config = binary.BigEndian.Uint32(data[32:36])
-	r.state = binary.BigEndian.Uint32(data[36:40])
-	r.current = binary.BigEndian.Uint32(data[40:44])
-	r.advertised = binary.BigEndian.Uint32(data[44:48])
-	r.supported = binary.BigEndian.Uint32(data[48:52])
-	r.peer = binary.BigEndian.Uint32(data[52:56])
-	r.currentSpeed = binary.BigEndian.Uint32(data[56:60])
-	r.maxSpeed = binary.BigEndian.Uint32(data[60:64])
-
-	return nil
+func (r Port) IsAutoNego() bool {
+	return r.current&OFPPF_AUTONEG != 0
 }
 
 func (r *Port) Speed() uint64 {
@@ -161,6 +92,27 @@ func (r *Port) Speed() uint64 {
 	case r.current&OFPPF_1TB_FD != 0:
 		return 1000000
 	default:
-		return 100 // fallback
+		return 0
 	}
+}
+
+func (r *Port) UnmarshalBinary(data []byte) error {
+	if len(data) < 64 {
+		return openflow.ErrInvalidPacketLength
+	}
+
+	r.number = binary.BigEndian.Uint32(data[0:4])
+	r.mac = make(net.HardwareAddr, 6)
+	copy(r.mac, data[8:14])
+	r.name = strings.TrimRight(string(data[16:32]), "\x00")
+	r.config = binary.BigEndian.Uint32(data[32:36])
+	r.state = binary.BigEndian.Uint32(data[36:40])
+	r.current = binary.BigEndian.Uint32(data[40:44])
+	r.advertised = binary.BigEndian.Uint32(data[44:48])
+	r.supported = binary.BigEndian.Uint32(data[48:52])
+	r.peer = binary.BigEndian.Uint32(data[52:56])
+	r.currentSpeed = binary.BigEndian.Uint32(data[56:60])
+	r.maxSpeed = binary.BigEndian.Uint32(data[60:64])
+
+	return nil
 }

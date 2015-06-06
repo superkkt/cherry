@@ -14,25 +14,41 @@ import (
 
 type PacketIn struct {
 	openflow.Message
-	BufferID uint32
-	Length   uint16
-	InPort   uint32
-	TableID  uint8
-	Reason   uint8
-	Cookie   uint64
-	Data     []byte
+	bufferID uint32
+	length   uint16
+	inPort   uint32
+	tableID  uint8
+	reason   uint8
+	cookie   uint64
+	data     []byte
 }
 
-func (r *PacketIn) GetBufferID() uint32 {
-	return r.BufferID
+func (r PacketIn) BufferID() uint32 {
+	return r.bufferID
 }
 
-func (r *PacketIn) GetInPort() uint32 {
-	return r.InPort
+func (r PacketIn) InPort() uint32 {
+	return r.inPort
 }
 
-func (r *PacketIn) GetData() []byte {
-	return r.Data
+func (r PacketIn) Data() []byte {
+	return r.data
+}
+
+func (r PacketIn) Length() uint16 {
+	return r.length
+}
+
+func (r PacketIn) TableID() uint8 {
+	return r.tableID
+}
+
+func (r PacketIn) Reason() uint8 {
+	return r.reason
+}
+
+func (r PacketIn) Cookie() uint64 {
+	return r.cookie
 }
 
 func (r *PacketIn) UnmarshalBinary(data []byte) error {
@@ -44,18 +60,18 @@ func (r *PacketIn) UnmarshalBinary(data []byte) error {
 	if payload == nil || len(payload) < 24 {
 		return openflow.ErrInvalidPacketLength
 	}
-	r.BufferID = binary.BigEndian.Uint32(payload[0:4])
-	r.Length = binary.BigEndian.Uint16(payload[4:6])
-	r.Reason = payload[6]
-	r.TableID = payload[7]
-	r.Cookie = binary.BigEndian.Uint64(payload[8:16])
+	r.bufferID = binary.BigEndian.Uint32(payload[0:4])
+	r.length = binary.BigEndian.Uint16(payload[4:6])
+	r.reason = payload[6]
+	r.tableID = payload[7]
+	r.cookie = binary.BigEndian.Uint64(payload[8:16])
 
 	match := NewMatch()
 	if err := match.UnmarshalBinary(payload[16:]); err != nil {
 		return err
 	}
 	_, inport := match.InPort()
-	r.InPort = uint32(inport)
+	r.inPort = inport.Port()
 
 	matchLength := binary.BigEndian.Uint16(payload[18:20])
 	// Calculate padding length
@@ -67,7 +83,7 @@ func (r *PacketIn) UnmarshalBinary(data []byte) error {
 	dataOffset := 16 + matchLength + 2 // +2 is padding
 	if len(payload) >= int(dataOffset) {
 		// TODO: Check data size by comparing with r.Length
-		r.Data = payload[dataOffset:]
+		r.data = payload[dataOffset:]
 	}
 
 	return nil

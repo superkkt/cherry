@@ -9,23 +9,14 @@ package openflow
 
 import (
 	"encoding"
-	"errors"
 	"net"
-)
-
-const (
-	PortTable      uint = 0xfffffff9
-	PortAll             = 0xfffffffc
-	PortController      = 0xfffffffd
-	PortAny             = 0xffffffff // PortNone
 )
 
 type Action interface {
 	encoding.BinaryMarshaler
 	encoding.BinaryUnmarshaler
-	// TODO: Implement multiple output actions
-	SetOutput(port uint) error
-	Output() []uint
+	SetOutPort(port OutPort) error
+	OutPort() []OutPort
 	SetSrcMAC(mac net.HardwareAddr) error
 	SrcMAC() (ok bool, mac net.HardwareAddr)
 	SetDstMAC(mac net.HardwareAddr) error
@@ -33,24 +24,24 @@ type Action interface {
 }
 
 type BaseAction struct {
-	output map[uint]interface{}
+	output map[OutPort]interface{}
 	srcMAC *net.HardwareAddr
 	dstMAC *net.HardwareAddr
 }
 
 func NewBaseAction() *BaseAction {
 	return &BaseAction{
-		output: make(map[uint]interface{}),
+		output: make(map[OutPort]interface{}),
 	}
 }
 
-func (r *BaseAction) SetOutput(port uint) error {
+func (r *BaseAction) SetOutPort(port OutPort) error {
 	r.output[port] = nil
 	return nil
 }
 
-func (r *BaseAction) Output() []uint {
-	ports := make([]uint, 0)
+func (r *BaseAction) OutPort() []OutPort {
+	ports := make([]OutPort, 0)
 	for v, _ := range r.output {
 		ports = append(ports, v)
 	}
@@ -60,7 +51,7 @@ func (r *BaseAction) Output() []uint {
 
 func (r *BaseAction) SetSrcMAC(mac net.HardwareAddr) error {
 	if mac == nil || len(mac) < 6 {
-		return errors.New("invalid MAC address")
+		return ErrInvalidMACAddress
 	}
 
 	r.srcMAC = &mac
@@ -77,7 +68,7 @@ func (r *BaseAction) SrcMAC() (ok bool, mac net.HardwareAddr) {
 
 func (r *BaseAction) SetDstMAC(mac net.HardwareAddr) error {
 	if mac == nil || len(mac) < 6 {
-		return errors.New("invalid MAC address")
+		return ErrInvalidMACAddress
 	}
 
 	r.dstMAC = &mac

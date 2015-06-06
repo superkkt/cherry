@@ -16,9 +16,9 @@ type TableFeaturesRequest struct {
 	openflow.Message
 }
 
-func NewTableFeaturesRequest(xid uint32) *TableFeaturesRequest {
+func NewTableFeaturesRequest(xid uint32) openflow.TableFeaturesRequest {
 	return &TableFeaturesRequest{
-		Message: openflow.NewMessage(openflow.Ver13, OFPT_MULTIPART_REQUEST, xid),
+		Message: openflow.NewMessage(openflow.OF13_VERSION, OFPT_MULTIPART_REQUEST, xid),
 	}
 }
 

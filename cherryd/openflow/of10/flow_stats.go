@@ -5,7 +5,7 @@
  * Kitae Kim <superkkt@sds.co.kr>
  */
 
-package of13
+package of10
 
 import (
 	"encoding/binary"
@@ -15,32 +15,33 @@ import (
 
 type FlowStatsRequest struct {
 	openflow.Message
-	tableID            uint8
-	cookie, cookieMask uint64
-	match              openflow.Match
+	match   openflow.Match
+	tableID uint8
 }
 
 func NewFlowStatsRequest(xid uint32) openflow.FlowStatsRequest {
 	return &FlowStatsRequest{
-		Message: openflow.NewMessage(openflow.OF13_VERSION, OFPT_MULTIPART_REQUEST, xid),
+		Message: openflow.NewMessage(openflow.OF10_VERSION, OFPT_STATS_REQUEST, xid),
 	}
 }
 
 func (r FlowStatsRequest) Cookie() uint64 {
-	return r.cookie
+	// OpenFlow 1.0 does not have cookie
+	return 0
 }
 
 func (r *FlowStatsRequest) SetCookie(cookie uint64) error {
-	r.cookie = cookie
+	// OpenFlow 1.0 does not have cookie
 	return nil
 }
 
 func (r FlowStatsRequest) CookieMask() uint64 {
-	return r.cookieMask
+	// OpenFlow 1.0 does not have cookie
+	return 0
 }
 
 func (r *FlowStatsRequest) SetCookieMask(mask uint64) error {
-	r.cookieMask = mask
+	// OpenFlow 1.0 does not have cookie
 	return nil
 }
 
@@ -66,22 +67,19 @@ func (r *FlowStatsRequest) SetTableID(id uint8) error {
 	return nil
 }
 
+// TODO: Need testing
 func (r *FlowStatsRequest) MarshalBinary() ([]byte, error) {
-	v := make([]byte, 40)
-	// Flow stats request
-	binary.BigEndian.PutUint16(v[0:2], OFPMP_FLOW)
-	v[8] = r.tableID
-	// v[9:12] is padding
-	binary.BigEndian.PutUint32(v[12:16], OFPP_ANY)
-	binary.BigEndian.PutUint32(v[16:20], OFPG_ANY)
-	// v[20:24] is padding
-	binary.BigEndian.PutUint64(v[24:32], r.cookie)
-	binary.BigEndian.PutUint64(v[32:40], r.cookieMask)
+	v := make([]byte, 48)
+	binary.BigEndian.PutUint16(v[0:2], OFPST_FLOW)
+	// v[2:4] is flags, but not yet defined
 	match, err := r.match.MarshalBinary()
 	if err != nil {
 		return nil, err
 	}
-	v = append(v, match...)
+	copy(v[4:44], match)
+	v[44] = r.tableID
+	// v[45] is padding
+	binary.BigEndian.PutUint16(v[46:48], OFPP_NONE)
 	r.SetPayload(v)
 
 	return r.Message.MarshalBinary()

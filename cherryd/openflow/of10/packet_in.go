@@ -14,23 +14,41 @@ import (
 
 type PacketIn struct {
 	openflow.Message
-	BufferID uint32
-	Length   uint16
-	InPort   uint16
-	Reason   uint8
-	Data     []byte
+	bufferID uint32
+	length   uint16
+	inPort   uint16
+	reason   uint8
+	data     []byte
 }
 
-func (r *PacketIn) GetBufferID() uint32 {
-	return r.BufferID
+func (r PacketIn) BufferID() uint32 {
+	return r.bufferID
 }
 
-func (r *PacketIn) GetInPort() uint32 {
-	return uint32(r.InPort)
+func (r PacketIn) InPort() uint32 {
+	return uint32(r.inPort)
 }
 
-func (r *PacketIn) GetData() []byte {
-	return r.Data
+func (r PacketIn) Data() []byte {
+	return r.data
+}
+
+func (r PacketIn) Length() uint16 {
+	return r.length
+}
+
+func (r PacketIn) TableID() uint8 {
+	// OpenFlow 1.0 does not have table ID
+	return 0
+}
+
+func (r PacketIn) Reason() uint8 {
+	return r.reason
+}
+
+func (r PacketIn) Cookie() uint64 {
+	// OpenFlow 1.0 does not have cookie
+	return 0
 }
 
 func (r *PacketIn) UnmarshalBinary(data []byte) error {
@@ -42,14 +60,14 @@ func (r *PacketIn) UnmarshalBinary(data []byte) error {
 	if payload == nil || len(payload) < 10 {
 		return openflow.ErrInvalidPacketLength
 	}
-	r.BufferID = binary.BigEndian.Uint32(payload[0:4])
-	r.Length = binary.BigEndian.Uint16(payload[4:6])
-	r.InPort = binary.BigEndian.Uint16(payload[6:8])
-	r.Reason = payload[8]
+	r.bufferID = binary.BigEndian.Uint32(payload[0:4])
+	r.length = binary.BigEndian.Uint16(payload[4:6])
+	r.inPort = binary.BigEndian.Uint16(payload[6:8])
+	r.reason = payload[8]
 	// payload[9] is padding
 	if len(payload) >= 10 {
 		// TODO: Check data size by comparing with r.Length
-		r.Data = payload[10:]
+		r.data = payload[10:]
 	}
 
 	return nil
