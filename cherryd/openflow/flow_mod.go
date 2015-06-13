@@ -11,9 +11,13 @@ import (
 	"encoding"
 )
 
-type Instruction interface {
-	encoding.BinaryMarshaler
-}
+type FlowModCmd uint8
+
+const (
+	FlowAdd FlowModCmd = iota
+	FlowModify
+	FlowDelete
+)
 
 type FlowMod interface {
 	Header
@@ -31,7 +35,7 @@ type FlowMod interface {
 	SetPriority(priority uint16) error
 	FlowMatch() Match
 	SetFlowMatch(match Match) error
-	FlowAction() Instruction
-	SetFlowAction(action Instruction) error
+	FlowInstruction() Instruction
+	SetFlowInstruction(action Instruction) error
 	encoding.BinaryMarshaler
 }

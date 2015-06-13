@@ -21,7 +21,7 @@ type FlowMod struct {
 	hardTimeout uint16
 	priority    uint16
 	match       openflow.Match
-	action      openflow.Instruction
+	instruction openflow.Instruction
 }
 
 func NewFlowMod(xid uint32, cmd uint16) openflow.FlowMod {
@@ -99,12 +99,12 @@ func (r *FlowMod) SetFlowMatch(match openflow.Match) error {
 	return nil
 }
 
-func (r *FlowMod) FlowAction() openflow.Instruction {
-	return r.action
+func (r FlowMod) FlowInstruction() openflow.Instruction {
+	return r.instruction
 }
 
-func (r *FlowMod) SetFlowAction(action openflow.Instruction) error {
-	r.action = action
+func (r *FlowMod) SetFlowInstruction(inst openflow.Instruction) error {
+	r.instruction = inst
 	return nil
 }
 
@@ -124,12 +124,12 @@ func (r *FlowMod) MarshalBinary() ([]byte, error) {
 	}
 	result = append(result, v...)
 
-	if r.action != nil {
-		action, err := r.action.MarshalBinary()
+	if r.instruction != nil {
+		instruction, err := r.instruction.MarshalBinary()
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, action...)
+		result = append(result, instruction...)
 	}
 
 	r.SetPayload(result)

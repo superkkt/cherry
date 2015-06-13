@@ -10,7 +10,6 @@ package graph
 import (
 	"container/list"
 	"errors"
-	"fmt"
 	"sort"
 	"sync"
 )
@@ -19,11 +18,13 @@ type Vertex interface {
 	ID() string
 }
 
+// Point is a spot on a vertex. We need this to represent multiple links among two vertexies.
 type Point interface {
 	ID() string
 	Vertex() Vertex
 }
 
+// Edge is a link, which has a weight, among two points.
 type Edge interface {
 	ID() string
 	Points() [2]Point
@@ -119,8 +120,6 @@ func (r *Graph) AddEdge(e Edge) error {
 	// Check duplication
 	_, ok := r.edges[e.ID()]
 	if ok {
-		// XXX: debugging
-		fmt.Printf("Duplicated edge: %v\n", e.ID())
 		return nil
 	}
 
@@ -131,8 +130,6 @@ func (r *Graph) AddEdge(e Edge) error {
 	first, ok1 := r.vertexies[points[0].Vertex().ID()]
 	second, ok2 := r.vertexies[points[1].Vertex().ID()]
 	if !ok1 || !ok2 {
-		// XXX: debugging
-		fmt.Printf("Failed to add edge: unknown vertex: %v/%v\n", points[0].Vertex().ID(), points[1].Vertex().ID())
 		return errors.New("AddEdge: adding an edge to unknown vertex")
 	}
 
@@ -151,18 +148,15 @@ func (r *Graph) RemoveEdge(p Point) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	// XXX: debugging
-	fmt.Printf("Removing an edge.. %v\n", p.ID())
 	e, ok := r.points[p.ID()]
 	if !ok {
 		return
 	}
 	r.removeEdge(e.value)
 	r.calculateMST()
-	// XXX: debugging
-	fmt.Printf("Removed an edge.. %v\n", p.ID())
 }
 
+// IsEdge returns whether p is on an edge between two vertexeis.
 func (r *Graph) IsEdge(p Point) bool {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -175,6 +169,7 @@ func (r *Graph) IsEdge(p Point) bool {
 	return ok
 }
 
+// IsEnabledPoint returns whether p is an active point that is not disabled by the minimum spanning tree.
 func (r *Graph) IsEnabledPoint(p Point) bool {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -276,8 +271,6 @@ func mergeCluster(clusters map[string]*list.List, l1, l2 *list.List) {
 // A caller should lock the mutex before calling this function.
 func (r *Graph) calculateMST() {
 	if len(r.edges) == 0 || len(r.vertexies) == 0 {
-		// XXX: debugging
-		fmt.Printf("Do nothing due to empty: edges=%v, vertexies=%v\n", len(r.edges), len(r.vertexies))
 		return
 	}
 
@@ -315,13 +308,6 @@ func (r *Graph) calculateMST() {
 		e.enabled = true
 		count++
 	}
-
-	// XXX: debugging
-	fmt.Printf("Enabled edges: %v\n", count)
-	for _, v := range r.edges {
-		fmt.Printf("Enabled: %v, Edge: %v\n", v.enabled, v.value.ID())
-	}
-	fmt.Print("\n")
 }
 
 type queue struct {
@@ -361,7 +347,6 @@ func (r *Graph) FindPath(src, dst Vertex) []Path {
 		return []Path{}
 	}
 
-	result := make([]Path, 0)
 	visited := make(map[string]bool)
 	prev := make(map[string]Path)
 
@@ -400,6 +385,7 @@ func (r *Graph) FindPath(src, dst Vertex) []Path {
 	}
 
 	u := dst
+	result := make([]Path, 0)
 	for {
 		path, ok := prev[u.ID()]
 		if !ok {

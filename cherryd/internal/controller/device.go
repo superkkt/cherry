@@ -8,18 +8,13 @@
 package controller
 
 import (
-	"fmt"
+	"git.sds.co.kr/cherry.git/cherryd/internal/log"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
+	"net"
 	"sync"
 )
 
-type Device struct {
-	mutex        sync.Mutex
-	DPID         uint64
-	NumBuffers   uint
-	NumTables    uint
-	ports        map[uint]openflow.Port
-	transceivers map[uint]Transceiver
+type Descriptions struct {
 	Manufacturer string
 	Hardware     string
 	Software     string
@@ -27,114 +22,163 @@ type Device struct {
 	Description  string
 }
 
-func newDevice(dpid uint64) *Device {
+type Features struct {
+	DPID       uint64
+	NumBuffers uint32
+	NumTables  uint8
+}
+
+type Device struct {
+	mutex        sync.RWMutex
+	id           string
+	log          log.Logger
+	watcher      Watcher
+	controllers  map[uint]*Controller
+	descriptions Descriptions
+	features     Features
+	ports        map[uint]*Port
+	flowTableID  uint8 // Table IDs that we install flows
+	auxID        uint
+}
+
+func NewDevice(id string, log log.Logger, w Watcher) *Device {
 	return &Device{
-		DPID:         dpid,
-		ports:        make(map[uint]openflow.Port),
-		transceivers: make(map[uint]Transceiver),
+		id:          id,
+		log:         log,
+		watcher:     w,
+		controllers: make(map[uint]*Controller),
+		ports:       make(map[uint]*Port),
 	}
 }
 
-func (r Device) ID() string {
-	return fmt.Sprintf("%v", r.DPID)
+func (r *Device) ID() string {
+	return r.id
 }
 
-func (r *Device) setPort(id uint, p openflow.Port) {
+func (r *Device) addConn(c net.Conn) {
+	// Write lock
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	r.ports[id] = p
+	if c == nil {
+		panic("nil connection")
+	}
+
+	ctr := NewController(r, c, r.log)
+	r.controllers[r.auxID] = ctr
+	go func(id uint) {
+		defer c.Close()
+		ctr.Run()
+		r.disconnected(id)
+	}(r.auxID)
+	r.auxID++
 }
 
-func (r *Device) Port(id uint) (openflow.Port, bool) {
+func (r *Device) disconnected(id uint) {
+	// Write lock
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	p, ok := r.ports[id]
-	return p, ok
+	delete(r.controllers, id)
+	// We have no controllers?
+	if len(r.controllers) == 0 {
+		r.watcher.DeviceRemoved(r.id)
+	}
 }
 
-func (r *Device) Ports() []openflow.Port {
+func (r *Device) Descriptions() Descriptions {
+	// Read lock
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	return r.descriptions
+}
+
+func (r *Device) setDescriptions(d Descriptions) {
+	// Write lock
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	ports := make([]openflow.Port, 0)
+	r.descriptions = d
+}
+
+func (r *Device) Features() Features {
+	// Read lock
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	return r.features
+}
+
+func (r *Device) setFeatures(f Features) {
+	// Write lock
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	r.features = f
+}
+
+// Port may return nil if there is no port whose number is num
+func (r *Device) Port(num uint) *Port {
+	// Read lock
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	return r.ports[num]
+}
+
+func (r *Device) Ports() []*Port {
+	// Read lock
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	p := make([]*Port, 0)
 	for _, v := range r.ports {
-		ports = append(ports, v)
+		p = append(p, v)
 	}
 
-	return ports
+	return p
 }
 
-func (r *Device) addTransceiver(id uint, t Transceiver) {
+// A caller should make sure the mutex is locked before calling this function
+func (r *Device) setPort(num uint, p openflow.Port) {
+	port := NewPort(r, num)
+	port.SetValue(p)
+	r.ports[num] = port
+}
+
+func (r *Device) addPort(num uint, p openflow.Port) {
+	// Write lock
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	// XXX: debugging
-	fmt.Printf("Adding transceiver: dpid=%v, id=%v\n", r.DPID, id)
-
-	r.transceivers[id] = t
+	r.setPort(num, p)
 }
 
-// removeTransceiver returns the number of remaining transceivers after removing.
-func (r *Device) removeTransceiver(id uint) int {
+func (r *Device) updatePort(num uint, p openflow.Port) {
+	// Write lock
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
+	defer r.setPort(num, p)
 
-	// XXX: debugging
-	fmt.Printf("Removing transceiver: dpid=%v, id=%v\n", r.DPID, id)
-
-	delete(r.transceivers, id)
-	return len(r.transceivers)
-}
-
-func (r *Device) getTransceiver() Transceiver {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	for _, v := range r.transceivers {
-		// Return the first transceiver
-		return v
+	port := r.Port(num)
+	if port == nil {
+		return
 	}
 
-	// XXX: debugging
-	fmt.Printf("panic: dpid=%v, len=%v\n", r.DPID, len(r.transceivers))
-	panic("empty transceiver in a device!")
+	if p.IsPortDown() || p.IsLinkDown() {
+		r.watcher.PortRemoved(port)
+	} else {
+		// TODO: Send LLDP
+	}
+
+	// TODO: Send this event to a watcher
 }
 
-func (r *Device) SetBarrier() error {
-	t := r.getTransceiver()
-	return t.sendBarrierRequest()
+func (r *Device) FlowTableID() uint8 {
+	return r.flowTableID
 }
 
-func (r *Device) NewMatch() openflow.Match {
-	t := r.getTransceiver()
-	return t.newMatch()
+func (r *Device) setFlowTableID(id uint8) {
+	r.flowTableID = id
 }
-
-func (r *Device) NewAction() openflow.Action {
-	t := r.getTransceiver()
-	return t.newAction()
-}
-
-func (r *Device) InstallFlowRule(conf FlowModConfig) error {
-	t := r.getTransceiver()
-	return t.addFlow(conf)
-}
-
-func (r *Device) RemoveFlowRule(match openflow.Match) error {
-	t := r.getTransceiver()
-	return t.removeFlow(match)
-}
-
-func (r *Device) PacketOut(inport openflow.InPort, action openflow.Action, data []byte) error {
-	t := r.getTransceiver()
-	return t.packetOut(inport, action, data)
-}
-
-func (r *Device) Flood(inPort openflow.InPort, data []byte) error {
-	t := r.getTransceiver()
-	return t.flood(inPort, data)
-}
-
-// TODO: Add exposed functions to provide OpenFlow funtionality to plugins.

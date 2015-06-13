@@ -15,6 +15,7 @@ import (
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"git.sds.co.kr/cherry.git/cherryd/openflow/of10"
 	"git.sds.co.kr/cherry.git/cherryd/openflow/of13"
+	"io"
 	"time"
 )
 
@@ -25,7 +26,7 @@ const (
 
 type Transceiver struct {
 	stream    *Stream
-	handler   Handler
+	observer  Handler
 	version   uint8
 	factory   openflow.Factory
 	timestamp time.Time     // Last activated time
@@ -33,15 +34,15 @@ type Transceiver struct {
 }
 
 type Handler interface {
-	OnHello(v openflow.Hello) error
-	OnError(v openflow.Error) error
-	OnFeaturesReply(v openflow.FeaturesReply) error
-	OnGetConfigReply(v openflow.GetConfigReply) error
-	OnDescReply(v openflow.DescReply) error
-	OnPortDescReply(v openflow.PortDescReply) error
-	OnPortStatus(v openflow.PortStatus) error
-	OnFlowRemoved(v openflow.FlowRemoved) error
-	OnPacketIn(v openflow.PacketIn) error
+	OnHello(openflow.Factory, io.Writer, openflow.Hello) error
+	OnError(openflow.Factory, io.Writer, openflow.Error) error
+	OnFeaturesReply(openflow.Factory, io.Writer, openflow.FeaturesReply) error
+	OnGetConfigReply(openflow.Factory, io.Writer, openflow.GetConfigReply) error
+	OnDescReply(openflow.Factory, io.Writer, openflow.DescReply) error
+	OnPortDescReply(openflow.Factory, io.Writer, openflow.PortDescReply) error
+	OnPortStatus(openflow.Factory, io.Writer, openflow.PortStatus) error
+	OnFlowRemoved(openflow.Factory, io.Writer, openflow.FlowRemoved) error
+	OnPacketIn(openflow.Factory, io.Writer, openflow.PacketIn) error
 }
 
 func NewTransceiver(stream *Stream, handler Handler) *Transceiver {
@@ -53,8 +54,8 @@ func NewTransceiver(stream *Stream, handler Handler) *Transceiver {
 	}
 
 	return &Transceiver{
-		stream:  stream,
-		handler: handler,
+		stream:   stream,
+		observer: handler,
 	}
 }
 
@@ -71,11 +72,7 @@ func (r *Transceiver) Latency() time.Duration {
 	return r.latency
 }
 
-func (r *Transceiver) negotiate() error {
-	packet, err := r.readPacket()
-	if err != nil {
-		return err
-	}
+func (r *Transceiver) negotiate(packet []byte) error {
 	// The first message should be HELLO
 	if packet[1] != 0x00 {
 		return errors.New("negotiation error: missing HELLO message")
@@ -90,12 +87,7 @@ func (r *Transceiver) negotiate() error {
 		r.factory = of13.NewFactory()
 	}
 
-	// Callback
-	msg, err := r.factory.NewHello()
-	if err := msg.UnmarshalBinary(packet); err != nil {
-		return err
-	}
-	return r.handler.OnHello(msg)
+	return nil
 }
 
 func (r *Transceiver) updateTimestamp() {
@@ -144,24 +136,38 @@ func (r *Transceiver) sendEchoRequest() error {
 
 // TODO: Use context to shutdown a running transceiver
 func (r *Transceiver) Run() error {
-	if err := r.negotiate(); err != nil {
+	// Read initial packet
+	packet, err := r.readPacket()
+	if err != nil {
 		return err
 	}
-	r.updateTimestamp()
+	if err := r.negotiate(packet); err != nil {
+		return err
+	}
 
 	// Infinite loop
 	for {
-		if err := r.ping(); err != nil {
-			return err
-		}
-		if err := r.dispatch(); err != nil {
-			if isTimeout(err) {
-				// Ignore timeout error
-				continue
-			}
+		if err := r.dispatch(packet); err != nil {
 			return err
 		}
 		r.updateTimestamp()
+
+	retry:
+		// Read next packet
+		packet, err = r.readPacket()
+		if err == nil {
+			// Go to dispatch the next packet
+			continue
+		}
+		// Ignore timeout error
+		if !isTimeout(err) {
+			return err
+		}
+		if err := r.ping(); err != nil {
+			return err
+		}
+		// Read again
+		goto retry
 	}
 
 	// Never reached
@@ -197,16 +203,15 @@ func (r *Transceiver) writePacket(msg encoding.BinaryMarshaler) error {
 	return nil
 }
 
-func (r *Transceiver) dispatch() error {
-	packet, err := r.readPacket()
-	if err != nil {
-		return err
-	}
+func (r *Transceiver) dispatch(packet []byte) error {
 	if packet[0] != r.version {
-		return errors.New(fmt.Sprintf("mis-matched OpenFlow version: negotiated=%v, packet=%v", r.version, packet[0]))
+		m := fmt.Sprintf("mis-matched OpenFlow version: negotiated=%v, packet=%v", r.version, packet[0])
+		return errors.New(m)
 	}
 
 	var msg interface{}
+	var err error
+
 	switch r.version {
 	case openflow.OF10_VERSION:
 		msg, err = r.parseOF10Message(packet)
@@ -228,7 +233,7 @@ func (r *Transceiver) parseOF10Message(packet []byte) (interface{}, error) {
 
 	switch packet[1] {
 	case of10.OFPT_HELLO:
-		return nil, errors.New("duplicated HELLO message")
+		msg, err = r.factory.NewHello()
 	case of10.OFPT_ERROR:
 		msg, err = r.factory.NewError()
 	case of10.OFPT_ECHO_REQUEST:
@@ -272,7 +277,7 @@ func (r *Transceiver) parseOF13Message(packet []byte) (interface{}, error) {
 
 	switch packet[1] {
 	case of13.OFPT_HELLO:
-		return nil, errors.New("duplicated HELLO message")
+		msg, err = r.factory.NewHello()
 	case of13.OFPT_ERROR:
 		msg, err = r.factory.NewError()
 	case of13.OFPT_ECHO_REQUEST:
@@ -313,29 +318,30 @@ func (r *Transceiver) parseOF13Message(packet []byte) (interface{}, error) {
 }
 
 func (r *Transceiver) callback(msg interface{}) error {
-	// Hello message is already processed during initial negotiation
 	switch v := msg.(type) {
-	// Echo request and reply are processed in this transceiver
+	// Echo request and reply are only processed in this transceiver
 	case openflow.EchoRequest:
 		return r.handleEchoRequest(v)
 	case openflow.EchoReply:
 		return r.handleEchoReply(v)
+	case openflow.Hello:
+		return r.observer.OnHello(r.factory, r.stream, v)
 	case openflow.Error:
-		return r.handler.OnError(v)
+		return r.observer.OnError(r.factory, r.stream, v)
 	case openflow.FeaturesReply:
-		return r.handler.OnFeaturesReply(v)
+		return r.observer.OnFeaturesReply(r.factory, r.stream, v)
 	case openflow.GetConfigReply:
-		return r.handler.OnGetConfigReply(v)
+		return r.observer.OnGetConfigReply(r.factory, r.stream, v)
 	case openflow.DescReply:
-		return r.handler.OnDescReply(v)
+		return r.observer.OnDescReply(r.factory, r.stream, v)
 	case openflow.PortDescReply:
-		return r.handler.OnPortDescReply(v)
+		return r.observer.OnPortDescReply(r.factory, r.stream, v)
 	case openflow.PortStatus:
-		return r.handler.OnPortStatus(v)
+		return r.observer.OnPortStatus(r.factory, r.stream, v)
 	case openflow.FlowRemoved:
-		return r.handler.OnFlowRemoved(v)
+		return r.observer.OnFlowRemoved(r.factory, r.stream, v)
 	case openflow.PacketIn:
-		return r.handler.OnPacketIn(v)
+		return r.observer.OnPacketIn(r.factory, r.stream, v)
 	default:
 		panic("unexpected message type")
 	}

@@ -15,10 +15,11 @@ import (
 type OutPort uint
 
 const (
-	OutToTable      OutPort = 0xfffffff9
-	OutToAll                = 0xfffffffc
-	OutToController         = 0xfffffffd
-	OutToNone               = 0xffffffff
+	OutTable OutPort = iota
+	OutFlood
+	OutAll
+	OutController
+	OutNone
 )
 
 type InPort struct {
@@ -54,6 +55,7 @@ type Port interface {
 	IsCopper() bool
 	IsFiber() bool
 	IsAutoNego() bool
+	// Speed returns current link speed in MB
 	Speed() uint64
 	encoding.BinaryUnmarshaler
 }

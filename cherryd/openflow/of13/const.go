@@ -253,3 +253,13 @@ const (
 	OFPPR_DELETE = 1
 	OFPPR_MODIFY = 2
 )
+
+const (
+	OFPIT_GOTO_TABLE     = 1      /* Setup the next table in the lookup pipeline */
+	OFPIT_WRITE_METADATA = 2      /* Setup the metadata field for use later in pipeline */
+	OFPIT_WRITE_ACTIONS  = 3      /* Write the action(s) onto the datapath action set */
+	OFPIT_APPLY_ACTIONS  = 4      /* Applies the action(s) immediately */
+	OFPIT_CLEAR_ACTIONS  = 5      /* Clears all actions from the datapath action set */
+	OFPIT_METER          = 6      /* Apply meter (rate limiter) */
+	OFPIT_EXPERIMENTER   = 0xFFFF /* Experimenter instruction */
+)

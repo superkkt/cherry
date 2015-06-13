@@ -5,10 +5,12 @@
  * Kitae Kim <superkkt@sds.co.kr>
  */
 
-package controller
+package log
 
 type Logger interface {
-	Print(v ...interface{})
-	Printf(format string, v ...interface{})
-	Println(v ...interface{})
+	Debug(m string) (err error)
+	Err(m string) (err error)
+	Info(m string) (err error)
+	Notice(m string) (err error)
+	Warning(m string) (err error)
 }

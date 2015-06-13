@@ -32,13 +32,15 @@ func marshalOutput(p openflow.OutPort) ([]byte, error) {
 
 	var port uint32
 	switch p {
-	case openflow.OutToTable:
+	case openflow.OutTable:
 		port = OFPP_TABLE
-	case openflow.OutToAll:
+	case openflow.OutFlood:
+		port = OFPP_FLOOD
+	case openflow.OutAll:
 		port = OFPP_ALL
-	case openflow.OutToController:
+	case openflow.OutController:
 		port = OFPP_CONTROLLER
-	case openflow.OutToNone:
+	case openflow.OutNone:
 		port = OFPP_ANY
 	default:
 		port = uint32(p)

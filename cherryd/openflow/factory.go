@@ -17,21 +17,14 @@ var (
 	ErrUnsupportedMessage    = errors.New("unsupported message type")
 	ErrInvalidMACAddress     = errors.New("invalid MAC address")
 	ErrInvalidIPAddress      = errors.New("invalid IP address")
-	ErrUnsupportedIPProtocol = errors.New("Unsupported IP protocol")
-	ErrUnsupportedEtherType  = errors.New("Unsupported Ethernet type")
+	ErrUnsupportedIPProtocol = errors.New("unsupported IP protocol")
+	ErrUnsupportedEtherType  = errors.New("unsupported Ethernet type")
 	ErrMissingIPProtocol     = errors.New("missing IP protocol")
 	ErrMissingEtherType      = errors.New("missing Ethernet type")
 	ErrUnsupportedMatchType  = errors.New("unsupported flow match type")
 )
 
-type FlowModCmd uint8
-
-const (
-	FlowAdd FlowModCmd = iota
-	FlowModify
-	FlowDelete
-)
-
+// Abstract factory
 type Factory interface {
 	NewAction() (Action, error)
 	NewBarrierRequest() (BarrierRequest, error)
@@ -50,6 +43,7 @@ type Factory interface {
 	NewGetConfigRequest() (GetConfigRequest, error)
 	NewGetConfigReply() (GetConfigReply, error)
 	NewHello() (Hello, error)
+	NewInstruction() (Instruction, error)
 	NewMatch() (Match, error)
 	NewPacketIn() (PacketIn, error)
 	NewPacketOut() (PacketOut, error)

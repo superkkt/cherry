@@ -8,12 +8,12 @@
 package of13
 
 import (
-	//"errors"
 	"fmt"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"sync/atomic"
 )
 
+// Concrete factory
 type Factory struct {
 	xid uint32
 }
@@ -142,3 +142,7 @@ func (r *Factory) NewError() (openflow.Error, error) {
 }
 
 // TODO: NewTableFeaturesReply() (TableFeaturesReply, error)
+
+func (r *Factory) NewInstruction() (openflow.Instruction, error) {
+	return new(Instruction), nil
+}

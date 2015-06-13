@@ -8,170 +8,151 @@
 package controller
 
 import (
-	"git.sds.co.kr/cherry.git/cherryd/internal/graph"
+	"fmt"
+	"git.sds.co.kr/cherry.git/cherryd/graph"
+	"git.sds.co.kr/cherry.git/cherryd/internal/log"
 	"net"
 	"sync"
 )
 
-var Switches *Topology
-var Hosts *HostPool
+type Watcher interface {
+	DeviceLinked(ports [2]*Port)
+	DeviceRemoved(id string)
+	NodeAdded(n *Node)
+	PortRemoved(p *Port)
+}
 
 type Topology struct {
-	mutex sync.Mutex
-	pool  map[uint64]*Device
+	mutex sync.RWMutex
+	// Key is IP address of a device
+	devices map[string]*Device
+	// Key is MAC address of a node
+	nodes map[string]*Node
+	log   log.Logger
 	graph *graph.Graph
 }
 
-func init() {
-	Switches = &Topology{
-		pool:  make(map[uint64]*Device),
-		graph: graph.New(),
-	}
-	Hosts = &HostPool{
-		mac:   make(map[string]Point),
-		point: make(map[string]switchPort),
+func NewTopology(log log.Logger) *Topology {
+	return &Topology{
+		devices: make(map[string]*Device),
+		nodes:   make(map[string]*Node),
+		log:     log,
+		graph:   graph.New(),
 	}
 }
 
-func (r *Topology) add(dpid uint64, d *Device) {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	r.pool[dpid] = d
+// Caller should make sure the mutex is locked before calling this function
+func (r *Topology) addDevice(id string, d *Device) {
+	if d == nil {
+		panic("nil device")
+	}
+	r.devices[id] = d
 	r.graph.AddVertex(d)
 }
 
-func (r *Topology) remove(dpid uint64) {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
+// Device may return nil if a device whose ID is id does not exist
+func (r *Topology) Device(id string) *Device {
+	// Read lock
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
 
-	device, ok := r.pool[dpid]
-	if !ok {
-		return
-	}
-	r.graph.RemoveVertex(device)
-	delete(r.pool, dpid)
+	return r.devices[id]
 }
 
-func (r *Topology) Get(dpid uint64) *Device {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	return r.pool[dpid]
-}
-
-func (r *Topology) GetAll() []*Device {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	v := make([]*Device, 0)
-	for _, device := range r.pool {
-		v = append(v, device)
-	}
-
-	return v
-}
-
-func (r *Topology) FindPath(src, dst *Device) []graph.Path {
-	return r.graph.FindPath(src, dst)
-}
-
-type switchPort struct {
-	point Point
-	mac   []net.HardwareAddr
-}
-
-type HostPool struct {
-	mutex sync.Mutex
-	mac   map[string]Point
-	point map[string]switchPort
-}
-
-func (r *HostPool) add(mac net.HardwareAddr, p Point) {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	if mac == nil || p.Node == nil {
-		panic("nil parameters")
-	}
-
-	// Check duplication
-	prev, ok := r.mac[mac.String()]
-	if ok {
-		if prev.Compare(p) {
-			// Do nothing if same one already exists
-			return
+func (r *Topology) removeAllNodes(d *Device) {
+	ports := d.Ports()
+	for _, p := range ports {
+		for _, n := range p.Nodes() {
+			delete(r.nodes, n.MAC().String())
+			p.RemoveNode(n.MAC())
 		}
-		// Remove previous values
-		r._remove(prev)
 	}
-
-	r.mac[mac.String()] = p
-
-	v, ok := r.point[p.ID()]
-	if ok {
-		v.mac = append(v.mac, mac)
-	} else {
-		v = switchPort{point: p, mac: []net.HardwareAddr{mac}}
-	}
-	r.point[p.ID()] = v
 }
 
-func (r *HostPool) _remove(p Point) {
-	v, ok := r.point[p.ID()]
+func (r *Topology) DeviceRemoved(id string) {
+	// Write lock
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	// Device exists?
+	d, ok := r.devices[id]
 	if !ok {
 		return
 	}
-	for _, mac := range v.mac {
-		delete(r.mac, mac.String())
-	}
-	delete(r.point, p.ID())
+	// Remove all nodes connected to this device
+	r.removeAllNodes(d)
+	// Remove from the network topology
+	r.graph.RemoveVertex(d)
+	// Remove from the device database
+	delete(r.devices, id)
 }
 
-func (r *HostPool) remove(p Point) {
+func (r *Topology) DeviceLinked(ports [2]*Port) {
+	link := NewLink(ports)
+	if err := r.graph.AddEdge(link); err != nil {
+		r.log.Err(fmt.Sprintf("DeviceLinked: %v", err))
+		return
+	}
+}
+
+func (r *Topology) NodeAdded(n *Node) {
+	// Write lock
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	if p.Node == nil {
-		panic("nil parameter")
+	if n == nil {
+		panic("node is nil")
 	}
-	r._remove(p)
+
+	node, ok := r.nodes[n.MAC().String()]
+	// Do we already have a port that has this node?
+	if ok {
+		// Remove the node from the port
+		port := node.Port()
+		port.RemoveNode(node.MAC())
+	}
+	// Add new node
+	r.nodes[n.MAC().String()] = n
 }
 
-func (r *HostPool) getAllPoints() []Point {
+// Node may return nil if a node whose MAC is mac does not exist
+func (r *Topology) Node(mac net.HardwareAddr) *Node {
+	// Read lock
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	return r.nodes[mac.String()]
+}
+
+func (r *Topology) PortRemoved(p *Port) {
+	// Write lock
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	v := make([]Point, 0)
-	for _, p := range r.point {
-		v = append(v, p.point)
+	// Remove hosts connected to the port from the host database
+	for _, v := range p.Nodes() {
+		delete(r.nodes, v.MAC().String())
+		p.RemoveNode(v.MAC())
 	}
-
-	return v
+	// Remove an edge from the graph if this port is an edge connected to another switch
+	r.graph.RemoveEdge(p)
 }
 
-func (r *HostPool) FindMAC(p Point) (mac []net.HardwareAddr, ok bool) {
+func (r *Topology) AddDeviceConn(c net.Conn) {
+	// Write lock
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	if p.Node == nil {
-		panic("nil parameter")
-	}
-	v, ok := r.point[p.ID()]
+	id := c.RemoteAddr().String()
+	// Do we already have the device whose source IP address is id?
+	d, ok := r.devices[id]
 	if !ok {
-		return nil, false
+		d = NewDevice(id, r.log, r)
 	}
-
-	return v.mac, true
+	d.addConn(c)
+	if !ok {
+		r.addDevice(id, d)
+	}
 }
 
-func (r *HostPool) FindPoint(mac net.HardwareAddr) (p Point, ok bool) {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	if mac == nil {
-		panic("nil MAC address")
-	}
-	p, ok = r.mac[mac.String()]
-	return
-}
+// TODO: Path()
