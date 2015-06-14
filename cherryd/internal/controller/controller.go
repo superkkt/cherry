@@ -28,23 +28,28 @@ const (
 	writeTimeout = 30
 )
 
+type Handler interface {
+	trans.Handler
+	SetDevice(*Device)
+}
+
 type Controller struct {
 	device     *Device
 	trans      *trans.Transceiver
 	log        log.Logger
-	handler    trans.Handler
+	handler    Handler
 	negotiated bool
 	watcher    Watcher
 	finder     Finder
+	auxID      uint8
 }
 
-func NewController(d *Device, c io.ReadWriteCloser, log log.Logger, w Watcher, f Finder) *Controller {
+func NewController(c io.ReadWriteCloser, log log.Logger, w Watcher, f Finder) *Controller {
 	stream := trans.NewStream(c)
 	stream.SetReadTimeout(readTimeout * time.Second)
 	stream.SetWriteTimeout(writeTimeout * time.Second)
 
 	v := new(Controller)
-	v.device = d
 	v.log = log
 	v.watcher = w
 	v.finder = f
@@ -64,9 +69,9 @@ func (r *Controller) OnHello(f openflow.Factory, w trans.Writer, v openflow.Hell
 
 	switch v.Version() {
 	case openflow.OF10_VERSION:
-		r.handler = NewOF10Controller(r.device, r.log)
+		r.handler = NewOF10Controller(r.log)
 	case openflow.OF13_VERSION:
-		r.handler = NewOF13Controller(r.device, r.log)
+		r.handler = NewOF13Controller(r.log)
 	default:
 		err := errors.New(fmt.Sprintf("unsupported OpenFlow version: %v", v.Version()))
 		r.log.Err(err.Error())
@@ -79,17 +84,30 @@ func (r *Controller) OnHello(f openflow.Factory, w trans.Writer, v openflow.Hell
 
 func (r *Controller) OnError(f openflow.Factory, w trans.Writer, v openflow.Error) error {
 	r.log.Err(fmt.Sprintf("Error: class=%v, code=%v, data=%v", v.Class(), v.Code(), v.Data()))
+	// Just in case
+	if r.device == nil {
+		return nil
+	}
 	return r.handler.OnError(f, w, v)
+}
+
+func (r *Controller) setDevice(d *Device) {
+	r.device = d
+	r.handler.SetDevice(d)
 }
 
 func (r *Controller) OnFeaturesReply(f openflow.Factory, w trans.Writer, v openflow.FeaturesReply) error {
 	r.log.Debug(fmt.Sprintf("FEATURES_REPLY: DPID=%v, NumBufs=%v, NumTables=%v", v.DPID(), v.NumBuffers(), v.NumTables()))
 
-	prev := r.device.Features()
-	if prev.DPID != 0 && prev.DPID != v.DPID() {
-		return fmt.Errorf("aux connection has different DPID")
+	r.auxID = v.AuxID()
+	dpid := strconv.FormatUint(v.DPID(), 10)
+	device := r.finder.Device(dpid)
+	if device == nil {
+		device = NewDevice(dpid, r.log, r.watcher, r.finder)
+		r.watcher.DeviceAdded(device)
 	}
-
+	device.addController(v.AuxID(), r)
+	r.setDevice(device)
 	features := Features{
 		DPID:       v.DPID(),
 		NumBuffers: v.NumBuffers(),
@@ -101,11 +119,19 @@ func (r *Controller) OnFeaturesReply(f openflow.Factory, w trans.Writer, v openf
 }
 
 func (r *Controller) OnGetConfigReply(f openflow.Factory, w trans.Writer, v openflow.GetConfigReply) error {
+	if r.device == nil {
+		return nil
+	}
+
 	r.log.Debug(fmt.Sprintf("GET_CONFIG_REPLY is received: %v", v))
 	return r.handler.OnGetConfigReply(f, w, v)
 }
 
 func (r *Controller) OnDescReply(f openflow.Factory, w trans.Writer, v openflow.DescReply) error {
+	if r.device == nil {
+		return nil
+	}
+
 	r.log.Debug(fmt.Sprintf("DESC_REPLY is received: %v", v))
 	desc := Descriptions{
 		Manufacturer: v.Manufacturer(),
@@ -120,6 +146,10 @@ func (r *Controller) OnDescReply(f openflow.Factory, w trans.Writer, v openflow.
 }
 
 func (r *Controller) OnPortDescReply(f openflow.Factory, w trans.Writer, v openflow.PortDescReply) error {
+	if r.device == nil {
+		return nil
+	}
+
 	r.log.Debug(fmt.Sprintf("PORT_DESC_REPLY is received: %v", v))
 	return r.handler.OnPortDescReply(f, w, v)
 }
@@ -193,6 +223,10 @@ func sendLLDP(deviceID string, f openflow.Factory, w trans.Writer, p openflow.Po
 }
 
 func (r *Controller) OnPortStatus(f openflow.Factory, w trans.Writer, v openflow.PortStatus) error {
+	if r.device == nil {
+		return nil
+	}
+
 	r.log.Debug(fmt.Sprintf("PORT_STATUS is received: %v", v))
 	port := v.Port()
 	// Is this an enabled port?
@@ -212,6 +246,10 @@ func (r *Controller) OnPortStatus(f openflow.Factory, w trans.Writer, v openflow
 }
 
 func (r *Controller) OnFlowRemoved(f openflow.Factory, w trans.Writer, v openflow.FlowRemoved) error {
+	if r.device == nil {
+		return nil
+	}
+
 	r.log.Debug(fmt.Sprintf("FLOW_REMOVED is received: %v", v))
 	return r.handler.OnFlowRemoved(f, w, v)
 }
@@ -284,6 +322,8 @@ func (r *Controller) findNeighborPort(deviceID string, portNum uint32) (*Port, e
 }
 
 func (r *Controller) handleLLDP(inPort *Port, ethernet *protocol.Ethernet) error {
+	r.log.Debug("Handling LLDP..")
+
 	lldp, err := getLLDP(ethernet.Payload)
 	if err != nil {
 		return err
@@ -311,6 +351,10 @@ func (r *Controller) addNewNode(inPort *Port, mac net.HardwareAddr) error {
 }
 
 func (r *Controller) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.PacketIn) error {
+	if r.device == nil {
+		return nil
+	}
+
 	r.log.Debug(fmt.Sprintf("PACKET_IN is received: %v", v))
 	ethernet, err := getEthernet(v.Data())
 	if err != nil {
@@ -359,6 +403,9 @@ func (r *Controller) Run() {
 	}
 	r.log.Debug("Closing the transceiver..")
 	r.trans.Close()
+	if r.device != nil {
+		r.device.removeController(r.auxID)
+	}
 }
 
 func (r *Controller) SendMessage(msg encoding.BinaryMarshaler) error {

@@ -20,11 +20,14 @@ type OF10Controller struct {
 	log    log.Logger
 }
 
-func NewOF10Controller(d *Device, log log.Logger) *OF10Controller {
+func NewOF10Controller(log log.Logger) *OF10Controller {
 	return &OF10Controller{
-		device: d,
-		log:    log,
+		log: log,
 	}
+}
+
+func (r *OF10Controller) SetDevice(d *Device) {
+	r.device = d
 }
 
 func (r *OF10Controller) OnHello(f openflow.Factory, w trans.Writer, v openflow.Hello) error {
@@ -36,6 +39,9 @@ func (r *OF10Controller) OnHello(f openflow.Factory, w trans.Writer, v openflow.
 	}
 	if err := sendFeaturesRequest(f, w); err != nil {
 		return fmt.Errorf("failed to send FEATURE_REQUEST: %v", err)
+	}
+	if err := sendBarrierRequest(f, w); err != nil {
+		return fmt.Errorf("failed to send BARRIER_REQUEST: %v", err)
 	}
 	if err := sendRemovingAllFlows(f, w); err != nil {
 		return fmt.Errorf("failed to send FLOW_MOD to remove all flows: %v", err)
@@ -64,9 +70,13 @@ func (r *OF10Controller) OnFeaturesReply(f openflow.Factory, w trans.Writer, v o
 			continue
 		}
 		r.device.addPort(p.Number(), p)
-		// Send LLDP to update network topology
-		if err := sendLLDP(r.device.ID(), f, w, p); err != nil {
-			r.log.Err(fmt.Sprintf("failed to send LLDP: %v", err))
+		if !p.IsPortDown() && !p.IsLinkDown() {
+			r.log.Debug("Sending LLDP..")
+			// Send LLDP to update network topology
+			if err := sendLLDP(r.device.ID(), f, w, p); err != nil {
+				r.log.Err(fmt.Sprintf("failed to send LLDP: %v", err))
+			}
+			r.log.Debug("Sent LLDP..")
 		}
 	}
 

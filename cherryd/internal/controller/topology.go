@@ -16,6 +16,7 @@ import (
 )
 
 type Watcher interface {
+	DeviceAdded(d *Device)
 	DeviceLinked(ports [2]*Port)
 	DeviceRemoved(id string)
 	NodeAdded(n *Node)
@@ -57,6 +58,7 @@ func (r *Topology) Device(id string) *Device {
 	return r.devices[id]
 }
 
+// TODO: 정말로 모든 노드가 다 지워졌는지 실제로 개수 찍어보면서 테스트
 func (r *Topology) removeAllNodes(d *Device) {
 	r.log.Debug("Removing all nodes..")
 	ports := d.Ports()
@@ -73,6 +75,16 @@ func (r *Topology) removeAllNodes(d *Device) {
 	}
 }
 
+func (r *Topology) DeviceAdded(d *Device) {
+	// Write lock
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	r.devices[d.ID()] = d
+	r.graph.AddVertex(d)
+}
+
+// TODO: 디바이스 리스트와 그래프가 정상적으로 갱신되는지 남은 데이터 찍어보면서 테스트
 func (r *Topology) DeviceRemoved(id string) {
 	r.log.Debug("DeviceRemoved() is called..")
 
@@ -107,6 +119,8 @@ func (r *Topology) DeviceLinked(ports [2]*Port) {
 		r.log.Err(fmt.Sprintf("DeviceLinked: %v", err))
 		return
 	}
+
+	r.log.Debug(fmt.Sprintf("New link.. %v", link.ID()))
 }
 
 func (r *Topology) NodeAdded(n *Node) {
@@ -138,6 +152,7 @@ func (r *Topology) Node(mac net.HardwareAddr) *Node {
 	return r.nodes[mac.String()]
 }
 
+// TODO: 호스트 리스트와 그래프가 정상적으로 갱신되는지 남은 데이터 찍어보면서 테스트
 func (r *Topology) PortRemoved(p *Port) {
 	// Write lock
 	r.mutex.Lock()
@@ -152,43 +167,10 @@ func (r *Topology) PortRemoved(p *Port) {
 	r.graph.RemoveEdge(p)
 }
 
-func (r *Topology) AddDeviceConn(c net.Conn) {
-	r.log.Debug("AddDeviceConn() is called..")
-
-	// Write lock
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	r.log.Debug("Adding new device connection..")
-
-	// XXX:
-	// We use remote IP address as a device ID, so we don't support NAT environment that
-	// multiple switch devices are connected to us using same NAT'ed IP address.
-	id := c.RemoteAddr().String()
-	if addr, ok := c.RemoteAddr().(*net.TCPAddr); ok {
-		id = addr.IP.String()
-	}
-
-	// Do we already have the device whose source IP address is id?
-	d, ok := r.devices[id]
-	if !ok {
-		d = NewDevice(id, r.log, r, r)
-	}
-	d.addConn(c)
-	if !ok {
-		r.addDevice(id, d)
-	}
-
-	r.log.Debug("Added new device connection..")
-}
-
-// Caller should make sure the mutex is locked before calling this function
-func (r *Topology) addDevice(id string, d *Device) {
-	if d == nil {
-		panic("nil device")
-	}
-	r.devices[id] = d
-	r.graph.AddVertex(d)
+func (r *Topology) CreateController(c net.Conn) {
+	r.log.Debug("CreateController() is called..")
+	ctr := NewController(c, r.log, r, r)
+	go ctr.Run()
 }
 
 // TODO: Path()

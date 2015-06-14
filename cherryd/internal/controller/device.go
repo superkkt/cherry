@@ -12,7 +12,6 @@ import (
 	"errors"
 	"git.sds.co.kr/cherry.git/cherryd/internal/log"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
-	"net"
 	"sync"
 )
 
@@ -36,12 +35,11 @@ type Device struct {
 	log          log.Logger
 	watcher      Watcher
 	finder       Finder
-	controllers  map[uint]*Controller
+	controllers  map[uint8]*Controller
 	descriptions Descriptions
 	features     Features
 	ports        map[uint]*Port
 	flowTableID  uint8 // Table IDs that we install flows
-	auxID        uint
 }
 
 func NewDevice(id string, log log.Logger, w Watcher, f Finder) *Device {
@@ -50,7 +48,7 @@ func NewDevice(id string, log log.Logger, w Watcher, f Finder) *Device {
 		log:         log,
 		watcher:     w,
 		finder:      f,
-		controllers: make(map[uint]*Controller),
+		controllers: make(map[uint8]*Controller),
 		ports:       make(map[uint]*Port),
 	}
 }
@@ -59,33 +57,15 @@ func (r *Device) ID() string {
 	return r.id
 }
 
-func (r *Device) addConn(c net.Conn) {
-	if c == nil {
-		panic("nil connection")
-	}
-
-	/*
-	 * Start of write lock
-	 */
+func (r *Device) addController(id uint8, c *Controller) {
+	// Write lock
 	r.mutex.Lock()
-	ctr := NewController(r, c, r.log, r.watcher, r.finder)
-	r.controllers[r.auxID] = ctr
-	id := r.auxID
-	r.auxID++
-	r.mutex.Unlock()
-	/*
-	 * End of write lock
-	 */
+	defer r.mutex.Unlock()
 
-	go func() {
-		r.log.Debug("Starting a controller..")
-		ctr.Run()
-		r.log.Debug("Controller is disconnected")
-		r.disconnected(id)
-	}()
+	r.controllers[id] = c
 }
 
-func (r *Device) disconnected(id uint) {
+func (r *Device) removeController(id uint8) {
 	/*
 	 * Start of write lock
 	 */

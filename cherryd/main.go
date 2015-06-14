@@ -84,7 +84,7 @@ func listen(ctx context.Context, log *syslog.Writer, config *Config) {
 					log.Err(fmt.Sprintf("Failed to enable socket keepalive: %v", err))
 				}
 			}
-			topo.AddDeviceConn(conn)
+			topo.CreateController(conn)
 		case <-ctx.Done():
 			return
 		}
