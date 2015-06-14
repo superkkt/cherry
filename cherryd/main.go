@@ -32,7 +32,7 @@ func waitSignal(log *syslog.Writer, shutdown context.CancelFunc) {
 			// Graceful shutdown
 			log.Info("Shutting down...")
 			shutdown()
-			time.Sleep(10 * time.Second) // let cancelation propagate
+			//time.Sleep(10 * time.Second) // let cancelation propagate
 			log.Info("Halted")
 			os.Exit(0)
 		} else if s == syscall.SIGHUP {
@@ -58,6 +58,7 @@ func listen(ctx context.Context, log *syslog.Writer, config *Config) {
 	f := func(c chan<- net.Conn) {
 		for {
 			conn, err := listener.Accept()
+			log.Debug("New TCP connection is accepted..")
 			if err != nil {
 				log.Err(fmt.Sprintf("Failed to accept a new connection: %v", err))
 				continue
@@ -65,7 +66,7 @@ func listen(ctx context.Context, log *syslog.Writer, config *Config) {
 			c <- conn
 		}
 	}
-	backlog := make(chan net.Conn)
+	backlog := make(chan net.Conn, 32)
 	go f(backlog)
 
 	topo := controller.NewTopology(log)
@@ -73,6 +74,7 @@ func listen(ctx context.Context, log *syslog.Writer, config *Config) {
 	for {
 		select {
 		case conn := <-backlog:
+			log.Debug("Fetching a new connection from the backlog..")
 			if v, ok := conn.(KeepAliver); ok {
 				log.Debug("Trying to enable socket keepalive..")
 				if err := v.SetKeepAlive(true); err == nil {
@@ -82,7 +84,6 @@ func listen(ctx context.Context, log *syslog.Writer, config *Config) {
 					log.Err(fmt.Sprintf("Failed to enable socket keepalive: %v", err))
 				}
 			}
-
 			topo.AddDeviceConn(conn)
 		case <-ctx.Done():
 			return

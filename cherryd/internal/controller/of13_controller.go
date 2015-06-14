@@ -12,7 +12,7 @@ import (
 	"git.sds.co.kr/cherry.git/cherryd/internal/log"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"git.sds.co.kr/cherry.git/cherryd/openflow/of13"
-	"io"
+	"git.sds.co.kr/cherry.git/cherryd/openflow/trans"
 	"strings"
 )
 
@@ -28,46 +28,47 @@ func NewOF13Controller(d *Device, log log.Logger) *OF13Controller {
 	}
 }
 
-func (r *OF13Controller) OnHello(f openflow.Factory, w io.Writer, v openflow.Hello) error {
+func (r *OF13Controller) OnHello(f openflow.Factory, w trans.Writer, v openflow.Hello) error {
 	if err := sendHello(f, w); err != nil {
-		return err
+		return fmt.Errorf("failed to send HELLO: %v", err)
 	}
 	if err := sendSetConfig(f, w); err != nil {
-		return err
+		return fmt.Errorf("failed to send SET_CONFIG: %v", err)
 	}
 	if err := sendFeaturesRequest(f, w); err != nil {
-		return err
+		return fmt.Errorf("failed to send FEATURE_REQUEST: %v", err)
 	}
 	if err := sendRemovingAllFlows(f, w); err != nil {
-		return err
+		return fmt.Errorf("failed to send FLOW_MOD to remove all flows: %v", err)
 	}
 	// Make sure that the installed flows are removed before setTableMiss() is called
 	if err := sendBarrierRequest(f, w); err != nil {
-		return err
+		return fmt.Errorf("failed to send BARRIER_REQUEST: %v", err)
 	}
 	if err := sendDescriptionRequest(f, w); err != nil {
-		return err
+		return fmt.Errorf("failed to send DESCRIPTION_REQUEST: %v", err)
 	}
 	// Make sure that DESCRIPTION_REPLY is received before PORT_DESCRIPTION_REPLY
 	if err := sendBarrierRequest(f, w); err != nil {
-		return err
+		return fmt.Errorf("failed to send BARRIER_REQUEST: %v", err)
 	}
 	if err := sendPortDescriptionRequest(f, w); err != nil {
-		return err
+		return fmt.Errorf("failed to send DESCRIPTION_REQUEST: %v", err)
 	}
+	r.log.Debug("Send OF13 HELLO response")
 
 	return nil
 }
 
-func (r *OF13Controller) OnError(f openflow.Factory, w io.Writer, v openflow.Error) error {
+func (r *OF13Controller) OnError(f openflow.Factory, w trans.Writer, v openflow.Error) error {
 	return nil
 }
 
-func (r *OF13Controller) OnFeaturesReply(f openflow.Factory, w io.Writer, v openflow.FeaturesReply) error {
+func (r *OF13Controller) OnFeaturesReply(f openflow.Factory, w trans.Writer, v openflow.FeaturesReply) error {
 	return nil
 }
 
-func (r *OF13Controller) OnGetConfigReply(f openflow.Factory, w io.Writer, v openflow.GetConfigReply) error {
+func (r *OF13Controller) OnGetConfigReply(f openflow.Factory, w trans.Writer, v openflow.GetConfigReply) error {
 	return nil
 }
 
@@ -79,7 +80,7 @@ func isAS460054_T(msg openflow.DescReply) bool {
 	return strings.Contains(msg.Hardware(), "AS4600-54T")
 }
 
-func (r *OF13Controller) setTableMiss(f openflow.Factory, w io.Writer, tableID uint8, inst openflow.Instruction) error {
+func (r *OF13Controller) setTableMiss(f openflow.Factory, w trans.Writer, tableID uint8, inst openflow.Instruction) error {
 	match, err := f.NewMatch() // Wildcard
 	if err != nil {
 		return err
@@ -98,10 +99,10 @@ func (r *OF13Controller) setTableMiss(f openflow.Factory, w io.Writer, tableID u
 	msg.SetFlowMatch(match)
 	msg.SetFlowInstruction(inst)
 
-	return send(w, msg)
+	return w.Write(msg)
 }
 
-func (r *OF13Controller) setHP2920TableMiss(f openflow.Factory, w io.Writer) error {
+func (r *OF13Controller) setHP2920TableMiss(f openflow.Factory, w trans.Writer) error {
 	// Table-100 is a hardware table, and Table-200 is a software table
 	// that has very low performance.
 	r.log.Debug("Setting HP2920 TableMiss entries..")
@@ -136,7 +137,7 @@ func (r *OF13Controller) setHP2920TableMiss(f openflow.Factory, w io.Writer) err
 	return nil
 }
 
-func (r *OF13Controller) setAS4600TableMiss(f openflow.Factory, w io.Writer) error {
+func (r *OF13Controller) setAS4600TableMiss(f openflow.Factory, w trans.Writer) error {
 	r.log.Debug("Setting AS4600 TableMiss entries..")
 
 	// FIXME:
@@ -147,7 +148,7 @@ func (r *OF13Controller) setAS4600TableMiss(f openflow.Factory, w io.Writer) err
 	return nil
 }
 
-func (r *OF13Controller) setDefaultTableMiss(f openflow.Factory, w io.Writer) error {
+func (r *OF13Controller) setDefaultTableMiss(f openflow.Factory, w trans.Writer) error {
 	r.log.Debug("Setting default TableMiss entries..")
 
 	inst, err := f.NewInstruction()
@@ -170,7 +171,7 @@ func (r *OF13Controller) setDefaultTableMiss(f openflow.Factory, w io.Writer) er
 	return nil
 }
 
-func (r *OF13Controller) OnDescReply(f openflow.Factory, w io.Writer, v openflow.DescReply) error {
+func (r *OF13Controller) OnDescReply(f openflow.Factory, w trans.Writer, v openflow.DescReply) error {
 	var err error
 
 	// FIXME:
@@ -188,7 +189,7 @@ func (r *OF13Controller) OnDescReply(f openflow.Factory, w io.Writer, v openflow
 	return err
 }
 
-func (r *OF13Controller) OnPortDescReply(f openflow.Factory, w io.Writer, v openflow.PortDescReply) error {
+func (r *OF13Controller) OnPortDescReply(f openflow.Factory, w trans.Writer, v openflow.PortDescReply) error {
 	ports := v.Ports()
 	for _, p := range ports {
 		r.log.Debug(fmt.Sprintf("Adding new port: num=%v, port=%v", p.Number(), p))
@@ -197,13 +198,16 @@ func (r *OF13Controller) OnPortDescReply(f openflow.Factory, w io.Writer, v open
 			continue
 		}
 		r.device.addPort(p.Number(), p)
-		// TODO: Send LLDP and set current timestamp
+		// Send LLDP to update network topology
+		if err := sendLLDP(r.device.ID(), f, w, p); err != nil {
+			r.log.Err(fmt.Sprintf("failed to send LLDP: %v", err))
+		}
 	}
 
 	return nil
 }
 
-func (r *OF13Controller) OnPortStatus(f openflow.Factory, w io.Writer, v openflow.PortStatus) error {
+func (r *OF13Controller) OnPortStatus(f openflow.Factory, w trans.Writer, v openflow.PortStatus) error {
 	p := v.Port()
 	r.log.Debug(fmt.Sprintf("Updating port: num=%v, port=%v", p.Number(), p))
 	if p.Number() > of13.OFPP_MAX {
@@ -215,10 +219,11 @@ func (r *OF13Controller) OnPortStatus(f openflow.Factory, w io.Writer, v openflo
 	return nil
 }
 
-func (r *OF13Controller) OnFlowRemoved(f openflow.Factory, w io.Writer, v openflow.FlowRemoved) error {
+func (r *OF13Controller) OnFlowRemoved(f openflow.Factory, w trans.Writer, v openflow.FlowRemoved) error {
 	return nil
 }
 
-func (r *OF13Controller) OnPacketIn(f openflow.Factory, w io.Writer, v openflow.PacketIn) error {
+func (r *OF13Controller) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.PacketIn) error {
+	r.log.Debug(fmt.Sprintf("OF13 PACKET_IN: %v", v))
 	return nil
 }

@@ -264,7 +264,9 @@ func (r *Match) InPort() (wildcard bool, inport openflow.InPort) {
 
 	v, ok := r.m[OFPXMT_OFB_IN_PORT]
 	if ok {
-		return false, v.(openflow.InPort)
+		inport = openflow.NewInPort()
+		inport.SetPort(v.(uint32))
+		return false, inport
 	}
 
 	return true, openflow.NewInPort()

@@ -8,6 +8,8 @@
 package controller
 
 import (
+	"encoding"
+	"errors"
 	"git.sds.co.kr/cherry.git/cherryd/internal/log"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"net"
@@ -33,6 +35,7 @@ type Device struct {
 	id           string
 	log          log.Logger
 	watcher      Watcher
+	finder       Finder
 	controllers  map[uint]*Controller
 	descriptions Descriptions
 	features     Features
@@ -41,11 +44,12 @@ type Device struct {
 	auxID        uint
 }
 
-func NewDevice(id string, log log.Logger, w Watcher) *Device {
+func NewDevice(id string, log log.Logger, w Watcher, f Finder) *Device {
 	return &Device{
 		id:          id,
 		log:         log,
 		watcher:     w,
+		finder:      f,
 		controllers: make(map[uint]*Controller),
 		ports:       make(map[uint]*Port),
 	}
@@ -56,32 +60,46 @@ func (r *Device) ID() string {
 }
 
 func (r *Device) addConn(c net.Conn) {
-	// Write lock
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
 	if c == nil {
 		panic("nil connection")
 	}
 
-	ctr := NewController(r, c, r.log)
+	/*
+	 * Start of write lock
+	 */
+	r.mutex.Lock()
+	ctr := NewController(r, c, r.log, r.watcher, r.finder)
 	r.controllers[r.auxID] = ctr
-	go func(id uint) {
-		defer c.Close()
-		ctr.Run()
-		r.disconnected(id)
-	}(r.auxID)
+	id := r.auxID
 	r.auxID++
+	r.mutex.Unlock()
+	/*
+	 * End of write lock
+	 */
+
+	go func() {
+		r.log.Debug("Starting a controller..")
+		ctr.Run()
+		r.log.Debug("Controller is disconnected")
+		r.disconnected(id)
+	}()
 }
 
 func (r *Device) disconnected(id uint) {
-	// Write lock
+	/*
+	 * Start of write lock
+	 */
 	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
 	delete(r.controllers, id)
+	nCtrls := len(r.controllers)
+	r.mutex.Unlock()
+	/*
+	 * End of write lock
+	 */
+
 	// We have no controllers?
-	if len(r.controllers) == 0 {
+	if nCtrls == 0 {
+		// To avoid deadlock, we first unlock the mutex before calling a watcher function
 		r.watcher.DeviceRemoved(r.id)
 	}
 }
@@ -156,29 +174,64 @@ func (r *Device) addPort(num uint, p openflow.Port) {
 }
 
 func (r *Device) updatePort(num uint, p openflow.Port) {
-	// Write lock
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-	defer r.setPort(num, p)
+	r.log.Debug("updatePort() is called..")
 
-	port := r.Port(num)
+	/*
+	 * Start of write lock
+	 */
+	r.mutex.Lock()
+	port := r.ports[num]
+	if port == nil {
+		r.log.Debug("not found a port")
+		r.setPort(num, p)
+	} else {
+		port.SetValue(p)
+	}
+	r.mutex.Unlock()
+	/*
+	 * End of write lock
+	 */
 	if port == nil {
 		return
 	}
 
+	r.log.Debug("Mutex is unlocked in updatePort()..")
+
 	if p.IsPortDown() || p.IsLinkDown() {
+		r.log.Debug("Calling PortRemoved()..")
+		// To avoid deadlock, we first unlock the mutex before calling a watcher function
 		r.watcher.PortRemoved(port)
-	} else {
-		// TODO: Send LLDP
+		r.log.Debug("Calling PortRemoved() is done..")
 	}
 
 	// TODO: Send this event to a watcher
 }
 
 func (r *Device) FlowTableID() uint8 {
+	// Read lock
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
 	return r.flowTableID
 }
 
 func (r *Device) setFlowTableID(id uint8) {
+	// Write lock
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
 	r.flowTableID = id
+}
+
+func (r *Device) SendMessage(msg encoding.BinaryMarshaler) error {
+	// Write lock
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	c, ok := r.controllers[0]
+	if !ok {
+		return errors.New("not found main transceiver connection whose aux ID is 0")
+	}
+
+	return c.SendMessage(msg)
 }

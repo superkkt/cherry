@@ -12,14 +12,14 @@ import (
 	"net"
 )
 
-type OutPort uint
+type OutPort uint32
 
 const (
-	OutTable OutPort = iota
-	OutFlood
-	OutAll
-	OutController
-	OutNone
+	OutTable      OutPort = 0xFFFFFFFB
+	OutFlood              = 0xFFFFFFFC
+	OutAll                = 0xFFFFFFFD
+	OutController         = 0xFFFFFFFE
+	OutNone               = 0xFFFFFFFF
 )
 
 type InPort struct {

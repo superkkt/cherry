@@ -63,13 +63,15 @@ func (r *Port) Nodes() []*Node {
 	return r.nodes
 }
 
-func (r *Port) AddNode(mac net.HardwareAddr) {
+func (r *Port) AddNode(mac net.HardwareAddr) *Node {
 	// Write lock
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	node := NewNode(r, mac)
 	r.nodes = append(r.nodes, node)
+
+	return node
 }
 
 func (r *Port) RemoveNode(mac net.HardwareAddr) {
