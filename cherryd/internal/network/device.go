@@ -5,13 +5,14 @@
  * Kitae Kim <superkkt@sds.co.kr>
  */
 
-package controller
+package network
 
 import (
 	"encoding"
 	"errors"
 	"git.sds.co.kr/cherry.git/cherryd/internal/log"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
+	"git.sds.co.kr/cherry.git/cherryd/openflow/trans"
 	"sync"
 )
 
@@ -35,7 +36,7 @@ type Device struct {
 	log          log.Logger
 	watcher      Watcher
 	finder       Finder
-	controllers  map[uint8]*Controller
+	controllers  map[uint8]trans.Writer
 	descriptions Descriptions
 	features     Features
 	ports        map[uint]*Port
@@ -48,7 +49,7 @@ func NewDevice(id string, log log.Logger, w Watcher, f Finder) *Device {
 		log:         log,
 		watcher:     w,
 		finder:      f,
-		controllers: make(map[uint8]*Controller),
+		controllers: make(map[uint8]trans.Writer),
 		ports:       make(map[uint]*Port),
 	}
 }
@@ -57,7 +58,7 @@ func (r *Device) ID() string {
 	return r.id
 }
 
-func (r *Device) addController(id uint8, c *Controller) {
+func (r *Device) AddController(id uint8, c trans.Writer) {
 	// Write lock
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -65,7 +66,7 @@ func (r *Device) addController(id uint8, c *Controller) {
 	r.controllers[id] = c
 }
 
-func (r *Device) removeController(id uint8) {
+func (r *Device) RemoveController(id uint8) {
 	/*
 	 * Start of write lock
 	 */
@@ -80,7 +81,7 @@ func (r *Device) removeController(id uint8) {
 	// We have no controllers?
 	if nCtrls == 0 {
 		// To avoid deadlock, we first unlock the mutex before calling a watcher function
-		r.watcher.DeviceRemoved(r.id)
+		r.watcher.DeviceRemoved(r)
 	}
 }
 
@@ -92,7 +93,7 @@ func (r *Device) Descriptions() Descriptions {
 	return r.descriptions
 }
 
-func (r *Device) setDescriptions(d Descriptions) {
+func (r *Device) SetDescriptions(d Descriptions) {
 	// Write lock
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -108,7 +109,7 @@ func (r *Device) Features() Features {
 	return r.features
 }
 
-func (r *Device) setFeatures(f Features) {
+func (r *Device) SetFeatures(f Features) {
 	// Write lock
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -145,7 +146,7 @@ func (r *Device) setPort(num uint, p openflow.Port) {
 	r.ports[num] = port
 }
 
-func (r *Device) addPort(num uint, p openflow.Port) {
+func (r *Device) AddPort(num uint, p openflow.Port) {
 	// Write lock
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -153,7 +154,7 @@ func (r *Device) addPort(num uint, p openflow.Port) {
 	r.setPort(num, p)
 }
 
-func (r *Device) updatePort(num uint, p openflow.Port) {
+func (r *Device) UpdatePort(num uint, p openflow.Port) {
 	r.log.Debug("updatePort() is called..")
 
 	/*
@@ -195,7 +196,7 @@ func (r *Device) FlowTableID() uint8 {
 	return r.flowTableID
 }
 
-func (r *Device) setFlowTableID(id uint8) {
+func (r *Device) SetFlowTableID(id uint8) {
 	// Write lock
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -213,5 +214,5 @@ func (r *Device) SendMessage(msg encoding.BinaryMarshaler) error {
 		return errors.New("not found main transceiver connection whose aux ID is 0")
 	}
 
-	return c.SendMessage(msg)
+	return c.Write(msg)
 }

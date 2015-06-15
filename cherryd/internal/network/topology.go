@@ -5,7 +5,7 @@
  * Kitae Kim <superkkt@sds.co.kr>
  */
 
-package controller
+package network
 
 import (
 	"fmt"
@@ -16,11 +16,11 @@ import (
 )
 
 type Watcher interface {
-	DeviceAdded(d *Device)
-	DeviceLinked(ports [2]*Port)
-	DeviceRemoved(id string)
-	NodeAdded(n *Node)
-	PortRemoved(p *Port)
+	DeviceAdded(*Device)
+	DeviceLinked([2]*Port)
+	DeviceRemoved(*Device)
+	NodeAdded(*Node)
+	PortRemoved(*Port)
 }
 
 type Finder interface {
@@ -85,13 +85,14 @@ func (r *Topology) DeviceAdded(d *Device) {
 }
 
 // TODO: 디바이스 리스트와 그래프가 정상적으로 갱신되는지 남은 데이터 찍어보면서 테스트
-func (r *Topology) DeviceRemoved(id string) {
+func (r *Topology) DeviceRemoved(d *Device) {
 	r.log.Debug("DeviceRemoved() is called..")
 
 	// Write lock
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
+	id := d.ID()
 	r.log.Debug(fmt.Sprintf("Finding a device (id=%v)", id))
 
 	// Device exists?
@@ -165,12 +166,6 @@ func (r *Topology) PortRemoved(p *Port) {
 	}
 	// Remove an edge from the graph if this port is an edge connected to another switch
 	r.graph.RemoveEdge(p)
-}
-
-func (r *Topology) CreateController(c net.Conn) {
-	r.log.Debug("CreateController() is called..")
-	ctr := NewController(c, r.log, r, r)
-	go ctr.Run()
 }
 
 // TODO: Path()

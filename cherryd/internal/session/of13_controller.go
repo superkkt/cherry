@@ -5,11 +5,12 @@
  * Kitae Kim <superkkt@sds.co.kr>
  */
 
-package controller
+package session
 
 import (
 	"fmt"
 	"git.sds.co.kr/cherry.git/cherryd/internal/log"
+	"git.sds.co.kr/cherry.git/cherryd/internal/network"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"git.sds.co.kr/cherry.git/cherryd/openflow/of13"
 	"git.sds.co.kr/cherry.git/cherryd/openflow/trans"
@@ -17,7 +18,7 @@ import (
 )
 
 type OF13Controller struct {
-	device *Device
+	device *network.Device
 	log    log.Logger
 }
 
@@ -27,7 +28,7 @@ func NewOF13Controller(log log.Logger) *OF13Controller {
 	}
 }
 
-func (r *OF13Controller) SetDevice(d *Device) {
+func (r *OF13Controller) SetDevice(d *network.Device) {
 	r.device = d
 }
 
@@ -138,7 +139,7 @@ func (r *OF13Controller) setHP2920TableMiss(f openflow.Factory, w trans.Writer) 
 	if err := r.setTableMiss(f, w, 200, inst); err != nil {
 		return fmt.Errorf("failed to set table_miss flow entry: %v", err)
 	}
-	r.device.setFlowTableID(200)
+	r.device.SetFlowTableID(200)
 
 	return nil
 }
@@ -172,7 +173,7 @@ func (r *OF13Controller) setDefaultTableMiss(f openflow.Factory, w trans.Writer)
 	if err := r.setTableMiss(f, w, 0, inst); err != nil {
 		return fmt.Errorf("failed to set table_miss flow entry: %v", err)
 	}
-	r.device.setFlowTableID(0)
+	r.device.SetFlowTableID(0)
 
 	return nil
 }
@@ -203,7 +204,7 @@ func (r *OF13Controller) OnPortDescReply(f openflow.Factory, w trans.Writer, v o
 			r.log.Debug("Ignore the port. Port number > of13.OFPP_MAX.")
 			continue
 		}
-		r.device.addPort(p.Number(), p)
+		r.device.AddPort(p.Number(), p)
 		if !p.IsPortDown() && !p.IsLinkDown() {
 			r.log.Debug("Sending LLDP..")
 			// Send LLDP to update network topology
@@ -224,7 +225,7 @@ func (r *OF13Controller) OnPortStatus(f openflow.Factory, w trans.Writer, v open
 		r.log.Debug("Ignore the port. Port number > of13.OFPP_MAX.")
 		return nil
 	}
-	r.device.updatePort(p.Number(), p)
+	r.device.UpdatePort(p.Number(), p)
 
 	return nil
 }

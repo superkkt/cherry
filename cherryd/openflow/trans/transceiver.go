@@ -15,7 +15,6 @@ import (
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"git.sds.co.kr/cherry.git/cherryd/openflow/of10"
 	"git.sds.co.kr/cherry.git/cherryd/openflow/of13"
-	"reflect"
 	"time"
 )
 
@@ -86,12 +85,9 @@ func (r *Transceiver) negotiate(packet []byte) error {
 	if packet[0] < openflow.OF13_VERSION {
 		r.version = openflow.OF10_VERSION
 		r.factory = of10.NewFactory()
-		// XXX: debugging
-		fmt.Printf("Negotiated as OF10\n")
 	} else {
 		r.version = openflow.OF13_VERSION
 		r.factory = of13.NewFactory()
-		fmt.Printf("Negotiated as OF13\n")
 	}
 
 	return nil
@@ -143,17 +139,11 @@ func (r *Transceiver) sendEchoRequest() error {
 
 // TODO: Use context to shutdown a running transceiver
 func (r *Transceiver) Run() error {
-	// XXX: deubgging
-	fmt.Printf("Reading initial packet..\n")
-
 	// Read initial packet
 	packet, err := r.readPacket()
 	if err != nil {
 		return err
 	}
-
-	// XXX: deubgging
-	fmt.Printf("Negotiating..\n")
 
 	if err := r.negotiate(packet); err != nil {
 		return err
@@ -161,14 +151,9 @@ func (r *Transceiver) Run() error {
 
 	// Infinite loop
 	for {
-		// XXX: deubgging
-		fmt.Printf("Dispatching..\n")
-
 		if err := r.dispatch(packet); err != nil {
 			return err
 		}
-		// XXX: deubgging
-		fmt.Printf("Dispatch Done..\n")
 		r.updateTimestamp()
 
 	retry:
@@ -194,21 +179,15 @@ func (r *Transceiver) Run() error {
 }
 
 func (r *Transceiver) readPacket() ([]byte, error) {
-	// XXX: deubgging
-	fmt.Printf("Peeking..\n")
 	header, err := r.stream.Peek(8) // peek ofp_header
 	if err != nil {
 		return nil, err
 	}
 
 	length := binary.BigEndian.Uint16(header[2:4])
-	// XXX: deubgging
-	fmt.Printf("Packet length=%v\n", length)
 	if length < 8 {
 		return nil, openflow.ErrInvalidPacketLength
 	}
-	// XXX: deubgging
-	fmt.Printf("Reading %v bytes..\n", length)
 	packet, err := r.stream.ReadN(int(length))
 	if err != nil {
 		return nil, err
@@ -218,21 +197,14 @@ func (r *Transceiver) readPacket() ([]byte, error) {
 }
 
 func (r *Transceiver) Write(msg encoding.BinaryMarshaler) error {
-	// XXX: deubgging
-	fmt.Printf("Write() is called..\n")
-
 	packet, err := msg.MarshalBinary()
 	if err != nil {
 		return err
 	}
 
-	// XXX: deubgging
-	fmt.Printf("Writing a message.. type=%v\n", reflect.TypeOf(msg))
 	if _, err := r.stream.Write(packet); err != nil {
 		return err
 	}
-	// XXX: deubgging
-	fmt.Printf("Writing is done\n")
 
 	return nil
 }
@@ -254,9 +226,6 @@ func (r *Transceiver) dispatch(packet []byte) error {
 }
 
 func (r *Transceiver) parseOF10Message(packet []byte) error {
-	// XXX: deubgging
-	fmt.Printf("packet[1] is %v\n", packet[1])
-
 	switch packet[1] {
 	case of10.OFPT_HELLO:
 		return r.handleHello(packet)
@@ -291,59 +260,34 @@ func (r *Transceiver) parseOF10Message(packet []byte) error {
 }
 
 func (r *Transceiver) parseOF13Message(packet []byte) error {
-	// XXX: deubgging
-	fmt.Printf("packet[1] is %v\n", packet[1])
-
 	switch packet[1] {
 	case of13.OFPT_HELLO:
-		// XXX: deubgging
-		fmt.Printf("NewHello..\n")
 		return r.handleHello(packet)
 	case of13.OFPT_ERROR:
-		// XXX: deubgging
-		fmt.Printf("NewError..\n")
 		return r.handleError(packet)
 	case of13.OFPT_ECHO_REQUEST:
-		// XXX: deubgging
-		fmt.Printf("NewEchoRequest..\n")
 		return r.handleEchoRequest(packet)
 	case of13.OFPT_ECHO_REPLY:
-		// XXX: deubgging
-		fmt.Printf("NewEchoReply..\n")
 		return r.handleEchoReply(packet)
 	case of13.OFPT_FEATURES_REPLY:
-		// XXX: deubgging
-		fmt.Printf("NewFeaturesReply..\n")
 		return r.handleFeaturesReply(packet)
 	case of13.OFPT_GET_CONFIG_REPLY:
-		// XXX: deubgging
-		fmt.Printf("NewGetConfigReply..\n")
 		return r.handleGetConfigReply(packet)
 	case of13.OFPT_MULTIPART_REPLY:
 		switch binary.BigEndian.Uint16(packet[8:10]) {
 		case of13.OFPMP_DESC:
-			// XXX: deubgging
-			fmt.Printf("NewDescReply..\n")
 			return r.handleDescReply(packet)
 		case of13.OFPMP_PORT_DESC:
-			// XXX: deubgging
-			fmt.Printf("NewPortDescReply..\n")
 			return r.handlePortDescReply(packet)
 		default:
 			// Unsupported message. Do nothing.
 			return nil
 		}
 	case of13.OFPT_PORT_STATUS:
-		// XXX: deubgging
-		fmt.Printf("NewPortStatus..\n")
 		return r.handlePortStatus(packet)
 	case of13.OFPT_FLOW_REMOVED:
-		// XXX: deubgging
-		fmt.Printf("NewFlowRemoved..\n")
 		return r.handleFlowRemoved(packet)
 	case of13.OFPT_PACKET_IN:
-		// XXX: deubgging
-		fmt.Printf("NewPacketIn..\n")
 		return r.handlePacketIn(packet)
 	default:
 		// Unsupported message. Do nothing.

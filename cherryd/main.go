@@ -10,7 +10,8 @@ package main
 import (
 	"flag"
 	"fmt"
-	"git.sds.co.kr/cherry.git/cherryd/internal/controller"
+	"git.sds.co.kr/cherry.git/cherryd/internal/network"
+	"git.sds.co.kr/cherry.git/cherryd/internal/session"
 	"golang.org/x/net/context"
 	"log/syslog"
 	"net"
@@ -69,7 +70,7 @@ func listen(ctx context.Context, log *syslog.Writer, config *Config) {
 	backlog := make(chan net.Conn, 32)
 	go f(backlog)
 
-	topo := controller.NewTopology(log)
+	topology := network.NewTopology(log)
 	// Infinite loop
 	for {
 		select {
@@ -84,7 +85,8 @@ func listen(ctx context.Context, log *syslog.Writer, config *Config) {
 					log.Err(fmt.Sprintf("Failed to enable socket keepalive: %v", err))
 				}
 			}
-			topo.CreateController(conn)
+			ctr := session.NewController(conn, log, topology, topology)
+			go ctr.Run()
 		case <-ctx.Done():
 			return
 		}

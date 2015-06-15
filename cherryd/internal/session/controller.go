@@ -5,7 +5,7 @@
  * Kitae Kim <superkkt@sds.co.kr>
  */
 
-package controller
+package session
 
 import (
 	"bytes"
@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"git.sds.co.kr/cherry.git/cherryd/internal/log"
+	"git.sds.co.kr/cherry.git/cherryd/internal/network"
 	"git.sds.co.kr/cherry.git/cherryd/net/protocol"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"git.sds.co.kr/cherry.git/cherryd/openflow/trans"
@@ -30,21 +31,21 @@ const (
 
 type Handler interface {
 	trans.Handler
-	SetDevice(*Device)
+	SetDevice(*network.Device)
 }
 
 type Controller struct {
-	device     *Device
+	device     *network.Device
 	trans      *trans.Transceiver
 	log        log.Logger
 	handler    Handler
 	negotiated bool
-	watcher    Watcher
-	finder     Finder
+	watcher    network.Watcher
+	finder     network.Finder
 	auxID      uint8
 }
 
-func NewController(c io.ReadWriteCloser, log log.Logger, w Watcher, f Finder) *Controller {
+func NewController(c io.ReadWriteCloser, log log.Logger, w network.Watcher, f network.Finder) *Controller {
 	stream := trans.NewStream(c)
 	stream.SetReadTimeout(readTimeout * time.Second)
 	stream.SetWriteTimeout(writeTimeout * time.Second)
@@ -91,7 +92,7 @@ func (r *Controller) OnError(f openflow.Factory, w trans.Writer, v openflow.Erro
 	return r.handler.OnError(f, w, v)
 }
 
-func (r *Controller) setDevice(d *Device) {
+func (r *Controller) setDevice(d *network.Device) {
 	r.device = d
 	r.handler.SetDevice(d)
 }
@@ -103,17 +104,17 @@ func (r *Controller) OnFeaturesReply(f openflow.Factory, w trans.Writer, v openf
 	dpid := strconv.FormatUint(v.DPID(), 10)
 	device := r.finder.Device(dpid)
 	if device == nil {
-		device = NewDevice(dpid, r.log, r.watcher, r.finder)
+		device = network.NewDevice(dpid, r.log, r.watcher, r.finder)
 		r.watcher.DeviceAdded(device)
 	}
-	device.addController(v.AuxID(), r)
+	device.AddController(v.AuxID(), r)
 	r.setDevice(device)
-	features := Features{
+	features := network.Features{
 		DPID:       v.DPID(),
 		NumBuffers: v.NumBuffers(),
 		NumTables:  v.NumTables(),
 	}
-	r.device.setFeatures(features)
+	r.device.SetFeatures(features)
 
 	return r.handler.OnFeaturesReply(f, w, v)
 }
@@ -133,14 +134,14 @@ func (r *Controller) OnDescReply(f openflow.Factory, w trans.Writer, v openflow.
 	}
 
 	r.log.Debug(fmt.Sprintf("DESC_REPLY is received: %v", v))
-	desc := Descriptions{
+	desc := network.Descriptions{
 		Manufacturer: v.Manufacturer(),
 		Hardware:     v.Hardware(),
 		Software:     v.Software(),
 		Serial:       v.Serial(),
 		Description:  v.Description(),
 	}
-	r.device.setDescriptions(desc)
+	r.device.SetDescriptions(desc)
 
 	return r.handler.OnDescReply(f, w, v)
 }
@@ -308,7 +309,7 @@ func extractDeviceInfo(p *protocol.LLDP) (deviceID string, portNum uint32, err e
 	return deviceID, uint32(num), nil
 }
 
-func (r *Controller) findNeighborPort(deviceID string, portNum uint32) (*Port, error) {
+func (r *Controller) findNeighborPort(deviceID string, portNum uint32) (*network.Port, error) {
 	device := r.finder.Device(deviceID)
 	if device == nil {
 		return nil, fmt.Errorf("failed to find a neighbor device: id=%v", deviceID)
@@ -321,7 +322,7 @@ func (r *Controller) findNeighborPort(deviceID string, portNum uint32) (*Port, e
 	return port, nil
 }
 
-func (r *Controller) handleLLDP(inPort *Port, ethernet *protocol.Ethernet) error {
+func (r *Controller) handleLLDP(inPort *network.Port, ethernet *protocol.Ethernet) error {
 	r.log.Debug("Handling LLDP..")
 
 	lldp, err := getLLDP(ethernet.Payload)
@@ -338,12 +339,12 @@ func (r *Controller) handleLLDP(inPort *Port, ethernet *protocol.Ethernet) error
 	if err != nil {
 		return err
 	}
-	r.watcher.DeviceLinked([2]*Port{inPort, port})
+	r.watcher.DeviceLinked([2]*network.Port{inPort, port})
 
 	return nil
 }
 
-func (r *Controller) addNewNode(inPort *Port, mac net.HardwareAddr) error {
+func (r *Controller) addNewNode(inPort *network.Port, mac net.HardwareAddr) error {
 	node := inPort.AddNode(mac)
 	r.watcher.NodeAdded(node)
 
@@ -404,11 +405,11 @@ func (r *Controller) Run() {
 	r.log.Debug("Closing the transceiver..")
 	r.trans.Close()
 	if r.device != nil {
-		r.device.removeController(r.auxID)
+		r.device.RemoveController(r.auxID)
 	}
 }
 
-func (r *Controller) SendMessage(msg encoding.BinaryMarshaler) error {
+func (r *Controller) Write(msg encoding.BinaryMarshaler) error {
 	return r.trans.Write(msg)
 }
 

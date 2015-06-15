@@ -5,18 +5,19 @@
  * Kitae Kim <superkkt@sds.co.kr>
  */
 
-package controller
+package session
 
 import (
 	"fmt"
 	"git.sds.co.kr/cherry.git/cherryd/internal/log"
+	"git.sds.co.kr/cherry.git/cherryd/internal/network"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"git.sds.co.kr/cherry.git/cherryd/openflow/of10"
 	"git.sds.co.kr/cherry.git/cherryd/openflow/trans"
 )
 
 type OF10Controller struct {
-	device *Device
+	device *network.Device
 	log    log.Logger
 }
 
@@ -26,7 +27,7 @@ func NewOF10Controller(log log.Logger) *OF10Controller {
 	}
 }
 
-func (r *OF10Controller) SetDevice(d *Device) {
+func (r *OF10Controller) SetDevice(d *network.Device) {
 	r.device = d
 }
 
@@ -69,7 +70,7 @@ func (r *OF10Controller) OnFeaturesReply(f openflow.Factory, w trans.Writer, v o
 			r.log.Debug("Ignore the port. Port number > of10.OFPP_MAX.")
 			continue
 		}
-		r.device.addPort(p.Number(), p)
+		r.device.AddPort(p.Number(), p)
 		if !p.IsPortDown() && !p.IsLinkDown() {
 			r.log.Debug("Sending LLDP..")
 			// Send LLDP to update network topology
@@ -102,7 +103,7 @@ func (r *OF10Controller) OnPortStatus(f openflow.Factory, w trans.Writer, v open
 		r.log.Debug("Ignore the port. Port number > of10.OFPP_MAX.")
 		return nil
 	}
-	r.device.updatePort(p.Number(), p)
+	r.device.UpdatePort(p.Number(), p)
 
 	return nil
 }
