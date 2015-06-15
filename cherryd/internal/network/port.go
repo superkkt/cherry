@@ -13,14 +13,16 @@ import (
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"net"
 	"sync"
+	"time"
 )
 
 type Port struct {
-	mutex  sync.RWMutex
-	device *Device
-	number uint
-	value  openflow.Port
-	nodes  []*Node
+	mutex     sync.RWMutex
+	device    *Device
+	number    uint
+	value     openflow.Port
+	nodes     []*Node
+	timestamp time.Time
 }
 
 func NewPort(d *Device, num uint) *Port {
@@ -53,6 +55,16 @@ func (r *Port) SetValue(p openflow.Port) {
 	defer r.mutex.Unlock()
 
 	r.value = p
+	r.timestamp = time.Now()
+}
+
+// Duration returns the time during which this port activated
+func (r *Port) Duration() time.Duration {
+	if r.timestamp.IsZero() {
+		return time.Duration(0)
+	}
+
+	return time.Now().Sub(r.timestamp)
 }
 
 func (r *Port) Nodes() []*Node {

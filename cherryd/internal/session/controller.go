@@ -228,8 +228,6 @@ func sendLLDP(deviceID string, f openflow.Factory, w trans.Writer, p openflow.Po
 		return err
 	}
 
-	// TODO: Set sent timestamp to Port structure as a LLDP timer?
-
 	return w.Write(out)
 }
 
@@ -251,8 +249,7 @@ func (r *Controller) OnPortStatus(f openflow.Factory, w trans.Writer, v openflow
 	}
 	r.log.Debug(fmt.Sprintf("Port: num=%v, AdminUp=%v, LinkUp=%v", port.Number(), !port.IsPortDown(), !port.IsLinkDown()))
 
-	err := r.handler.OnPortStatus(f, w, v)
-	return err
+	return r.handler.OnPortStatus(f, w, v)
 }
 
 func (r *Controller) OnFlowRemoved(f openflow.Factory, w trans.Writer, v openflow.FlowRemoved) error {
@@ -360,6 +357,11 @@ func (r *Controller) addNewNode(inPort *network.Port, mac net.HardwareAddr) erro
 	return nil
 }
 
+func (r *Controller) isActivatedPort(p *network.Port) bool {
+	// We assume that a port is in inactive state during 3 seconds after setting its value to avoid broadcast storm.
+	return p.Duration().Seconds() > 3
+}
+
 func (r *Controller) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.PacketIn) error {
 	r.log.Debug(fmt.Sprintf("PACKET_IN is received: inport=%v, reason=%v, tableID=%v, cookie=%v", v.InPort(), v.Reason(), v.TableID(), v.Cookie()))
 
@@ -390,8 +392,10 @@ func (r *Controller) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.P
 		}
 	}
 
-	// TODO: Check LLDP timer activated in sendLLDP()
-
+	if !r.isActivatedPort(inPort) {
+		r.log.Info(fmt.Sprintf("Ignoring PACKET_IN from %v:%v because the ingress port is not in active state yet", r.device.ID(), v.InPort()))
+		return nil
+	}
 	// Do nothing if the ingress port is an edge between switches and is disabled by STP.
 	if r.finder.IsDisabledPort(inPort) {
 		r.log.Info(fmt.Sprintf("STP: ignoring PACKET_IN from %v:%v", r.device.ID(), v.InPort()))
