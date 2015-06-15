@@ -25,9 +25,9 @@ type Watcher interface {
 
 type Finder interface {
 	Device(id string) *Device
-	Node(mac net.HardwareAddr) *Node
-	// TODO: Path()
 	IsDisabledPort(p *Port) bool
+	Node(mac net.HardwareAddr) *Node
+	Path(srcDeviceID, dstDeviceID string) []*Port
 }
 
 type Topology struct {
@@ -150,7 +150,38 @@ func (r *Topology) PortRemoved(p *Port) {
 	r.graph.RemoveEdge(p)
 }
 
-// TODO: Path()
+func (r *Topology) Path(srcDeviceID, dstDeviceID string) []*Port {
+	// Read lock
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	v := make([]*Port, 0)
+	src := r.devices[srcDeviceID]
+	dst := r.devices[dstDeviceID]
+	// Unknown source or destination device?
+	if src == nil || dst == nil {
+		// Return empty path
+		return v
+	}
+
+	path := r.graph.FindPath(src, dst)
+	for _, p := range path {
+		device := p.V.(*Device)
+		link := p.E.(*Link)
+		v = append(v, pickPort(device, link))
+	}
+
+	return v
+}
+
+func pickPort(d *Device, l *Link) *Port {
+	p := l.Points()
+	if p[0].Vertex().ID() == d.ID() {
+		return p[0].(*Port)
+	}
+
+	return p[1].(*Port)
+}
 
 func (r *Topology) IsDisabledPort(p *Port) bool {
 	if r.graph.IsEdge(p) && !r.graph.IsEnabledPoint(p) {

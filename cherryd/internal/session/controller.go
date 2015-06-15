@@ -378,12 +378,10 @@ func (r *Controller) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.P
 	if inPort == nil {
 		return fmt.Errorf("failed to find a port: deviceID=%v, portNum=%v", r.device.ID(), v.InPort())
 	}
-
 	// Process LLDP, and then add an edge among two switches
 	if isLLDP(ethernet) {
 		return r.handleLLDP(inPort, ethernet)
 	}
-
 	// Do we know packet sender?
 	if r.finder.Node(ethernet.SrcMAC) == nil {
 		// MAC learning
@@ -391,7 +389,7 @@ func (r *Controller) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.P
 			return err
 		}
 	}
-
+	// Do nothing if the ingress port is in inactive state
 	if !r.isActivatedPort(inPort) {
 		r.log.Info(fmt.Sprintf("Ignoring PACKET_IN from %v:%v because the ingress port is not in active state yet", r.device.ID(), v.InPort()))
 		return nil
@@ -401,7 +399,6 @@ func (r *Controller) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.P
 		r.log.Info(fmt.Sprintf("STP: ignoring PACKET_IN from %v:%v", r.device.ID(), v.InPort()))
 		return nil
 	}
-
 	if err := r.handler.OnPacketIn(f, w, v); err != nil {
 		return err
 	}

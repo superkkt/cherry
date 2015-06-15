@@ -41,6 +41,10 @@ func (r *Port) Vertex() graph.Vertex {
 	return r.device
 }
 
+func (r *Port) Device() *Device {
+	return r.device
+}
+
 func (r *Port) Value() openflow.Port {
 	// Read lock
 	r.mutex.RLock()
@@ -60,6 +64,10 @@ func (r *Port) SetValue(p openflow.Port) {
 
 // Duration returns the time during which this port activated
 func (r *Port) Duration() time.Duration {
+	// Read lock
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
 	if r.timestamp.IsZero() {
 		return time.Duration(0)
 	}
