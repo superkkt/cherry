@@ -10,6 +10,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"git.sds.co.kr/cherry.git/cherryd/internal/application"
 	"git.sds.co.kr/cherry.git/cherryd/internal/network"
 	"git.sds.co.kr/cherry.git/cherryd/internal/session"
 	"golang.org/x/net/context"
@@ -71,6 +72,7 @@ func listen(ctx context.Context, log *syslog.Writer, config *Config) {
 	go f(backlog)
 
 	topology := network.NewTopology(log)
+	manager := createAppManager(config, log)
 	// Infinite loop
 	for {
 		select {
@@ -85,7 +87,13 @@ func listen(ctx context.Context, log *syslog.Writer, config *Config) {
 					log.Err(fmt.Sprintf("Failed to enable socket keepalive: %v", err))
 				}
 			}
-			ctr := session.NewController(conn, log, topology, topology)
+			ctr := session.NewController(session.Config{
+				Conn:      conn,
+				Logger:    log,
+				Watcher:   topology,
+				Finder:    topology,
+				Processor: manager,
+			})
 			go ctr.Run()
 		case <-ctx.Done():
 			return
@@ -93,15 +101,14 @@ func listen(ctx context.Context, log *syslog.Writer, config *Config) {
 	}
 }
 
-//func enableApplications(config *Config) error {
-//	for _, v := range config.Apps {
-//		if err := application.Pool.Enable(v.Name, v.Priority); err != nil {
-//			return err
-//		}
-//	}
-//
-//	return nil
-//}
+func createAppManager(config *Config, log *syslog.Writer) *application.Manager {
+	manager := application.NewManager(log)
+	for _, v := range config.Apps {
+		manager.Enable(v)
+	}
+
+	return manager
+}
 
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
@@ -112,11 +119,6 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Failed to read configurations: %v\n", err)
 		os.Exit(1)
 	}
-
-	//	if err := enableApplications(conf); err != nil {
-	//		fmt.Fprintf(os.Stderr, "Failed to enable applications: %v\n", err)
-	//		os.Exit(1)
-	//	}
 
 	log, err := syslog.New(syslog.LOG_INFO|syslog.LOG_DAEMON, "cherryd")
 	if err != nil {

@@ -14,9 +14,9 @@ import (
 	"fmt"
 	"git.sds.co.kr/cherry.git/cherryd/internal/log"
 	"git.sds.co.kr/cherry.git/cherryd/internal/network"
-	"git.sds.co.kr/cherry.git/cherryd/net/protocol"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"git.sds.co.kr/cherry.git/cherryd/openflow/trans"
+	"git.sds.co.kr/cherry.git/cherryd/protocol"
 	"io"
 	"net"
 	"strconv"
@@ -28,6 +28,10 @@ const (
 	readTimeout  = 10
 	writeTimeout = 30
 )
+
+type PacketProcessor interface {
+	Process(*protocol.Ethernet, *network.Port) error
+}
 
 type handler interface {
 	trans.Handler
@@ -42,18 +46,28 @@ type Controller struct {
 	negotiated bool
 	watcher    network.Watcher
 	finder     network.Finder
+	processor  PacketProcessor
 	auxID      uint8
 }
 
-func NewController(c io.ReadWriteCloser, log log.Logger, w network.Watcher, f network.Finder) *Controller {
-	stream := trans.NewStream(c)
+type Config struct {
+	Conn      io.ReadWriteCloser
+	Logger    log.Logger
+	Watcher   network.Watcher
+	Finder    network.Finder
+	Processor PacketProcessor
+}
+
+func NewController(c Config) *Controller {
+	stream := trans.NewStream(c.Conn)
 	stream.SetReadTimeout(readTimeout * time.Second)
 	stream.SetWriteTimeout(writeTimeout * time.Second)
 
 	v := new(Controller)
-	v.log = log
-	v.watcher = w
-	v.finder = f
+	v.log = c.Logger
+	v.watcher = c.Watcher
+	v.finder = c.Finder
+	v.processor = c.Processor
 	v.trans = trans.NewTransceiver(stream, v)
 
 	return v
@@ -403,9 +417,7 @@ func (r *Controller) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.P
 		return err
 	}
 
-	// TODO: Call packet watcher
-
-	return nil
+	return r.processor.Process(ethernet, inPort)
 }
 
 // TODO: Use context to shutdown running controllers

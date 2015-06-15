@@ -12,7 +12,6 @@ import (
 	"flag"
 	"fmt"
 	"github.com/dlintw/goconf"
-	"strconv"
 	"strings"
 )
 
@@ -24,19 +23,14 @@ var (
 	configFile = flag.String("config", defaultConfigFile, "Absolute path of the configuration file")
 )
 
-type Application struct {
-	Name     string
-	Priority uint
-}
-
 type Config struct {
 	Port int
-	Apps []Application
+	Apps []string
 }
 
 func NewConfig() *Config {
 	return &Config{
-		Apps: make([]Application, 0),
+		Apps: make([]string, 0),
 	}
 }
 
@@ -54,25 +48,14 @@ func (c *Config) Read() error {
 }
 
 func (c *Config) parseApplications(apps string) error {
-	// NAME:PRIORITY,NAME:PRIORITY,...
-
 	// Remove spaces, and then split it using comma
-	token := strings.Split(strings.Replace(apps, " ", "", -1), ",")
-	if len(token) == 0 {
+	tokens := strings.Split(strings.Replace(apps, " ", "", -1), ",")
+	if len(tokens) == 0 {
 		return errors.New("empty token")
 	}
 
-	for _, v := range token {
-		// Application's name and priority are separated by colon.
-		t := strings.Split(v, ":")
-		if len(t) != 2 {
-			return errors.New("priority is not specified")
-		}
-		priority, err := strconv.ParseUint(t[1], 10, 32)
-		if err != nil {
-			return fmt.Errorf("invalid priority: %v", err)
-		}
-		c.Apps = append(c.Apps, Application{Name: t[0], Priority: uint(priority)})
+	for _, v := range tokens {
+		c.Apps = append(c.Apps, v)
 	}
 
 	return nil
