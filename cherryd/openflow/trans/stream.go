@@ -60,15 +60,13 @@ func (r *Stream) Read(p []byte) (n int, err error) {
 
 // Peek is a wrapper function of bufio.Reader.Peek().
 func (r *Stream) Peek(n int) (p []byte, err error) {
-	/*
-		if r.readTimeout > 0 {
-			d, ok := r.channel.(Deadline)
-			if ok {
-				d.SetReadDeadline(time.Now().Add(r.readTimeout))
-				defer d.SetReadDeadline(time.Time{})
-			}
+	if r.readTimeout > 0 {
+		d, ok := r.channel.(Deadline)
+		if ok {
+			d.SetReadDeadline(time.Now().Add(r.readTimeout))
+			defer d.SetReadDeadline(time.Time{})
 		}
-	*/
+	}
 
 	return r.reader.Peek(n)
 }
