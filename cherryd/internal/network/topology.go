@@ -60,17 +60,11 @@ func (r *Topology) Device(id string) *Device {
 
 // TODO: 정말로 모든 노드가 다 지워졌는지 실제로 개수 찍어보면서 테스트
 func (r *Topology) removeAllNodes(d *Device) {
-	r.log.Debug("Removing all nodes..")
 	ports := d.Ports()
-	r.log.Debug("Got all ports")
 	for _, p := range ports {
-		r.log.Debug(fmt.Sprintf("Port: %v", p))
 		for _, n := range p.Nodes() {
-			r.log.Debug(fmt.Sprintf("Node: %v", n))
 			delete(r.nodes, n.MAC().String())
-			r.log.Debug("Removing a node..")
 			p.RemoveNode(n.MAC())
-			r.log.Debug("Removed the node")
 		}
 	}
 }
@@ -86,32 +80,22 @@ func (r *Topology) DeviceAdded(d *Device) {
 
 // TODO: 디바이스 리스트와 그래프가 정상적으로 갱신되는지 남은 데이터 찍어보면서 테스트
 func (r *Topology) DeviceRemoved(d *Device) {
-	r.log.Debug("DeviceRemoved() is called..")
-
 	// Write lock
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	id := d.ID()
-	r.log.Debug(fmt.Sprintf("Finding a device (id=%v)", id))
-
 	// Device exists?
 	d, ok := r.devices[id]
 	if !ok {
-		r.log.Debug(fmt.Sprintf("Not found a device (id=%v)", id))
 		return
 	}
-	r.log.Debug(fmt.Sprintf("Found the device (id=%v)", id))
 	// Remove all nodes connected to this device
 	r.removeAllNodes(d)
-	r.log.Debug("Removed all nodes")
 	// Remove from the network topology
 	r.graph.RemoveVertex(d)
-	r.log.Debug("Removed the vertex")
 	// Remove from the device database
 	delete(r.devices, id)
-
-	r.log.Debug(fmt.Sprintf("Device (id=%v) is removed", id))
 }
 
 func (r *Topology) DeviceLinked(ports [2]*Port) {
@@ -120,8 +104,6 @@ func (r *Topology) DeviceLinked(ports [2]*Port) {
 		r.log.Err(fmt.Sprintf("DeviceLinked: %v", err))
 		return
 	}
-
-	r.log.Debug(fmt.Sprintf("New link.. %v", link.ID()))
 }
 
 func (r *Topology) NodeAdded(n *Node) {

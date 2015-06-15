@@ -28,7 +28,7 @@ func NewOF13Controller(log log.Logger) *OF13Controller {
 	}
 }
 
-func (r *OF13Controller) SetDevice(d *network.Device) {
+func (r *OF13Controller) setDevice(d *network.Device) {
 	r.device = d
 }
 
@@ -62,7 +62,6 @@ func (r *OF13Controller) OnHello(f openflow.Factory, w trans.Writer, v openflow.
 	if err := sendPortDescriptionRequest(f, w); err != nil {
 		return fmt.Errorf("failed to send DESCRIPTION_REQUEST: %v", err)
 	}
-	r.log.Debug("Send OF13 HELLO response")
 
 	return nil
 }
@@ -112,8 +111,6 @@ func (r *OF13Controller) setTableMiss(f openflow.Factory, w trans.Writer, tableI
 func (r *OF13Controller) setHP2920TableMiss(f openflow.Factory, w trans.Writer) error {
 	// Table-100 is a hardware table, and Table-200 is a software table
 	// that has very low performance.
-	r.log.Debug("Setting HP2920 TableMiss entries..")
-
 	inst, err := f.NewInstruction()
 	if err != nil {
 		return err
@@ -145,8 +142,6 @@ func (r *OF13Controller) setHP2920TableMiss(f openflow.Factory, w trans.Writer) 
 }
 
 func (r *OF13Controller) setAS4600TableMiss(f openflow.Factory, w trans.Writer) error {
-	r.log.Debug("Setting AS4600 TableMiss entries..")
-
 	// FIXME:
 	// AS460054-T gives an error (type=5, code=1) that means TABLE_FULL
 	// when we install a table-miss flow on Table-0 after we delete all
@@ -156,8 +151,6 @@ func (r *OF13Controller) setAS4600TableMiss(f openflow.Factory, w trans.Writer) 
 }
 
 func (r *OF13Controller) setDefaultTableMiss(f openflow.Factory, w trans.Writer) error {
-	r.log.Debug("Setting default TableMiss entries..")
-
 	inst, err := f.NewInstruction()
 	if err != nil {
 		return err
@@ -199,20 +192,17 @@ func (r *OF13Controller) OnDescReply(f openflow.Factory, w trans.Writer, v openf
 func (r *OF13Controller) OnPortDescReply(f openflow.Factory, w trans.Writer, v openflow.PortDescReply) error {
 	ports := v.Ports()
 	for _, p := range ports {
-		r.log.Debug(fmt.Sprintf("Adding new port: num=%v, port=%v", p.Number(), p))
 		if p.Number() > of13.OFPP_MAX {
-			r.log.Debug("Ignore the port. Port number > of13.OFPP_MAX.")
 			continue
 		}
 		r.device.AddPort(p.Number(), p)
 		if !p.IsPortDown() && !p.IsLinkDown() {
-			r.log.Debug("Sending LLDP..")
 			// Send LLDP to update network topology
 			if err := sendLLDP(r.device.ID(), f, w, p); err != nil {
 				r.log.Err(fmt.Sprintf("failed to send LLDP: %v", err))
 			}
-			r.log.Debug("Sent LLDP..")
 		}
+		r.log.Debug(fmt.Sprintf("Port: num=%v, AdminUp=%v, LinkUp=%v", p.Number(), !p.IsPortDown(), !p.IsLinkDown()))
 	}
 
 	return nil
@@ -220,9 +210,7 @@ func (r *OF13Controller) OnPortDescReply(f openflow.Factory, w trans.Writer, v o
 
 func (r *OF13Controller) OnPortStatus(f openflow.Factory, w trans.Writer, v openflow.PortStatus) error {
 	p := v.Port()
-	r.log.Debug(fmt.Sprintf("Updating port: num=%v, port=%v", p.Number(), p))
 	if p.Number() > of13.OFPP_MAX {
-		r.log.Debug("Ignore the port. Port number > of13.OFPP_MAX.")
 		return nil
 	}
 	r.device.UpdatePort(p.Number(), p)
@@ -235,6 +223,5 @@ func (r *OF13Controller) OnFlowRemoved(f openflow.Factory, w trans.Writer, v ope
 }
 
 func (r *OF13Controller) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.PacketIn) error {
-	r.log.Debug(fmt.Sprintf("OF13 PACKET_IN: %v", v))
 	return nil
 }

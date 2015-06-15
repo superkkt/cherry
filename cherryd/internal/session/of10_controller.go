@@ -27,7 +27,7 @@ func NewOF10Controller(log log.Logger) *OF10Controller {
 	}
 }
 
-func (r *OF10Controller) SetDevice(d *network.Device) {
+func (r *OF10Controller) setDevice(d *network.Device) {
 	r.device = d
 }
 
@@ -53,7 +53,6 @@ func (r *OF10Controller) OnHello(f openflow.Factory, w trans.Writer, v openflow.
 	if err := sendBarrierRequest(f, w); err != nil {
 		return fmt.Errorf("failed to send BARRIER_REQUEST: %v", err)
 	}
-	r.log.Debug("Send OF10 HELLO response")
 
 	return nil
 }
@@ -65,20 +64,17 @@ func (r *OF10Controller) OnError(f openflow.Factory, w trans.Writer, v openflow.
 func (r *OF10Controller) OnFeaturesReply(f openflow.Factory, w trans.Writer, v openflow.FeaturesReply) error {
 	ports := v.Ports()
 	for _, p := range ports {
-		r.log.Debug(fmt.Sprintf("Adding new port: num=%v, port=%v", p.Number(), p))
 		if p.Number() > of10.OFPP_MAX {
-			r.log.Debug("Ignore the port. Port number > of10.OFPP_MAX.")
 			continue
 		}
 		r.device.AddPort(p.Number(), p)
 		if !p.IsPortDown() && !p.IsLinkDown() {
-			r.log.Debug("Sending LLDP..")
 			// Send LLDP to update network topology
 			if err := sendLLDP(r.device.ID(), f, w, p); err != nil {
 				r.log.Err(fmt.Sprintf("failed to send LLDP: %v", err))
 			}
-			r.log.Debug("Sent LLDP..")
 		}
+		r.log.Debug(fmt.Sprintf("Port: num=%v, AdminUp=%v, LinkUp=%v", p.Number(), !p.IsPortDown(), !p.IsLinkDown()))
 	}
 
 	return nil
@@ -98,9 +94,7 @@ func (r *OF10Controller) OnPortDescReply(f openflow.Factory, w trans.Writer, v o
 
 func (r *OF10Controller) OnPortStatus(f openflow.Factory, w trans.Writer, v openflow.PortStatus) error {
 	p := v.Port()
-	r.log.Debug(fmt.Sprintf("Updating port: num=%v, port=%v", p.Number(), p))
 	if p.Number() > of10.OFPP_MAX {
-		r.log.Debug("Ignore the port. Port number > of10.OFPP_MAX.")
 		return nil
 	}
 	r.device.UpdatePort(p.Number(), p)
@@ -113,6 +107,5 @@ func (r *OF10Controller) OnFlowRemoved(f openflow.Factory, w trans.Writer, v ope
 }
 
 func (r *OF10Controller) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.PacketIn) error {
-	r.log.Debug(fmt.Sprintf("OF10 PACKET_IN: %v", v))
 	return nil
 }

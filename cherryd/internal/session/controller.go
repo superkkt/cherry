@@ -29,16 +29,16 @@ const (
 	writeTimeout = 30
 )
 
-type Handler interface {
+type handler interface {
 	trans.Handler
-	SetDevice(*network.Device)
+	setDevice(*network.Device)
 }
 
 type Controller struct {
 	device     *network.Device
 	trans      *trans.Transceiver
 	log        log.Logger
-	handler    Handler
+	handler    handler
 	negotiated bool
 	watcher    network.Watcher
 	finder     network.Finder
@@ -79,7 +79,6 @@ func (r *Controller) OnHello(f openflow.Factory, w trans.Writer, v openflow.Hell
 		return err
 	}
 
-	r.log.Debug("Calling OnHello()..")
 	return r.handler.OnHello(f, w, v)
 }
 
@@ -94,7 +93,7 @@ func (r *Controller) OnError(f openflow.Factory, w trans.Writer, v openflow.Erro
 
 func (r *Controller) setDevice(d *network.Device) {
 	r.device = d
-	r.handler.SetDevice(d)
+	r.handler.setDevice(d)
 }
 
 func (r *Controller) OnFeaturesReply(f openflow.Factory, w trans.Writer, v openflow.FeaturesReply) error {
@@ -120,20 +119,29 @@ func (r *Controller) OnFeaturesReply(f openflow.Factory, w trans.Writer, v openf
 }
 
 func (r *Controller) OnGetConfigReply(f openflow.Factory, w trans.Writer, v openflow.GetConfigReply) error {
+	r.log.Debug("GET_CONFIG_REPLY is received")
+
 	if r.device == nil {
+		r.log.Warning("Uninitialized device!")
 		return nil
 	}
 
-	r.log.Debug(fmt.Sprintf("GET_CONFIG_REPLY is received: %v", v))
 	return r.handler.OnGetConfigReply(f, w, v)
 }
 
 func (r *Controller) OnDescReply(f openflow.Factory, w trans.Writer, v openflow.DescReply) error {
+	r.log.Debug("DESC_REPLY is received")
+	r.log.Debug(fmt.Sprintf("Manufacturer=%v", v.Manufacturer()))
+	r.log.Debug(fmt.Sprintf("Hardware=%v", v.Hardware()))
+	r.log.Debug(fmt.Sprintf("Software=%v", v.Software()))
+	r.log.Debug(fmt.Sprintf("Serial=%v", v.Serial()))
+	r.log.Debug(fmt.Sprintf("Description=%v", v.Description()))
+
 	if r.device == nil {
+		r.log.Warning("Uninitialized device!")
 		return nil
 	}
 
-	r.log.Debug(fmt.Sprintf("DESC_REPLY is received: %v", v))
 	desc := network.Descriptions{
 		Manufacturer: v.Manufacturer(),
 		Hardware:     v.Hardware(),
@@ -147,11 +155,13 @@ func (r *Controller) OnDescReply(f openflow.Factory, w trans.Writer, v openflow.
 }
 
 func (r *Controller) OnPortDescReply(f openflow.Factory, w trans.Writer, v openflow.PortDescReply) error {
+	r.log.Debug(fmt.Sprintf("PORT_DESC_REPLY is received: %v ports", len(v.Ports())))
+
 	if r.device == nil {
+		r.log.Warning("Uninitialized device!")
 		return nil
 	}
 
-	r.log.Debug(fmt.Sprintf("PORT_DESC_REPLY is received: %v", v))
 	return r.handler.OnPortDescReply(f, w, v)
 }
 
@@ -224,34 +234,35 @@ func sendLLDP(deviceID string, f openflow.Factory, w trans.Writer, p openflow.Po
 }
 
 func (r *Controller) OnPortStatus(f openflow.Factory, w trans.Writer, v openflow.PortStatus) error {
+	r.log.Debug("PORT_STATUS is received")
+
 	if r.device == nil {
+		r.log.Warning("Uninitialized device!")
 		return nil
 	}
 
-	r.log.Debug(fmt.Sprintf("PORT_STATUS is received: %v", v))
 	port := v.Port()
 	// Is this an enabled port?
 	if !port.IsPortDown() && !port.IsLinkDown() {
-		r.log.Debug("Sending LLDP..")
 		// Send LLDP to update network topology
 		if err := sendLLDP(r.device.ID(), f, w, port); err != nil {
 			r.log.Err(fmt.Sprintf("failed to send LLDP: %v", err))
 		}
-		r.log.Debug("Sent LLDP..")
 	}
+	r.log.Debug(fmt.Sprintf("Port: num=%v, AdminUp=%v, LinkUp=%v", port.Number(), !port.IsPortDown(), !port.IsLinkDown()))
 
-	r.log.Debug("Calling OnPortStatus() handler..")
 	err := r.handler.OnPortStatus(f, w, v)
-	r.log.Debug("Calling OnPortStatus() handler is done..")
 	return err
 }
 
 func (r *Controller) OnFlowRemoved(f openflow.Factory, w trans.Writer, v openflow.FlowRemoved) error {
+	r.log.Debug(fmt.Sprintf("FLOW_REMOVED is received: cookie=%v", v.Cookie()))
+
 	if r.device == nil {
+		r.log.Warning("Uninitialized device!")
 		return nil
 	}
 
-	r.log.Debug(fmt.Sprintf("FLOW_REMOVED is received: %v", v))
 	return r.handler.OnFlowRemoved(f, w, v)
 }
 
@@ -323,8 +334,6 @@ func (r *Controller) findNeighborPort(deviceID string, portNum uint32) (*network
 }
 
 func (r *Controller) handleLLDP(inPort *network.Port, ethernet *protocol.Ethernet) error {
-	r.log.Debug("Handling LLDP..")
-
 	lldp, err := getLLDP(ethernet.Payload)
 	if err != nil {
 		return err
@@ -332,7 +341,7 @@ func (r *Controller) handleLLDP(inPort *network.Port, ethernet *protocol.Etherne
 	deviceID, portNum, err := extractDeviceInfo(lldp)
 	if err != nil {
 		// Do nothing if this packet is not the one we sent
-		r.log.Debug("Unknown LLDP is received")
+		r.log.Info("Ignoring a LLDP packet issued by an unknown device")
 		return nil
 	}
 	port, err := r.findNeighborPort(deviceID, portNum)
@@ -352,11 +361,13 @@ func (r *Controller) addNewNode(inPort *network.Port, mac net.HardwareAddr) erro
 }
 
 func (r *Controller) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.PacketIn) error {
+	r.log.Debug(fmt.Sprintf("PACKET_IN is received: inport=%v, reason=%v, tableID=%v, cookie=%v", v.InPort(), v.Reason(), v.TableID(), v.Cookie()))
+
 	if r.device == nil {
+		r.log.Warning("Uninitialized device!")
 		return nil
 	}
 
-	r.log.Debug(fmt.Sprintf("PACKET_IN is received: %v", v))
 	ethernet, err := getEthernet(v.Data())
 	if err != nil {
 		return err
@@ -383,7 +394,7 @@ func (r *Controller) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.P
 
 	// Do nothing if the ingress port is an edge between switches and is disabled by STP.
 	if r.finder.IsDisabledPort(inPort) {
-		r.log.Debug(fmt.Sprintf("Ignore PACKET_IN %v:%v due to STP", r.device.ID(), v.InPort()))
+		r.log.Info(fmt.Sprintf("STP: ignoring PACKET_IN from %v:%v", r.device.ID(), v.InPort()))
 		return nil
 	}
 
@@ -398,11 +409,9 @@ func (r *Controller) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.P
 
 // TODO: Use context to shutdown running controllers
 func (r *Controller) Run() {
-	r.log.Debug("Starting a transceiver..")
-	if err := r.trans.Run(); err != nil {
-		r.log.Err(fmt.Sprintf("Transceiver terminated: %v", err))
+	if err := r.trans.Run(); err != nil && err != io.EOF {
+		r.log.Err(fmt.Sprintf("Failed to run an OpenFlow transceiver: %v", err))
 	}
-	r.log.Debug("Closing the transceiver..")
 	r.trans.Close()
 	if r.device != nil {
 		r.device.RemoveController(r.auxID)

@@ -155,15 +155,12 @@ func (r *Device) AddPort(num uint, p openflow.Port) {
 }
 
 func (r *Device) UpdatePort(num uint, p openflow.Port) {
-	r.log.Debug("updatePort() is called..")
-
 	/*
 	 * Start of write lock
 	 */
 	r.mutex.Lock()
 	port := r.ports[num]
 	if port == nil {
-		r.log.Debug("not found a port")
 		r.setPort(num, p)
 	} else {
 		port.SetValue(p)
@@ -176,13 +173,9 @@ func (r *Device) UpdatePort(num uint, p openflow.Port) {
 		return
 	}
 
-	r.log.Debug("Mutex is unlocked in updatePort()..")
-
 	if p.IsPortDown() || p.IsLinkDown() {
-		r.log.Debug("Calling PortRemoved()..")
 		// To avoid deadlock, we first unlock the mutex before calling a watcher function
 		r.watcher.PortRemoved(port)
-		r.log.Debug("Calling PortRemoved() is done..")
 	}
 
 	// TODO: Send this event to a watcher
