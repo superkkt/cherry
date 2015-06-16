@@ -11,35 +11,49 @@ import (
 	"git.sds.co.kr/cherry.git/cherryd/internal/application/l2switch"
 	"git.sds.co.kr/cherry.git/cherryd/internal/log"
 	"git.sds.co.kr/cherry.git/cherryd/internal/network"
+	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"git.sds.co.kr/cherry.git/cherryd/protocol"
+	"github.com/dlintw/goconf"
 	"strings"
 )
 
-type PacketHandler interface {
+// processor should prepare to be executed simultaneously by multiple goroutines.
+type processor interface {
+	// Name returns the application name that is globally unique
 	Name() string
-	// processPacket should prepare to be executed simultaneously by multiple goroutines.
-	Process(*protocol.Ethernet, *network.Port, log.Logger) (drop bool, err error)
+	ProcessPacket(openflow.Factory, network.Finder, *protocol.Ethernet, *network.Port) (drop bool, err error)
+	// TODO: Select parameters of ProcessEvent()
+	ProcessEvent() error
 }
 
 type Manager struct {
-	registered map[string]PacketHandler // Registered applications
-	enabled    []PacketHandler          // Enabled applications
+	registered map[string]processor // Registered applications
+	enabled    []processor          // Enabled applications
 	log        log.Logger
+	conf       *goconf.ConfigFile
 }
 
-func NewManager(log log.Logger) *Manager {
+func NewManager(conf *goconf.ConfigFile, log log.Logger) *Manager {
+	if conf == nil {
+		panic("nil config")
+	}
+	if log == nil {
+		panic("nil logger")
+	}
+
 	v := &Manager{
-		registered: make(map[string]PacketHandler),
-		enabled:    make([]PacketHandler, 0),
+		registered: make(map[string]processor),
+		enabled:    make([]processor, 0),
 		log:        log,
+		conf:       conf,
 	}
 	// Registering north-bound applications
-	v.register(l2switch.New())
+	v.register(l2switch.New(conf, log))
 
 	return v
 }
 
-func (r *Manager) register(app PacketHandler) {
+func (r *Manager) register(app processor) {
 	r.registered[strings.ToUpper(app.Name())] = app
 }
 
@@ -51,10 +65,21 @@ func (r *Manager) Enable(appName string) {
 	r.enabled = append(r.enabled, v)
 }
 
-func (r *Manager) Process(eth *protocol.Ethernet, ingress *network.Port) error {
+func (r *Manager) ProcessPacket(factory openflow.Factory, finder network.Finder, eth *protocol.Ethernet, ingress *network.Port) error {
 	for _, v := range r.enabled {
-		drop, err := v.Process(eth, ingress, r.log)
+		drop, err := v.ProcessPacket(factory, finder, eth, ingress)
 		if drop || err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (r *Manager) ProcessEvent() error {
+	for _, v := range r.enabled {
+		err := v.ProcessEvent()
+		if err != nil {
 			return err
 		}
 	}

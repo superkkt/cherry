@@ -27,7 +27,7 @@ type Finder interface {
 	Device(id string) *Device
 	IsDisabledPort(p *Port) bool
 	Node(mac net.HardwareAddr) *Node
-	Path(srcDeviceID, dstDeviceID string) []*Port
+	Path(srcDeviceID, dstDeviceID string) [][2]*Port
 }
 
 type Topology struct {
@@ -150,12 +150,12 @@ func (r *Topology) PortRemoved(p *Port) {
 	r.graph.RemoveEdge(p)
 }
 
-func (r *Topology) Path(srcDeviceID, dstDeviceID string) []*Port {
+func (r *Topology) Path(srcDeviceID, dstDeviceID string) [][2]*Port {
 	// Read lock
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 
-	v := make([]*Port, 0)
+	v := make([][2]*Port, 0)
 	src := r.devices[srcDeviceID]
 	dst := r.devices[dstDeviceID]
 	// Unknown source or destination device?
@@ -174,13 +174,13 @@ func (r *Topology) Path(srcDeviceID, dstDeviceID string) []*Port {
 	return v
 }
 
-func pickPort(d *Device, l *Link) *Port {
+func pickPort(d *Device, l *Link) [2]*Port {
 	p := l.Points()
 	if p[0].Vertex().ID() == d.ID() {
-		return p[0].(*Port)
+		return [2]*Port{p[0].(*Port), p[1].(*Port)}
 	}
 
-	return p[1].(*Port)
+	return [2]*Port{p[1].(*Port), p[0].(*Port)}
 }
 
 func (r *Topology) IsDisabledPort(p *Port) bool {

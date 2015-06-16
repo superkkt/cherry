@@ -29,11 +29,12 @@ const (
 	writeTimeout = 30
 )
 
-type PacketProcessor interface {
-	Process(*protocol.Ethernet, *network.Port) error
+type processor interface {
+	ProcessPacket(openflow.Factory, network.Finder, *protocol.Ethernet, *network.Port) error
+	ProcessEvent() error
 }
 
-type handler interface {
+type sessionHandler interface {
 	trans.Handler
 	setDevice(*network.Device)
 }
@@ -42,11 +43,11 @@ type Controller struct {
 	device     *network.Device
 	trans      *trans.Transceiver
 	log        log.Logger
-	handler    handler
+	handler    sessionHandler
 	negotiated bool
 	watcher    network.Watcher
 	finder     network.Finder
-	processor  PacketProcessor
+	processor  processor
 	auxID      uint8
 }
 
@@ -55,7 +56,7 @@ type Config struct {
 	Logger    log.Logger
 	Watcher   network.Watcher
 	Finder    network.Finder
-	Processor PacketProcessor
+	Processor processor
 }
 
 func NewController(c Config) *Controller {
@@ -417,7 +418,7 @@ func (r *Controller) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.P
 		return err
 	}
 
-	return r.processor.Process(ethernet, inPort)
+	return r.processor.ProcessPacket(f, r.finder, ethernet, inPort)
 }
 
 // TODO: Use context to shutdown running controllers

@@ -24,6 +24,7 @@ var (
 )
 
 type Config struct {
+	conf *goconf.ConfigFile
 	Port int
 	Apps []string
 }
@@ -39,12 +40,17 @@ func (c *Config) Read() error {
 	if err != nil {
 		return fmt.Errorf("failed to read the config file: %v", err)
 	}
+	c.conf = conf
 
 	if err := c.readDefaultConfig(conf); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func (c *Config) RawConfig() *goconf.ConfigFile {
+	return c.conf
 }
 
 func (c *Config) parseApplications(apps string) error {

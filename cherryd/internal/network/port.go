@@ -45,6 +45,10 @@ func (r *Port) Device() *Device {
 	return r.device
 }
 
+func (r *Port) Number() uint {
+	return r.number
+}
+
 func (r *Port) Value() openflow.Port {
 	// Read lock
 	r.mutex.RLock()

@@ -102,7 +102,7 @@ func listen(ctx context.Context, log *syslog.Writer, config *Config) {
 }
 
 func createAppManager(config *Config, log *syslog.Writer) *application.Manager {
-	manager := application.NewManager(log)
+	manager := application.NewManager(config.RawConfig(), log)
 	for _, v := range config.Apps {
 		manager.Enable(v)
 	}
