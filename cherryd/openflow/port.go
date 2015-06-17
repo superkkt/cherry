@@ -12,18 +12,77 @@ import (
 	"net"
 )
 
-type OutPort uint32
-
 const (
-	OutTable      OutPort = 0xFFFFFFFB
-	OutFlood              = 0xFFFFFFFC
-	OutAll                = 0xFFFFFFFD
-	OutController         = 0xFFFFFFFE
-	OutNone               = 0xFFFFFFFF
+	table = iota
+	flood
+	all
+	controller
+	none
 )
 
+type OutPort struct {
+	logical uint8
+	value   uint32
+}
+
+// NewOutPort returns output port whose default value is FLOOD
+func NewOutPort() OutPort {
+	return OutPort{
+		logical: 0x1 << flood,
+	}
+}
+
+func (r *OutPort) SetTable() {
+	r.logical = 0x1 << table
+}
+
+func (r *OutPort) IsTable() bool {
+	return r.logical&(0x1<<table) != 0
+}
+
+func (r *OutPort) SetFlood() {
+	r.logical = 0x1 << flood
+}
+
+func (r *OutPort) IsFlood() bool {
+	return r.logical&(0x1<<flood) != 0
+}
+
+func (r *OutPort) SetAll() {
+	r.logical = 0x1 << all
+}
+
+func (r *OutPort) IsAll() bool {
+	return r.logical&(0x1<<all) != 0
+}
+
+func (r *OutPort) SetController() {
+	r.logical = 0x1 << controller
+}
+
+func (r *OutPort) IsController() bool {
+	return r.logical&(0x1<<controller) != 0
+}
+
+func (r *OutPort) SetNone() {
+	r.logical = 0x1 << none
+}
+
+func (r *OutPort) IsNone() bool {
+	return r.logical&(0x1<<none) != 0
+}
+
+func (r *OutPort) SetValue(port uint32) {
+	r.logical = 0x0
+	r.value = port
+}
+
+func (r *OutPort) Value() uint32 {
+	return r.value
+}
+
 type InPort struct {
-	port       uint32
+	value      uint32
 	controller bool
 }
 
@@ -33,21 +92,26 @@ func NewInPort() InPort {
 	}
 }
 
-func (r *InPort) SetPort(port uint32) {
+func (r *InPort) SetValue(port uint32) {
 	r.controller = false
-	r.port = port
+	r.value = port
+}
+
+func (r *InPort) SetController() {
+	r.controller = true
+	r.value = 0
 }
 
 func (r *InPort) IsController() bool {
 	return r.controller
 }
 
-func (r *InPort) Port() uint32 {
-	return r.port
+func (r *InPort) Value() uint32 {
+	return r.value
 }
 
 type Port interface {
-	Number() uint
+	Number() uint32
 	MAC() net.HardwareAddr
 	Name() string
 	IsPortDown() bool // Is the port Administratively down?

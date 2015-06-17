@@ -20,18 +20,11 @@ import (
 	"io"
 	"net"
 	"strconv"
-	"time"
-)
-
-// I/O timeout in seconds
-const (
-	readTimeout  = 10
-	writeTimeout = 30
 )
 
 type processor interface {
 	ProcessPacket(openflow.Factory, network.Finder, *protocol.Ethernet, *network.Port) error
-	ProcessEvent() error
+	ProcessEvent(openflow.Factory, network.Finder, *network.Device, openflow.PortStatus) error
 }
 
 type sessionHandler interface {
@@ -61,8 +54,6 @@ type Config struct {
 
 func NewController(c Config) *Controller {
 	stream := trans.NewStream(c.Conn)
-	stream.SetReadTimeout(readTimeout * time.Second)
-	stream.SetWriteTimeout(writeTimeout * time.Second)
 
 	v := new(Controller)
 	v.log = c.Logger
@@ -219,29 +210,24 @@ func sendLLDP(deviceID string, f openflow.Factory, w trans.Writer, p openflow.Po
 		return err
 	}
 
+	outPort := openflow.NewOutPort()
+	outPort.SetValue(p.Number())
+
 	// Packet out to the port
 	action, err := f.NewAction()
 	if err != nil {
 		return err
 	}
-	if err := action.SetOutPort(openflow.OutPort(p.Number())); err != nil {
-		return err
-	}
+	action.SetOutPort(outPort)
 
 	out, err := f.NewPacketOut()
 	if err != nil {
 		return err
 	}
 	// From controller
-	if err := out.SetInPort(openflow.NewInPort()); err != nil {
-		return err
-	}
-	if err := out.SetAction(action); err != nil {
-		return err
-	}
-	if err := out.SetData(lldp); err != nil {
-		return err
-	}
+	out.SetInPort(openflow.NewInPort())
+	out.SetAction(action)
+	out.SetData(lldp)
 
 	return w.Write(out)
 }
@@ -255,16 +241,29 @@ func (r *Controller) OnPortStatus(f openflow.Factory, w trans.Writer, v openflow
 	}
 
 	port := v.Port()
+	r.log.Debug(fmt.Sprintf("Device=%v, PortNum=%v: AdminUp=%v, LinkUp=%v", r.device.ID(), port.Number(), !port.IsPortDown(), !port.IsLinkDown()))
+	if err := r.handler.OnPortStatus(f, w, v); err != nil {
+		return err
+	}
+	if err := r.processor.ProcessEvent(f, r.finder, r.device, v); err != nil {
+		return err
+	}
+
 	// Is this an enabled port?
 	if !port.IsPortDown() && !port.IsLinkDown() {
 		// Send LLDP to update network topology
 		if err := sendLLDP(r.device.ID(), f, w, port); err != nil {
-			r.log.Err(fmt.Sprintf("failed to send LLDP: %v", err))
+			return fmt.Errorf("failed to send LLDP: %v", err)
+		}
+	} else {
+		// Send port removed event
+		p := r.device.Port(port.Number())
+		if p != nil {
+			r.watcher.PortRemoved(p)
 		}
 	}
-	r.log.Debug(fmt.Sprintf("Port: num=%v, AdminUp=%v, LinkUp=%v", port.Number(), !port.IsPortDown(), !port.IsLinkDown()))
 
-	return r.handler.OnPortStatus(f, w, v)
+	return nil
 }
 
 func (r *Controller) OnFlowRemoved(f openflow.Factory, w trans.Writer, v openflow.FlowRemoved) error {
@@ -337,7 +336,7 @@ func (r *Controller) findNeighborPort(deviceID string, portNum uint32) (*network
 	if device == nil {
 		return nil, fmt.Errorf("failed to find a neighbor device: id=%v", deviceID)
 	}
-	port := device.Port(uint(portNum))
+	port := device.Port(portNum)
 	if port == nil {
 		return nil, fmt.Errorf("failed to find a neighbor port: deviceID=%v, portNum=%v", deviceID, portNum)
 	}
@@ -366,6 +365,8 @@ func (r *Controller) handleLLDP(inPort *network.Port, ethernet *protocol.Etherne
 }
 
 func (r *Controller) addNewNode(inPort *network.Port, mac net.HardwareAddr) error {
+	r.log.Debug(fmt.Sprintf("Adding a new node %v on %v..", mac, inPort.ID()))
+
 	node := inPort.AddNode(mac)
 	r.watcher.NodeAdded(node)
 
@@ -389,7 +390,7 @@ func (r *Controller) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.P
 	if err != nil {
 		return err
 	}
-	inPort := r.device.Port(uint(v.InPort()))
+	inPort := r.device.Port(v.InPort())
 	if inPort == nil {
 		return fmt.Errorf("failed to find a port: deviceID=%v, portNum=%v", r.device.ID(), v.InPort())
 	}
@@ -399,6 +400,8 @@ func (r *Controller) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.P
 	}
 	// Do we know packet sender?
 	if r.finder.Node(ethernet.SrcMAC) == nil {
+		r.log.Debug(fmt.Sprintf("MAC learning... %v", ethernet.SrcMAC))
+
 		// MAC learning
 		if err := r.addNewNode(inPort, ethernet.SrcMAC); err != nil {
 			return err
@@ -410,7 +413,7 @@ func (r *Controller) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.P
 		return nil
 	}
 	// Do nothing if the ingress port is an edge between switches and is disabled by STP.
-	if r.finder.IsDisabledPort(inPort) {
+	if r.finder.IsEdge(inPort) && !r.finder.IsEnabledBySTP(inPort) {
 		r.log.Info(fmt.Sprintf("STP: ignoring PACKET_IN from %v:%v", r.device.ID(), v.InPort()))
 		return nil
 	}
@@ -424,7 +427,7 @@ func (r *Controller) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.P
 // TODO: Use context to shutdown running controllers
 func (r *Controller) Run() {
 	if err := r.trans.Run(); err != nil && err != io.EOF {
-		r.log.Err(fmt.Sprintf("Failed to run an OpenFlow transceiver: %v", err))
+		r.log.Err(fmt.Sprintf("Disconnected OpenFlow transceiver: %v", err))
 	}
 	r.trans.Close()
 	if r.device != nil {
@@ -502,7 +505,8 @@ func sendRemovingAllFlows(f openflow.Factory, w trans.Writer) error {
 	if err != nil {
 		return err
 	}
-	msg.SetTableID(0xFF) // Wildcard
+	// Wildcard
+	msg.SetTableID(0xFF)
 	msg.SetFlowMatch(match)
 
 	return w.Write(msg)

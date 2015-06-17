@@ -12,12 +12,13 @@ import (
 )
 
 type PacketOut interface {
+	Action() Action
+	Data() []byte
+	encoding.BinaryMarshaler
+	Error() error
 	Header
 	InPort() InPort
-	SetInPort(port InPort) error
-	Action() Action
-	SetAction(action Action) error
-	Data() []byte
-	SetData(data []byte) error
-	encoding.BinaryMarshaler
+	SetAction(action Action)
+	SetData(data []byte)
+	SetInPort(port InPort)
 }

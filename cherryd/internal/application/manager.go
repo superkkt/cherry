@@ -22,8 +22,7 @@ type processor interface {
 	// Name returns the application name that is globally unique
 	Name() string
 	ProcessPacket(openflow.Factory, network.Finder, *protocol.Ethernet, *network.Port) (drop bool, err error)
-	// TODO: Select parameters of ProcessEvent()
-	ProcessEvent() error
+	ProcessEvent(openflow.Factory, network.Finder, *network.Device, openflow.PortStatus) error
 }
 
 type Manager struct {
@@ -76,9 +75,9 @@ func (r *Manager) ProcessPacket(factory openflow.Factory, finder network.Finder,
 	return nil
 }
 
-func (r *Manager) ProcessEvent() error {
+func (r *Manager) ProcessEvent(factory openflow.Factory, finder network.Finder, device *network.Device, status openflow.PortStatus) error {
 	for _, v := range r.enabled {
-		err := v.ProcessEvent()
+		err := v.ProcessEvent(factory, finder, device, status)
 		if err != nil {
 			return err
 		}

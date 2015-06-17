@@ -13,35 +13,39 @@ import (
 )
 
 type Instruction struct {
+	err    error
 	action openflow.Action
 }
 
-func (r *Instruction) GotoTable(tableID uint8) error {
+func (r *Instruction) Error() error {
+	return r.err
+}
+
+func (r *Instruction) GotoTable(tableID uint8) {
 	// OpenFlow 1.0 does not support GotoTable
-	return nil
 }
 
-func (r *Instruction) WriteAction(act openflow.Action) error {
+func (r *Instruction) WriteAction(act openflow.Action) {
 	if act == nil {
-		return errors.New("act is nil")
+		panic("act is nil")
 	}
 	r.action = act
-
-	return nil
 }
 
-func (r *Instruction) ApplyAction(act openflow.Action) error {
+func (r *Instruction) ApplyAction(act openflow.Action) {
 	if act == nil {
-		return errors.New("act is nil")
+		panic("act is nil")
 	}
 	r.action = act
-
-	return nil
 }
 
 func (r *Instruction) MarshalBinary() ([]byte, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+
 	if r.action == nil {
-		return nil, errors.New("empty instruction")
+		return nil, errors.New("empty action of an instruction")
 	}
 
 	return r.action.MarshalBinary()

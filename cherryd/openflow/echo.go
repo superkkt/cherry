@@ -9,15 +9,16 @@ package openflow
 
 import (
 	"encoding"
-	"errors"
 )
 
 type Echo interface {
-	Header
 	Data() []byte
-	SetData(data []byte) error
 	encoding.BinaryMarshaler
 	encoding.BinaryUnmarshaler
+	// Error() returns last error message
+	Error() error
+	Header
+	SetData(data []byte)
 }
 
 type EchoRequest interface {
@@ -29,6 +30,7 @@ type EchoReply interface {
 }
 
 type BaseEcho struct {
+	err error
 	Message
 	data []byte
 }
@@ -37,15 +39,22 @@ func (r *BaseEcho) Data() []byte {
 	return r.data
 }
 
-func (r *BaseEcho) SetData(data []byte) error {
+func (r *BaseEcho) SetData(data []byte) {
 	if data == nil {
-		return errors.New("data is nil")
+		panic("data is nil")
 	}
 	r.data = data
-	return nil
+}
+
+func (r *BaseEcho) Error() error {
+	return r.err
 }
 
 func (r *BaseEcho) MarshalBinary() ([]byte, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+
 	r.SetPayload(r.data)
 	return r.Message.MarshalBinary()
 }

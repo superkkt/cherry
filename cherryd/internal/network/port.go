@@ -19,17 +19,17 @@ import (
 type Port struct {
 	mutex     sync.RWMutex
 	device    *Device
-	number    uint
+	number    uint32
 	value     openflow.Port
-	nodes     []*Node
+	nodes     map[string]*Node
 	timestamp time.Time
 }
 
-func NewPort(d *Device, num uint) *Port {
+func NewPort(d *Device, num uint32) *Port {
 	return &Port{
 		device: d,
 		number: num,
-		nodes:  make([]*Node, 0),
+		nodes:  make(map[string]*Node),
 	}
 }
 
@@ -45,7 +45,7 @@ func (r *Port) Device() *Device {
 	return r.device
 }
 
-func (r *Port) Number() uint {
+func (r *Port) Number() uint32 {
 	return r.number
 }
 
@@ -84,7 +84,12 @@ func (r *Port) Nodes() []*Node {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 
-	return r.nodes
+	v := make([]*Node, 0)
+	for _, n := range r.nodes {
+		v = append(v, n)
+	}
+
+	return v
 }
 
 func (r *Port) AddNode(mac net.HardwareAddr) *Node {
@@ -93,7 +98,7 @@ func (r *Port) AddNode(mac net.HardwareAddr) *Node {
 	defer r.mutex.Unlock()
 
 	node := NewNode(r, mac)
-	r.nodes = append(r.nodes, node)
+	r.nodes[mac.String()] = node
 
 	return node
 }
@@ -103,12 +108,5 @@ func (r *Port) RemoveNode(mac net.HardwareAddr) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	nodes := make([]*Node, 0)
-	for _, v := range r.nodes {
-		if v.MAC().String() == mac.String() {
-			continue
-		}
-		nodes = append(nodes, v)
-	}
-	r.nodes = nodes
+	delete(r.nodes, mac.String())
 }

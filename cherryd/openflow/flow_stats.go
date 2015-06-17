@@ -12,17 +12,18 @@ import (
 )
 
 type FlowStatsRequest interface {
-	Header
 	Cookie() uint64
-	SetCookie(cookie uint64) error
 	CookieMask() uint64
-	SetCookieMask(mask uint64) error
-	Match() Match
-	SetMatch(match Match) error
-	TableID() uint8
-	// 0xFF means all table
-	SetTableID(id uint8) error
 	encoding.BinaryMarshaler
+	Error() error
+	Header
+	Match() Match
+	SetCookie(cookie uint64)
+	SetCookieMask(mask uint64)
+	SetMatch(match Match)
+	// 0xFF means all table
+	SetTableID(id uint8)
+	TableID() uint8
 }
 
 // TODO: Implement FlowStatsReply

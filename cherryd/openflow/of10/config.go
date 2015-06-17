@@ -14,11 +14,12 @@ import (
 )
 
 type Config struct {
+	err            error
 	flags          uint16
 	missSendLength uint16
 }
 
-func (r Config) Flags() openflow.ConfigFlag {
+func (r *Config) Flags() openflow.ConfigFlag {
 	switch r.flags {
 	case OFPC_FRAG_NORMAL:
 		return openflow.FragNormal
@@ -44,16 +45,20 @@ func (r *Config) SetFlags(flags openflow.ConfigFlag) {
 	case openflow.FragMask:
 		r.flags = OFPC_FRAG_MASK
 	default:
-		panic(fmt.Sprintf("unexpected config flag: %v", flags))
+		r.err = fmt.Errorf("SetFlags: unexpected config flag: %v", flags)
 	}
 }
 
-func (r Config) MissSendLength() uint16 {
+func (r *Config) MissSendLength() uint16 {
 	return r.missSendLength
 }
 
 func (r *Config) SetMissSendLength(length uint16) {
 	r.missSendLength = length
+}
+
+func (r *Config) Error() error {
+	return r.err
 }
 
 type SetConfig struct {
@@ -72,6 +77,10 @@ func NewSetConfig(xid uint32) openflow.SetConfig {
 }
 
 func (r *SetConfig) MarshalBinary() ([]byte, error) {
+	if err := r.Error(); err != nil {
+		return nil, err
+	}
+
 	v := make([]byte, 4)
 	binary.BigEndian.PutUint16(v[0:2], r.flags)
 	binary.BigEndian.PutUint16(v[2:4], r.missSendLength)

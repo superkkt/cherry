@@ -20,7 +20,10 @@ import (
 
 const (
 	// Allowed idle time before we send an echo request to a switch (in seconds)
-	MaxIdleTime = 30
+	maxIdleTime = 30
+	// I/O timeouts in second (These timeouts should be less than maxIdleTime)
+	readTimeout  = 5
+	writeTimeout = 10
 )
 
 type Writer interface {
@@ -28,12 +31,13 @@ type Writer interface {
 }
 
 type Transceiver struct {
-	stream    *Stream
-	observer  Handler
-	version   uint8
-	factory   openflow.Factory
-	timestamp time.Time     // Last activated time
-	latency   time.Duration // Network latency measured by echo request and reply
+	stream      *Stream
+	observer    Handler
+	version     uint8
+	factory     openflow.Factory
+	timestamp   time.Time     // Last activated time
+	latency     time.Duration // Network latency measured by echo request and reply
+	pingCounter uint
 }
 
 type Handler interface {
@@ -99,7 +103,7 @@ func (r *Transceiver) updateTimestamp() {
 
 func (r *Transceiver) ping() error {
 	// Max idle time is exceeded?
-	if time.Now().Before(r.timestamp.Add(MaxIdleTime * time.Second)) {
+	if time.Now().Before(r.timestamp.Add(maxIdleTime * time.Second)) {
 		return nil
 	}
 	return r.sendEchoRequest()
@@ -118,6 +122,10 @@ func isTimeout(err error) bool {
 }
 
 func (r *Transceiver) sendEchoRequest() error {
+	if r.pingCounter > 2 {
+		return errors.New("device does not respond to our echo request")
+	}
+
 	echo, err := r.factory.NewEchoRequest()
 	if err != nil {
 		return err
@@ -127,18 +135,20 @@ func (r *Transceiver) sendEchoRequest() error {
 	if err != nil {
 		return err
 	}
-	if err := echo.SetData(timestamp); err != nil {
-		return err
-	}
+	echo.SetData(timestamp)
 	if err := r.Write(echo); err != nil {
 		return fmt.Errorf("failed to send ECHO_REQUEST message: %v", err)
 	}
+	r.pingCounter++
 
 	return nil
 }
 
 // TODO: Use context to shutdown a running transceiver
 func (r *Transceiver) Run() error {
+	r.stream.SetReadTimeout(readTimeout * time.Second)
+	r.stream.SetWriteTimeout(writeTimeout * time.Second)
+
 	// Read initial packet
 	packet, err := r.readPacket()
 	if err != nil {
@@ -310,12 +320,8 @@ func (r *Transceiver) handleEchoRequest(packet []byte) error {
 		return err
 	}
 	// Copy transaction ID and data from the incoming echo request message
-	if err := reply.SetTransactionID(msg.TransactionID()); err != nil {
-		return err
-	}
-	if err := reply.SetData(msg.Data()); err != nil {
-		return err
-	}
+	reply.SetTransactionID(msg.TransactionID())
+	reply.SetData(msg.Data())
 	if err := r.Write(reply); err != nil {
 		return fmt.Errorf("failed to send ECHO_REPLY message: %v", err)
 	}
@@ -342,6 +348,8 @@ func (r *Transceiver) handleEchoReply(packet []byte) error {
 	}
 	// Update network latency
 	r.latency = time.Now().Sub(timestamp)
+	// Reset ping counter to zero
+	r.pingCounter = 0
 
 	return nil
 }

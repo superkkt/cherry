@@ -25,7 +25,11 @@ type Watcher interface {
 
 type Finder interface {
 	Device(id string) *Device
-	IsDisabledPort(p *Port) bool
+	Devices() []*Device
+	// IsEnabledBySTP returns whether p is disabled by spanning tree protocol
+	IsEnabledBySTP(p *Port) bool
+	// IsEdge returns whether p is an edge among two switches
+	IsEdge(p *Port) bool
 	Node(mac net.HardwareAddr) *Node
 	Path(srcDeviceID, dstDeviceID string) [][2]*Port
 }
@@ -49,6 +53,19 @@ func NewTopology(log log.Logger) *Topology {
 	}
 }
 
+func (r *Topology) Devices() []*Device {
+	// Read lock
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	v := make([]*Device, 0)
+	for _, d := range r.devices {
+		v = append(v, d)
+	}
+
+	return v
+}
+
 // Device may return nil if a device whose ID is id does not exist
 func (r *Topology) Device(id string) *Device {
 	// Read lock
@@ -58,7 +75,6 @@ func (r *Topology) Device(id string) *Device {
 	return r.devices[id]
 }
 
-// TODO: 정말로 모든 노드가 다 지워졌는지 실제로 개수 찍어보면서 테스트
 func (r *Topology) removeAllNodes(d *Device) {
 	ports := d.Ports()
 	for _, p := range ports {
@@ -78,7 +94,6 @@ func (r *Topology) DeviceAdded(d *Device) {
 	r.graph.AddVertex(d)
 }
 
-// TODO: 디바이스 리스트와 그래프가 정상적으로 갱신되는지 남은 데이터 찍어보면서 테스트
 func (r *Topology) DeviceRemoved(d *Device) {
 	// Write lock
 	r.mutex.Lock()
@@ -135,7 +150,6 @@ func (r *Topology) Node(mac net.HardwareAddr) *Node {
 	return r.nodes[mac.String()]
 }
 
-// TODO: 호스트 리스트와 그래프가 정상적으로 갱신되는지 남은 데이터 찍어보면서 테스트
 func (r *Topology) PortRemoved(p *Port) {
 	// Write lock
 	r.mutex.Lock()
@@ -183,10 +197,10 @@ func pickPort(d *Device, l *Link) [2]*Port {
 	return [2]*Port{p[1].(*Port), p[0].(*Port)}
 }
 
-func (r *Topology) IsDisabledPort(p *Port) bool {
-	if r.graph.IsEdge(p) && !r.graph.IsEnabledPoint(p) {
-		return true
-	}
+func (r *Topology) IsEdge(p *Port) bool {
+	return r.graph.IsEdge(p)
+}
 
-	return false
+func (r *Topology) IsEnabledBySTP(p *Port) bool {
+	return r.graph.IsEnabledPoint(p)
 }

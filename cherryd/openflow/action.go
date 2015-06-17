@@ -9,21 +9,25 @@ package openflow
 
 import (
 	"encoding"
+	"fmt"
 	"net"
 )
 
 type Action interface {
+	DstMAC() (ok bool, mac net.HardwareAddr)
 	encoding.BinaryMarshaler
 	encoding.BinaryUnmarshaler
-	SetOutPort(port OutPort) error
+	// Error() returns last error message
+	Error() error
 	OutPort() []OutPort
-	SetSrcMAC(mac net.HardwareAddr) error
+	SetDstMAC(mac net.HardwareAddr)
+	SetOutPort(port OutPort)
+	SetSrcMAC(mac net.HardwareAddr)
 	SrcMAC() (ok bool, mac net.HardwareAddr)
-	SetDstMAC(mac net.HardwareAddr) error
-	DstMAC() (ok bool, mac net.HardwareAddr)
 }
 
 type BaseAction struct {
+	err    error
 	output map[OutPort]interface{}
 	srcMAC *net.HardwareAddr
 	dstMAC *net.HardwareAddr
@@ -35,9 +39,8 @@ func NewBaseAction() *BaseAction {
 	}
 }
 
-func (r *BaseAction) SetOutPort(port OutPort) error {
+func (r *BaseAction) SetOutPort(port OutPort) {
 	r.output[port] = nil
-	return nil
 }
 
 func (r *BaseAction) OutPort() []OutPort {
@@ -49,13 +52,13 @@ func (r *BaseAction) OutPort() []OutPort {
 	return ports
 }
 
-func (r *BaseAction) SetSrcMAC(mac net.HardwareAddr) error {
+func (r *BaseAction) SetSrcMAC(mac net.HardwareAddr) {
 	if mac == nil || len(mac) < 6 {
-		return ErrInvalidMACAddress
+		r.err = fmt.Errorf("SetSrcMAC: %v", ErrInvalidMACAddress)
+		return
 	}
 
 	r.srcMAC = &mac
-	return nil
 }
 
 func (r *BaseAction) SrcMAC() (ok bool, mac net.HardwareAddr) {
@@ -66,13 +69,13 @@ func (r *BaseAction) SrcMAC() (ok bool, mac net.HardwareAddr) {
 	return true, *r.srcMAC
 }
 
-func (r *BaseAction) SetDstMAC(mac net.HardwareAddr) error {
+func (r *BaseAction) SetDstMAC(mac net.HardwareAddr) {
 	if mac == nil || len(mac) < 6 {
-		return ErrInvalidMACAddress
+		r.err = fmt.Errorf("SetDstMAC: %v", ErrInvalidMACAddress)
+		return
 	}
 
 	r.dstMAC = &mac
-	return nil
 }
 
 func (r *BaseAction) DstMAC() (ok bool, mac net.HardwareAddr) {
@@ -81,4 +84,8 @@ func (r *BaseAction) DstMAC() (ok bool, mac net.HardwareAddr) {
 	}
 
 	return true, *r.dstMAC
+}
+
+func (r *BaseAction) Error() error {
+	return r.err
 }

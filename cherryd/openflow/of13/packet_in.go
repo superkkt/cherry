@@ -71,7 +71,7 @@ func (r *PacketIn) UnmarshalBinary(data []byte) error {
 		return err
 	}
 	_, inport := match.InPort()
-	r.inPort = inport.Port()
+	r.inPort = inport.Value()
 
 	matchLength := binary.BigEndian.Uint16(payload[18:20])
 	// Calculate padding length

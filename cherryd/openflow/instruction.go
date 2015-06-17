@@ -12,8 +12,9 @@ import (
 )
 
 type Instruction interface {
-	GotoTable(tableID uint8) error
-	WriteAction(act Action) error
-	ApplyAction(act Action) error
+	ApplyAction(act Action)
 	encoding.BinaryMarshaler
+	Error() error
+	GotoTable(tableID uint8)
+	WriteAction(act Action)
 }

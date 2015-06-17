@@ -14,6 +14,7 @@ import (
 )
 
 type FlowMod struct {
+	err error
 	openflow.Message
 	command     uint16
 	cookie      uint64
@@ -22,22 +23,31 @@ type FlowMod struct {
 	priority    uint16
 	match       openflow.Match
 	instruction openflow.Instruction
+	outPort     openflow.OutPort
 }
 
 func NewFlowMod(xid uint32, cmd uint16) openflow.FlowMod {
+	// Default out_port value is OFPP_NONE (OFPP_ANY)
+	outPort := openflow.NewOutPort()
+	outPort.SetNone()
+
 	return &FlowMod{
 		Message: openflow.NewMessage(openflow.OF10_VERSION, OFPT_FLOW_MOD, xid),
 		command: cmd,
+		outPort: outPort,
 	}
+}
+
+func (r *FlowMod) Error() error {
+	return r.err
 }
 
 func (r *FlowMod) Cookie() uint64 {
 	return r.cookie
 }
 
-func (r *FlowMod) SetCookie(cookie uint64) error {
+func (r *FlowMod) SetCookie(cookie uint64) {
 	r.cookie = cookie
-	return nil
 }
 
 func (r *FlowMod) CookieMask() uint64 {
@@ -45,9 +55,8 @@ func (r *FlowMod) CookieMask() uint64 {
 	return 0
 }
 
-func (r *FlowMod) SetCookieMask(mask uint64) error {
+func (r *FlowMod) SetCookieMask(mask uint64) {
 	// OpenFlow 1.0 does not have the cookie mask
-	return nil
 }
 
 func (r *FlowMod) TableID() uint8 {
@@ -55,60 +64,69 @@ func (r *FlowMod) TableID() uint8 {
 	return 0
 }
 
-func (r *FlowMod) SetTableID(id uint8) error {
+func (r *FlowMod) SetTableID(id uint8) {
 	// OpenFlow 1.0 does not have table ID
-	return nil
 }
 
 func (r *FlowMod) IdleTimeout() uint16 {
 	return r.idleTimeout
 }
 
-func (r *FlowMod) SetIdleTimeout(timeout uint16) error {
+func (r *FlowMod) SetIdleTimeout(timeout uint16) {
 	r.idleTimeout = timeout
-	return nil
 }
 
 func (r *FlowMod) HardTimeout() uint16 {
 	return r.hardTimeout
 }
 
-func (r *FlowMod) SetHardTimeout(timeout uint16) error {
+func (r *FlowMod) SetHardTimeout(timeout uint16) {
 	r.hardTimeout = timeout
-	return nil
 }
 
 func (r *FlowMod) Priority() uint16 {
 	return r.priority
 }
 
-func (r *FlowMod) SetPriority(priority uint16) error {
+func (r *FlowMod) SetPriority(priority uint16) {
 	r.priority = priority
-	return nil
 }
 
 func (r *FlowMod) FlowMatch() openflow.Match {
 	return r.match
 }
 
-func (r *FlowMod) SetFlowMatch(match openflow.Match) error {
+func (r *FlowMod) SetFlowMatch(match openflow.Match) {
 	if match == nil {
-		return errors.New("flow match is nil")
+		panic("flow match is nil")
 	}
 	r.match = match
-	return nil
 }
 
-func (r FlowMod) FlowInstruction() openflow.Instruction {
+func (r *FlowMod) FlowInstruction() openflow.Instruction {
 	return r.instruction
 }
 
-func (r *FlowMod) SetFlowInstruction(inst openflow.Instruction) error {
+func (r *FlowMod) SetFlowInstruction(inst openflow.Instruction) {
+	if inst == nil {
+		panic("flow instruction is nil")
+	}
 	r.instruction = inst
-	return nil
+}
+
+func (r *FlowMod) OutPort() openflow.OutPort {
+	return r.outPort
+}
+
+func (r *FlowMod) SetOutPort(p openflow.OutPort) {
+	r.outPort = p
 }
 
 func (r *FlowMod) MarshalBinary() ([]byte, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+
 	v := make([]byte, 24)
 	binary.BigEndian.PutUint64(v[0:8], r.cookie)
 	binary.BigEndian.PutUint16(v[8:10], r.command)
@@ -116,8 +134,16 @@ func (r *FlowMod) MarshalBinary() ([]byte, error) {
 	binary.BigEndian.PutUint16(v[12:14], r.hardTimeout)
 	binary.BigEndian.PutUint16(v[14:16], r.priority)
 	binary.BigEndian.PutUint32(v[16:20], OFP_NO_BUFFER)
-	binary.BigEndian.PutUint16(v[20:22], OFPP_NONE)
+	if r.outPort.IsNone() {
+		binary.BigEndian.PutUint16(v[20:22], OFPP_NONE)
+	} else {
+		binary.BigEndian.PutUint16(v[20:22], uint16(r.outPort.Value()))
+	}
 	binary.BigEndian.PutUint16(v[22:24], OFPFF_SEND_FLOW_REM)
+
+	if r.match == nil {
+		return nil, errors.New("empty flow match")
+	}
 	result, err := r.match.MarshalBinary()
 	if err != nil {
 		return nil, err

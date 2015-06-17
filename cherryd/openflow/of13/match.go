@@ -18,6 +18,7 @@ import (
 )
 
 type Match struct {
+	err   error
 	mutex sync.Mutex
 	m     map[uint]interface{}
 }
@@ -29,31 +30,37 @@ func NewMatch() openflow.Match {
 	}
 }
 
-func (r *Match) SetWildcardSrcPort() error {
+func (r *Match) Error() error {
+	return r.err
+}
+
+func (r *Match) SetWildcardSrcPort() {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	delete(r.m, OFPXMT_OFB_TCP_SRC)
 	delete(r.m, OFPXMT_OFB_UDP_SRC)
-	return nil
 }
 
-func (r *Match) SetSrcPort(p uint16) error {
+func (r *Match) SetSrcPort(p uint16) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	etherType, ok := r.m[OFPXMT_OFB_ETH_TYPE]
 	if !ok {
-		return openflow.ErrMissingEtherType
+		r.err = fmt.Errorf("SetSrcPort: %v", openflow.ErrMissingEtherType)
+		return
 	}
 	// IPv4?
 	if etherType.(uint16) != 0x0800 {
-		return openflow.ErrUnsupportedEtherType
+		r.err = fmt.Errorf("SetSrcPort: %v", openflow.ErrUnsupportedEtherType)
+		return
 	}
 
 	proto, ok := r.m[OFPXMT_OFB_IP_PROTO]
 	if !ok {
-		return openflow.ErrMissingIPProtocol
+		r.err = fmt.Errorf("SetSrcPort: %v", openflow.ErrMissingIPProtocol)
+		return
 	}
 
 	switch proto.(uint8) {
@@ -66,10 +73,9 @@ func (r *Match) SetSrcPort(p uint16) error {
 		r.m[OFPXMT_OFB_UDP_SRC] = p
 		delete(r.m, OFPXMT_OFB_TCP_SRC)
 	default:
-		return openflow.ErrUnsupportedIPProtocol
+		r.err = fmt.Errorf("SetSrcPort: %v", openflow.ErrUnsupportedIPProtocol)
+		return
 	}
-
-	return nil
 }
 
 func (r *Match) SrcPort() (wildcard bool, port uint16) {
@@ -89,31 +95,33 @@ func (r *Match) SrcPort() (wildcard bool, port uint16) {
 	return true, 0
 }
 
-func (r *Match) SetWildcardDstPort() error {
+func (r *Match) SetWildcardDstPort() {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	delete(r.m, OFPXMT_OFB_TCP_DST)
 	delete(r.m, OFPXMT_OFB_UDP_DST)
-	return nil
 }
 
-func (r *Match) SetDstPort(p uint16) error {
+func (r *Match) SetDstPort(p uint16) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	etherType, ok := r.m[OFPXMT_OFB_ETH_TYPE]
 	if !ok {
-		return openflow.ErrMissingEtherType
+		r.err = fmt.Errorf("SetDstPort: %v", openflow.ErrMissingEtherType)
+		return
 	}
 	// IPv4?
 	if etherType.(uint16) != 0x0800 {
-		return openflow.ErrUnsupportedEtherType
+		r.err = fmt.Errorf("SetDstPort: %v", openflow.ErrUnsupportedEtherType)
+		return
 	}
 
 	proto, ok := r.m[OFPXMT_OFB_IP_PROTO]
 	if !ok {
-		return openflow.ErrMissingIPProtocol
+		r.err = fmt.Errorf("SetDstPort: %v", openflow.ErrMissingIPProtocol)
+		return
 	}
 
 	switch proto.(uint8) {
@@ -126,10 +134,9 @@ func (r *Match) SetDstPort(p uint16) error {
 		r.m[OFPXMT_OFB_UDP_DST] = p
 		delete(r.m, OFPXMT_OFB_TCP_DST)
 	default:
-		return openflow.ErrUnsupportedIPProtocol
+		r.err = fmt.Errorf("SetDstPort: %v", openflow.ErrUnsupportedIPProtocol)
+		return
 	}
-
-	return nil
 }
 
 func (r *Match) DstPort() (wildcard bool, port uint16) {
@@ -149,20 +156,18 @@ func (r *Match) DstPort() (wildcard bool, port uint16) {
 	return true, 0
 }
 
-func (r *Match) SetWildcardVLANID() error {
+func (r *Match) SetWildcardVLANID() {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	delete(r.m, OFPXMT_OFB_VLAN_VID)
-	return nil
 }
 
-func (r *Match) SetVLANID(id uint16) error {
+func (r *Match) SetVLANID(id uint16) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	r.m[OFPXMT_OFB_VLAN_VID] = id
-	return nil
 }
 
 func (r *Match) VLANID() (wildcard bool, vlanID uint16) {
@@ -177,20 +182,18 @@ func (r *Match) VLANID() (wildcard bool, vlanID uint16) {
 	return true, 0
 }
 
-func (r *Match) SetWildcardVLANPriority() error {
+func (r *Match) SetWildcardVLANPriority() {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	delete(r.m, OFPXMT_OFB_VLAN_PCP)
-	return nil
 }
 
-func (r *Match) SetVLANPriority(p uint8) error {
+func (r *Match) SetVLANPriority(p uint8) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	r.m[OFPXMT_OFB_VLAN_PCP] = p
-	return nil
 }
 
 func (r *Match) VLANPriority() (wildcard bool, priority uint8) {
@@ -205,29 +208,29 @@ func (r *Match) VLANPriority() (wildcard bool, priority uint8) {
 	return true, 0
 }
 
-func (r *Match) SetWildcardIPProtocol() error {
+func (r *Match) SetWildcardIPProtocol() {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	delete(r.m, OFPXMT_OFB_IP_PROTO)
-	return nil
 }
 
-func (r *Match) SetIPProtocol(p uint8) error {
+func (r *Match) SetIPProtocol(p uint8) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	etherType, ok := r.m[OFPXMT_OFB_ETH_TYPE]
 	if !ok {
-		return openflow.ErrMissingEtherType
+		r.err = fmt.Errorf("SetIPProtocol: %v", openflow.ErrMissingEtherType)
+		return
 	}
 	// IPv4?
 	if etherType.(uint16) != 0x0800 {
-		return openflow.ErrUnsupportedEtherType
+		r.err = fmt.Errorf("SetIPProtocol: %v", openflow.ErrUnsupportedEtherType)
+		return
 	}
 
 	r.m[OFPXMT_OFB_IP_PROTO] = p
-	return nil
 }
 
 func (r *Match) IPProtocol() (wildcard bool, protocol uint8) {
@@ -242,20 +245,18 @@ func (r *Match) IPProtocol() (wildcard bool, protocol uint8) {
 	return true, 0
 }
 
-func (r *Match) SetWildcardInPort() error {
+func (r *Match) SetWildcardInPort() {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	delete(r.m, OFPXMT_OFB_IN_PORT)
-	return nil
 }
 
-func (r *Match) SetInPort(port openflow.InPort) error {
+func (r *Match) SetInPort(port openflow.InPort) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	r.m[OFPXMT_OFB_IN_PORT] = port
-	return nil
+	r.m[OFPXMT_OFB_IN_PORT] = uint32(port.Value())
 }
 
 func (r *Match) InPort() (wildcard bool, inport openflow.InPort) {
@@ -265,30 +266,32 @@ func (r *Match) InPort() (wildcard bool, inport openflow.InPort) {
 	v, ok := r.m[OFPXMT_OFB_IN_PORT]
 	if ok {
 		inport = openflow.NewInPort()
-		inport.SetPort(v.(uint32))
+		inport.SetValue(v.(uint32))
 		return false, inport
 	}
 
 	return true, openflow.NewInPort()
 }
 
-func (r *Match) SetWildcardSrcMAC() error {
+func (r *Match) SetWildcardSrcMAC() {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	delete(r.m, OFPXMT_OFB_ETH_SRC)
-	return nil
 }
 
-func (r *Match) SetSrcMAC(mac net.HardwareAddr) error {
+func (r *Match) SetSrcMAC(mac net.HardwareAddr) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	if mac == nil || len(mac) < 6 {
-		return openflow.ErrInvalidMACAddress
+	if mac == nil {
+		panic("mac is nil")
+	}
+	if len(mac) < 6 {
+		r.err = fmt.Errorf("SetSrcMAC: %v", openflow.ErrInvalidMACAddress)
+		return
 	}
 	r.m[OFPXMT_OFB_ETH_SRC] = mac
-	return nil
 }
 
 func (r *Match) SrcMAC() (wildcard bool, mac net.HardwareAddr) {
@@ -303,23 +306,25 @@ func (r *Match) SrcMAC() (wildcard bool, mac net.HardwareAddr) {
 	return true, openflow.ZeroMAC
 }
 
-func (r *Match) SetWildcardDstMAC() error {
+func (r *Match) SetWildcardDstMAC() {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	delete(r.m, OFPXMT_OFB_ETH_DST)
-	return nil
 }
 
-func (r *Match) SetDstMAC(mac net.HardwareAddr) error {
+func (r *Match) SetDstMAC(mac net.HardwareAddr) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	if mac == nil || len(mac) < 6 {
-		return openflow.ErrInvalidMACAddress
+	if mac == nil {
+		panic("mac is nil")
+	}
+	if len(mac) < 6 {
+		r.err = fmt.Errorf("SetDstMAC: %v", openflow.ErrInvalidMACAddress)
+		return
 	}
 	r.m[OFPXMT_OFB_ETH_DST] = mac
-	return nil
 }
 
 func (r *Match) DstMAC() (wildcard bool, mac net.HardwareAddr) {
@@ -334,25 +339,30 @@ func (r *Match) DstMAC() (wildcard bool, mac net.HardwareAddr) {
 	return true, openflow.ZeroMAC
 }
 
-func (r *Match) SetSrcIP(ip *net.IPNet) error {
+func (r *Match) SetSrcIP(ip *net.IPNet) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	if ip == nil || ip.IP == nil || len(ip.IP) == 0 {
-		return openflow.ErrInvalidIPAddress
+	if ip == nil {
+		panic("ip is nil")
+	}
+	if ip.IP == nil || len(ip.IP) == 0 {
+		r.err = fmt.Errorf("SetSrcIP: %v", openflow.ErrInvalidIPAddress)
+		return
 	}
 
 	etherType, ok := r.m[OFPXMT_OFB_ETH_TYPE]
 	if !ok {
-		return openflow.ErrMissingEtherType
+		r.err = fmt.Errorf("SetSrcIP: %v", openflow.ErrMissingEtherType)
+		return
 	}
 	// IPv4?
 	if etherType.(uint16) != 0x0800 {
-		return openflow.ErrUnsupportedEtherType
+		r.err = fmt.Errorf("SetSrcIP: %v", openflow.ErrUnsupportedEtherType)
+		return
 	}
 
 	r.m[OFPXMT_OFB_IPV4_SRC] = ip
-	return nil
 }
 
 func (r *Match) SrcIP() *net.IPNet {
@@ -370,25 +380,30 @@ func (r *Match) SrcIP() *net.IPNet {
 	}
 }
 
-func (r *Match) SetDstIP(ip *net.IPNet) error {
+func (r *Match) SetDstIP(ip *net.IPNet) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	if ip == nil || ip.IP == nil || len(ip.IP) == 0 {
-		return openflow.ErrInvalidIPAddress
+	if ip == nil {
+		panic("ip is nil")
+	}
+	if ip.IP == nil || len(ip.IP) == 0 {
+		r.err = fmt.Errorf("SetDstIP: %v", openflow.ErrInvalidIPAddress)
+		return
 	}
 
 	etherType, ok := r.m[OFPXMT_OFB_ETH_TYPE]
 	if !ok {
-		return openflow.ErrMissingEtherType
+		r.err = fmt.Errorf("SetDstIP: %v", openflow.ErrMissingEtherType)
+		return
 	}
 	// IPv4?
 	if etherType.(uint16) != 0x0800 {
-		return openflow.ErrUnsupportedEtherType
+		r.err = fmt.Errorf("SetDstIP: %v", openflow.ErrUnsupportedEtherType)
+		return
 	}
 
 	r.m[OFPXMT_OFB_IPV4_DST] = ip
-	return nil
 }
 
 func (r *Match) DstIP() *net.IPNet {
@@ -406,20 +421,18 @@ func (r *Match) DstIP() *net.IPNet {
 	}
 }
 
-func (r *Match) SetWildcardEtherType() error {
+func (r *Match) SetWildcardEtherType() {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	delete(r.m, OFPXMT_OFB_ETH_TYPE)
-	return nil
 }
 
-func (r *Match) SetEtherType(t uint16) error {
+func (r *Match) SetEtherType(t uint16) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	r.m[OFPXMT_OFB_ETH_TYPE] = t
-	return nil
 }
 
 func (r *Match) EtherType() (wildcard bool, etherType uint16) {
@@ -488,7 +501,7 @@ func marshalTLV(id uint, v interface{}) ([]byte, error) {
 	switch id {
 	case OFPXMT_OFB_IN_PORT:
 		port := v.(uint32)
-		return marshalUint32TLV(OFPXMT_OFB_IN_PORT, uint32(port))
+		return marshalUint32TLV(OFPXMT_OFB_IN_PORT, port)
 	case OFPXMT_OFB_ETH_DST:
 		mac := v.(net.HardwareAddr)
 		return marshalHardwareAddrTLV(OFPXMT_OFB_ETH_DST, mac)
@@ -533,6 +546,10 @@ func marshalTLV(id uint, v interface{}) ([]byte, error) {
 func (r *Match) MarshalBinary() ([]byte, error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
+
+	if r.err != nil {
+		return nil, r.err
+	}
 
 	data := make([]byte, 4)
 	binary.BigEndian.PutUint16(data[0:2], OFPMT_OXM)

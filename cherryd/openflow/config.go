@@ -21,9 +21,11 @@ const (
 )
 
 type Config interface {
+	// Error() returns last error message
+	Error() error
 	Flags() ConfigFlag
-	SetFlags(flags ConfigFlag)
 	MissSendLength() uint16
+	SetFlags(flags ConfigFlag)
 	SetMissSendLength(length uint16)
 }
 

@@ -15,6 +15,7 @@ import (
 )
 
 type Instruction struct {
+	err   error
 	value encoding.BinaryMarshaler
 }
 
@@ -22,7 +23,7 @@ type gotoTable struct {
 	tableID uint8
 }
 
-func (r gotoTable) MarshalBinary() ([]byte, error) {
+func (r *gotoTable) MarshalBinary() ([]byte, error) {
 	v := make([]byte, 8)
 	binary.BigEndian.PutUint16(v[0:2], OFPIT_GOTO_TABLE)
 	binary.BigEndian.PutUint16(v[2:4], 8)
@@ -36,7 +37,7 @@ type writeAction struct {
 	action openflow.Action
 }
 
-func (r writeAction) MarshalBinary() ([]byte, error) {
+func (r *writeAction) MarshalBinary() ([]byte, error) {
 	if r.action == nil {
 		return nil, errors.New("empty action")
 	}
@@ -58,7 +59,7 @@ type applyAction struct {
 	action openflow.Action
 }
 
-func (r applyAction) MarshalBinary() ([]byte, error) {
+func (r *applyAction) MarshalBinary() ([]byte, error) {
 	if r.action == nil {
 		return nil, errors.New("empty action")
 	}
@@ -76,32 +77,35 @@ func (r applyAction) MarshalBinary() ([]byte, error) {
 	return v, nil
 }
 
-func (r *Instruction) GotoTable(tableID uint8) error {
-	r.value = gotoTable{tableID: tableID}
-	return nil
+func (r *Instruction) Error() error {
+	return r.err
 }
 
-func (r *Instruction) WriteAction(act openflow.Action) error {
-	if act == nil {
-		return errors.New("act is nil")
-	}
-	r.value = writeAction{action: act}
-
-	return nil
+func (r *Instruction) GotoTable(tableID uint8) {
+	r.value = &gotoTable{tableID: tableID}
 }
 
-func (r *Instruction) ApplyAction(act openflow.Action) error {
+func (r *Instruction) WriteAction(act openflow.Action) {
 	if act == nil {
-		return errors.New("act is nil")
+		panic("act is nil")
 	}
-	r.value = applyAction{action: act}
+	r.value = &writeAction{action: act}
+}
 
-	return nil
+func (r *Instruction) ApplyAction(act openflow.Action) {
+	if act == nil {
+		panic("act is nil")
+	}
+	r.value = &applyAction{action: act}
 }
 
 func (r *Instruction) MarshalBinary() ([]byte, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+
 	if r.value == nil {
-		return nil, errors.New("empty instruction")
+		return nil, errors.New("empty action of an instruction")
 	}
 
 	return r.value.MarshalBinary()

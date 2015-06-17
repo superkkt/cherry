@@ -27,15 +27,15 @@ type BaseError struct {
 	data  []byte
 }
 
-func (r BaseError) Class() uint16 {
+func (r *BaseError) Class() uint16 {
 	return r.class
 }
 
-func (r BaseError) Code() uint16 {
+func (r *BaseError) Code() uint16 {
 	return r.code
 }
 
-func (r BaseError) Data() []byte {
+func (r *BaseError) Data() []byte {
 	return r.data
 }
 

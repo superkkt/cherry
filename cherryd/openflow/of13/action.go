@@ -31,19 +31,19 @@ func marshalOutput(p openflow.OutPort) ([]byte, error) {
 	binary.BigEndian.PutUint16(v[2:4], 16)
 
 	var port uint32
-	switch p {
-	case openflow.OutTable:
+	switch {
+	case p.IsTable():
 		port = OFPP_TABLE
-	case openflow.OutFlood:
+	case p.IsFlood():
 		port = OFPP_FLOOD
-	case openflow.OutAll:
+	case p.IsAll():
 		port = OFPP_ALL
-	case openflow.OutController:
+	case p.IsController():
 		port = OFPP_CONTROLLER
-	case openflow.OutNone:
+	case p.IsNone():
 		port = OFPP_ANY
 	default:
-		port = uint32(p)
+		port = p.Value()
 	}
 	binary.BigEndian.PutUint32(v[4:8], port)
 	// We don't support buffer ID and partial PACKET_IN
@@ -76,8 +76,11 @@ func marshalMAC(t uint8, mac net.HardwareAddr) ([]byte, error) {
 }
 
 func (r *Action) MarshalBinary() ([]byte, error) {
-	result := make([]byte, 0)
+	if err := r.Error(); err != nil {
+		return nil, err
+	}
 
+	result := make([]byte, 0)
 	if ok, srcMAC := r.SrcMAC(); ok {
 		v, err := marshalMAC(OFPXMT_OFB_ETH_SRC, srcMAC)
 		if err != nil {
@@ -85,7 +88,6 @@ func (r *Action) MarshalBinary() ([]byte, error) {
 		}
 		result = append(result, v...)
 	}
-
 	if ok, dstMAC := r.DstMAC(); ok {
 		v, err := marshalMAC(OFPXMT_OFB_ETH_DST, dstMAC)
 		if err != nil {
@@ -93,7 +95,6 @@ func (r *Action) MarshalBinary() ([]byte, error) {
 		}
 		result = append(result, v...)
 	}
-
 	ports := r.OutPort()
 	for _, v := range ports {
 		v, err := marshalOutput(v)
@@ -120,7 +121,10 @@ func (r *Action) UnmarshalBinary(data []byte) error {
 			if len(buf) < 8 {
 				return openflow.ErrInvalidPacketLength
 			}
-			if err := r.SetOutPort(openflow.OutPort(binary.BigEndian.Uint32(buf[4:8]))); err != nil {
+			outPort := openflow.NewOutPort()
+			outPort.SetValue(binary.BigEndian.Uint32(buf[4:8]))
+			r.SetOutPort(outPort)
+			if err := r.Error(); err != nil {
 				return err
 			}
 		case OFPAT_SET_FIELD:
@@ -139,14 +143,16 @@ func (r *Action) UnmarshalBinary(data []byte) error {
 				if len(buf) < 14 {
 					return openflow.ErrInvalidPacketLength
 				}
-				if err := r.SetDstMAC(buf[8:14]); err != nil {
+				r.SetDstMAC(buf[8:14])
+				if err := r.Error(); err != nil {
 					return err
 				}
 			case OFPXMT_OFB_ETH_SRC:
 				if len(buf) < 14 {
 					return openflow.ErrInvalidPacketLength
 				}
-				if err := r.SetSrcMAC(buf[8:14]); err != nil {
+				r.SetSrcMAC(buf[8:14])
+				if err := r.Error(); err != nil {
 					return err
 				}
 			default:

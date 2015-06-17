@@ -15,7 +15,7 @@ type Header interface {
 	Version() uint8
 	Type() uint8
 	TransactionID() uint32
-	SetTransactionID(xid uint32) error
+	SetTransactionID(xid uint32)
 }
 
 type Message struct {
@@ -47,20 +47,12 @@ func (r *Message) TransactionID() uint32 {
 	return r.xid
 }
 
-func (r *Message) SetTransactionID(xid uint32) error {
+func (r *Message) SetTransactionID(xid uint32) {
 	r.xid = xid
-	return nil
 }
 
 func (r *Message) Payload() []byte {
-	if r.payload == nil {
-		return nil
-	}
-
-	v := make([]byte, len(r.payload))
-	copy(v, r.payload)
-
-	return v
+	return r.payload
 }
 
 func (r *Message) SetPayload(payload []byte) {

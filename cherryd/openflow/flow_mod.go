@@ -20,22 +20,25 @@ const (
 )
 
 type FlowMod interface {
-	Header
 	Cookie() uint64
-	SetCookie(cookie uint64) error
 	CookieMask() uint64
-	SetCookieMask(mask uint64) error
-	TableID() uint8
-	SetTableID(id uint8) error
-	IdleTimeout() uint16
-	SetIdleTimeout(timeout uint16) error
-	HardTimeout() uint16
-	SetHardTimeout(timeout uint16) error
-	Priority() uint16
-	SetPriority(priority uint16) error
-	FlowMatch() Match
-	SetFlowMatch(match Match) error
-	FlowInstruction() Instruction
-	SetFlowInstruction(action Instruction) error
 	encoding.BinaryMarshaler
+	Error() error
+	FlowInstruction() Instruction
+	FlowMatch() Match
+	HardTimeout() uint16
+	Header
+	IdleTimeout() uint16
+	OutPort() OutPort
+	Priority() uint16
+	SetCookie(cookie uint64)
+	SetCookieMask(mask uint64)
+	SetFlowInstruction(action Instruction)
+	SetFlowMatch(match Match)
+	SetHardTimeout(timeout uint16)
+	SetIdleTimeout(timeout uint16)
+	SetOutPort(port OutPort)
+	SetPriority(priority uint16)
+	SetTableID(id uint8)
+	TableID() uint8
 }

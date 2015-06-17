@@ -14,6 +14,7 @@ import (
 )
 
 type FlowStatsRequest struct {
+	err error
 	openflow.Message
 	match   openflow.Match
 	tableID uint8
@@ -25,53 +26,61 @@ func NewFlowStatsRequest(xid uint32) openflow.FlowStatsRequest {
 	}
 }
 
-func (r FlowStatsRequest) Cookie() uint64 {
+func (r *FlowStatsRequest) Error() error {
+	return r.err
+}
+
+func (r *FlowStatsRequest) Cookie() uint64 {
 	// OpenFlow 1.0 does not have cookie
 	return 0
 }
 
-func (r *FlowStatsRequest) SetCookie(cookie uint64) error {
+func (r *FlowStatsRequest) SetCookie(cookie uint64) {
 	// OpenFlow 1.0 does not have cookie
-	return nil
 }
 
-func (r FlowStatsRequest) CookieMask() uint64 {
+func (r *FlowStatsRequest) CookieMask() uint64 {
 	// OpenFlow 1.0 does not have cookie
 	return 0
 }
 
-func (r *FlowStatsRequest) SetCookieMask(mask uint64) error {
+func (r *FlowStatsRequest) SetCookieMask(mask uint64) {
 	// OpenFlow 1.0 does not have cookie
-	return nil
 }
 
-func (r FlowStatsRequest) Match() openflow.Match {
+func (r *FlowStatsRequest) Match() openflow.Match {
 	return r.match
 }
 
-func (r *FlowStatsRequest) SetMatch(match openflow.Match) error {
+func (r *FlowStatsRequest) SetMatch(match openflow.Match) {
 	if match == nil {
-		return errors.New("match is nil")
+		panic("match is nil")
 	}
 	r.match = match
-	return nil
 }
 
-func (r FlowStatsRequest) TableID() uint8 {
+func (r *FlowStatsRequest) TableID() uint8 {
 	return r.tableID
 }
 
 // 0xFF means all table
-func (r *FlowStatsRequest) SetTableID(id uint8) error {
+func (r *FlowStatsRequest) SetTableID(id uint8) {
 	r.tableID = id
-	return nil
 }
 
 // TODO: Need testing
 func (r *FlowStatsRequest) MarshalBinary() ([]byte, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+
 	v := make([]byte, 48)
 	binary.BigEndian.PutUint16(v[0:2], OFPST_FLOW)
 	// v[2:4] is flags, but not yet defined
+
+	if r.match == nil {
+		return nil, errors.New("empty flow match")
+	}
 	match, err := r.match.MarshalBinary()
 	if err != nil {
 		return nil, err

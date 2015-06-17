@@ -96,6 +96,8 @@ func (r *OF13Controller) setTableMiss(f openflow.Factory, w trans.Writer, tableI
 	if err != nil {
 		return err
 	}
+	// We use MSB to represent whether the flow is table miss or not
+	msg.SetCookie(0x1 << 63)
 	msg.SetTableID(tableID)
 	// Permanent flow entry
 	msg.SetIdleTimeout(0)
@@ -126,12 +128,16 @@ func (r *OF13Controller) setHP2920TableMiss(f openflow.Factory, w trans.Writer) 
 	if err := r.setTableMiss(f, w, 100, inst); err != nil {
 		return fmt.Errorf("failed to set table_miss flow entry: %v", err)
 	}
+
 	// 200 -> Controller
+	outPort := openflow.NewOutPort()
+	outPort.SetController()
 	action, err := f.NewAction()
 	if err != nil {
 		return err
 	}
-	action.SetOutPort(openflow.OutController)
+	action.SetOutPort(outPort)
+
 	inst.ApplyAction(action)
 	if err := r.setTableMiss(f, w, 200, inst); err != nil {
 		return fmt.Errorf("failed to set table_miss flow entry: %v", err)
@@ -157,11 +163,14 @@ func (r *OF13Controller) setDefaultTableMiss(f openflow.Factory, w trans.Writer)
 	}
 
 	// 0 -> Controller
+	outPort := openflow.NewOutPort()
+	outPort.SetController()
 	action, err := f.NewAction()
 	if err != nil {
 		return err
 	}
-	action.SetOutPort(openflow.OutController)
+	action.SetOutPort(outPort)
+
 	inst.ApplyAction(action)
 	if err := r.setTableMiss(f, w, 0, inst); err != nil {
 		return fmt.Errorf("failed to set table_miss flow entry: %v", err)

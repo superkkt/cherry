@@ -39,7 +39,7 @@ type Device struct {
 	controllers  map[uint8]trans.Writer
 	descriptions Descriptions
 	features     Features
-	ports        map[uint]*Port
+	ports        map[uint32]*Port
 	flowTableID  uint8 // Table IDs that we install flows
 }
 
@@ -50,7 +50,7 @@ func NewDevice(id string, log log.Logger, w Watcher, f Finder) *Device {
 		watcher:     w,
 		finder:      f,
 		controllers: make(map[uint8]trans.Writer),
-		ports:       make(map[uint]*Port),
+		ports:       make(map[uint32]*Port),
 	}
 }
 
@@ -118,7 +118,7 @@ func (r *Device) SetFeatures(f Features) {
 }
 
 // Port may return nil if there is no port whose number is num
-func (r *Device) Port(num uint) *Port {
+func (r *Device) Port(num uint32) *Port {
 	// Read lock
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
@@ -140,13 +140,13 @@ func (r *Device) Ports() []*Port {
 }
 
 // A caller should make sure the mutex is locked before calling this function
-func (r *Device) setPort(num uint, p openflow.Port) {
+func (r *Device) setPort(num uint32, p openflow.Port) {
 	port := NewPort(r, num)
 	port.SetValue(p)
 	r.ports[num] = port
 }
 
-func (r *Device) AddPort(num uint, p openflow.Port) {
+func (r *Device) AddPort(num uint32, p openflow.Port) {
 	// Write lock
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -154,7 +154,7 @@ func (r *Device) AddPort(num uint, p openflow.Port) {
 	r.setPort(num, p)
 }
 
-func (r *Device) UpdatePort(num uint, p openflow.Port) {
+func (r *Device) UpdatePort(num uint32, p openflow.Port) {
 	/*
 	 * Start of write lock
 	 */
@@ -172,13 +172,6 @@ func (r *Device) UpdatePort(num uint, p openflow.Port) {
 	if port == nil {
 		return
 	}
-
-	if p.IsPortDown() || p.IsLinkDown() {
-		// To avoid deadlock, we first unlock the mutex before calling a watcher function
-		r.watcher.PortRemoved(port)
-	}
-
-	// TODO: Send this event to a watcher
 }
 
 func (r *Device) FlowTableID() uint8 {

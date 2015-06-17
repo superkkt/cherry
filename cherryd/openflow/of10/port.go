@@ -28,8 +28,8 @@ type Port struct {
 	current, advertised, supported, peer uint32
 }
 
-func (r Port) Number() uint {
-	return uint(r.number)
+func (r Port) Number() uint32 {
+	return uint32(r.number)
 }
 
 func (r Port) MAC() net.HardwareAddr {

@@ -13,6 +13,7 @@ import (
 )
 
 type PacketOut struct {
+	err error
 	openflow.Message
 	inPort openflow.InPort
 	action openflow.Action
@@ -25,34 +26,45 @@ func NewPacketOut(xid uint32) openflow.PacketOut {
 	}
 }
 
-func (r PacketOut) InPort() openflow.InPort {
+func (r *PacketOut) Error() error {
+	return r.err
+}
+
+func (r *PacketOut) InPort() openflow.InPort {
 	return r.inPort
 }
 
-func (r *PacketOut) SetInPort(port openflow.InPort) error {
+func (r *PacketOut) SetInPort(port openflow.InPort) {
 	r.inPort = port
-	return nil
 }
 
-func (r PacketOut) Action() openflow.Action {
+func (r *PacketOut) Action() openflow.Action {
 	return r.action
 }
 
-func (r *PacketOut) SetAction(action openflow.Action) error {
+func (r *PacketOut) SetAction(action openflow.Action) {
+	if action == nil {
+		panic("action is nil")
+	}
 	r.action = action
-	return nil
 }
 
-func (r PacketOut) Data() []byte {
+func (r *PacketOut) Data() []byte {
 	return r.data
 }
 
-func (r *PacketOut) SetData(data []byte) error {
+func (r *PacketOut) SetData(data []byte) {
+	if data == nil {
+		panic("data is nil")
+	}
 	r.data = data
-	return nil
 }
 
 func (r *PacketOut) MarshalBinary() ([]byte, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+
 	// XXX:
 	// Dell S4810 switch does not support OFPAT_SET_DL_SRC and
 	// OFPAT_SET_DL_DST actions on a packet out message
@@ -67,7 +79,7 @@ func (r *PacketOut) MarshalBinary() ([]byte, error) {
 
 	v := make([]byte, 8)
 	binary.BigEndian.PutUint32(v[0:4], OFP_NO_BUFFER)
-	port := uint16(r.inPort.Port())
+	port := uint16(r.inPort.Value())
 	if r.inPort.IsController() {
 		port = OFPP_CONTROLLER
 	}

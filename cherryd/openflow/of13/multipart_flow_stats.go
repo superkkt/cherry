@@ -14,6 +14,7 @@ import (
 )
 
 type FlowStatsRequest struct {
+	err error
 	openflow.Message
 	tableID            uint8
 	cookie, cookieMask uint64
@@ -26,47 +27,51 @@ func NewFlowStatsRequest(xid uint32) openflow.FlowStatsRequest {
 	}
 }
 
-func (r FlowStatsRequest) Cookie() uint64 {
+func (r *FlowStatsRequest) Error() error {
+	return r.err
+}
+
+func (r *FlowStatsRequest) Cookie() uint64 {
 	return r.cookie
 }
 
-func (r *FlowStatsRequest) SetCookie(cookie uint64) error {
+func (r *FlowStatsRequest) SetCookie(cookie uint64) {
 	r.cookie = cookie
-	return nil
 }
 
-func (r FlowStatsRequest) CookieMask() uint64 {
+func (r *FlowStatsRequest) CookieMask() uint64 {
 	return r.cookieMask
 }
 
-func (r *FlowStatsRequest) SetCookieMask(mask uint64) error {
+func (r *FlowStatsRequest) SetCookieMask(mask uint64) {
 	r.cookieMask = mask
-	return nil
 }
 
-func (r FlowStatsRequest) Match() openflow.Match {
+func (r *FlowStatsRequest) Match() openflow.Match {
 	return r.match
 }
 
-func (r *FlowStatsRequest) SetMatch(match openflow.Match) error {
+func (r *FlowStatsRequest) SetMatch(match openflow.Match) {
 	if match == nil {
-		return errors.New("match is nil")
+		panic("match is nil")
 	}
 	r.match = match
-	return nil
 }
 
-func (r FlowStatsRequest) TableID() uint8 {
+func (r *FlowStatsRequest) TableID() uint8 {
 	return r.tableID
 }
 
 // 0xFF means all table
-func (r *FlowStatsRequest) SetTableID(id uint8) error {
+func (r *FlowStatsRequest) SetTableID(id uint8) {
 	r.tableID = id
-	return nil
 }
 
 func (r *FlowStatsRequest) MarshalBinary() ([]byte, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+
 	v := make([]byte, 40)
 	// Flow stats request
 	binary.BigEndian.PutUint16(v[0:2], OFPMP_FLOW)
@@ -77,6 +82,10 @@ func (r *FlowStatsRequest) MarshalBinary() ([]byte, error) {
 	// v[20:24] is padding
 	binary.BigEndian.PutUint64(v[24:32], r.cookie)
 	binary.BigEndian.PutUint64(v[32:40], r.cookieMask)
+
+	if r.match == nil {
+		return nil, errors.New("empty flow match")
+	}
 	match, err := r.match.MarshalBinary()
 	if err != nil {
 		return nil, err
