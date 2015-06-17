@@ -21,8 +21,9 @@ import (
 type processor interface {
 	// Name returns the application name that is globally unique
 	Name() string
-	ProcessPacket(openflow.Factory, network.Finder, *protocol.Ethernet, *network.Port) (drop bool, err error)
-	ProcessEvent(openflow.Factory, network.Finder, *network.Device, openflow.PortStatus) error
+	ProcessPacket(network.Finder, *protocol.Ethernet, *network.Port) (drop bool, err error)
+	ProcessPortChange(network.Finder, *network.Device, openflow.PortStatus) error
+	ProcessDeviceClose(network.Finder, *network.Device) error
 }
 
 type Manager struct {
@@ -64,9 +65,9 @@ func (r *Manager) Enable(appName string) {
 	r.enabled = append(r.enabled, v)
 }
 
-func (r *Manager) ProcessPacket(factory openflow.Factory, finder network.Finder, eth *protocol.Ethernet, ingress *network.Port) error {
+func (r *Manager) ProcessPacket(finder network.Finder, eth *protocol.Ethernet, ingress *network.Port) error {
 	for _, v := range r.enabled {
-		drop, err := v.ProcessPacket(factory, finder, eth, ingress)
+		drop, err := v.ProcessPacket(finder, eth, ingress)
 		if drop || err != nil {
 			return err
 		}
@@ -75,9 +76,20 @@ func (r *Manager) ProcessPacket(factory openflow.Factory, finder network.Finder,
 	return nil
 }
 
-func (r *Manager) ProcessEvent(factory openflow.Factory, finder network.Finder, device *network.Device, status openflow.PortStatus) error {
+func (r *Manager) ProcessPortChange(finder network.Finder, device *network.Device, status openflow.PortStatus) error {
 	for _, v := range r.enabled {
-		err := v.ProcessEvent(factory, finder, device, status)
+		err := v.ProcessPortChange(finder, device, status)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (r *Manager) ProcessDeviceClose(finder network.Finder, device *network.Device) error {
+	for _, v := range r.enabled {
+		err := v.ProcessDeviceClose(finder, device)
 		if err != nil {
 			return err
 		}

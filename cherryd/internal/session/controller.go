@@ -15,6 +15,8 @@ import (
 	"git.sds.co.kr/cherry.git/cherryd/internal/log"
 	"git.sds.co.kr/cherry.git/cherryd/internal/network"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
+	"git.sds.co.kr/cherry.git/cherryd/openflow/of10"
+	"git.sds.co.kr/cherry.git/cherryd/openflow/of13"
 	"git.sds.co.kr/cherry.git/cherryd/openflow/trans"
 	"git.sds.co.kr/cherry.git/cherryd/protocol"
 	"io"
@@ -23,8 +25,9 @@ import (
 )
 
 type processor interface {
-	ProcessPacket(openflow.Factory, network.Finder, *protocol.Ethernet, *network.Port) error
-	ProcessEvent(openflow.Factory, network.Finder, *network.Device, openflow.PortStatus) error
+	ProcessPacket(network.Finder, *protocol.Ethernet, *network.Port) error
+	ProcessPortChange(network.Finder, *network.Device, openflow.PortStatus) error
+	ProcessDeviceClose(network.Finder, *network.Device) error
 }
 
 type sessionHandler interface {
@@ -97,9 +100,18 @@ func (r *Controller) OnError(f openflow.Factory, w trans.Writer, v openflow.Erro
 	return r.handler.OnError(f, w, v)
 }
 
-func (r *Controller) setDevice(d *network.Device) {
-	r.device = d
-	r.handler.setDevice(d)
+func (r *Controller) setDevice(version uint8, device *network.Device, features network.Features) {
+	r.device = device
+	r.handler.setDevice(device)
+	r.device.SetFeatures(features)
+	switch version {
+	case openflow.OF10_VERSION:
+		r.device.SetFactory(of10.NewFactory())
+	case openflow.OF13_VERSION:
+		r.device.SetFactory(of13.NewFactory())
+	default:
+		panic("Unsupported OpenFlow version")
+	}
 }
 
 func (r *Controller) OnFeaturesReply(f openflow.Factory, w trans.Writer, v openflow.FeaturesReply) error {
@@ -113,13 +125,13 @@ func (r *Controller) OnFeaturesReply(f openflow.Factory, w trans.Writer, v openf
 		r.watcher.DeviceAdded(device)
 	}
 	device.AddController(v.AuxID(), r)
-	r.setDevice(device)
+
 	features := network.Features{
 		DPID:       v.DPID(),
 		NumBuffers: v.NumBuffers(),
 		NumTables:  v.NumTables(),
 	}
-	r.device.SetFeatures(features)
+	r.setDevice(v.Version(), device, features)
 
 	return r.handler.OnFeaturesReply(f, w, v)
 }
@@ -245,7 +257,7 @@ func (r *Controller) OnPortStatus(f openflow.Factory, w trans.Writer, v openflow
 	if err := r.handler.OnPortStatus(f, w, v); err != nil {
 		return err
 	}
-	if err := r.processor.ProcessEvent(f, r.finder, r.device, v); err != nil {
+	if err := r.processor.ProcessPortChange(r.finder, r.device, v); err != nil {
 		return err
 	}
 
@@ -421,17 +433,25 @@ func (r *Controller) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.P
 		return err
 	}
 
-	return r.processor.ProcessPacket(f, r.finder, ethernet, inPort)
+	return r.processor.ProcessPacket(r.finder, ethernet, inPort)
 }
 
 // TODO: Use context to shutdown running controllers
 func (r *Controller) Run() {
 	if err := r.trans.Run(); err != nil && err != io.EOF {
-		r.log.Err(fmt.Sprintf("Disconnected OpenFlow transceiver: %v", err))
+		r.log.Err(fmt.Sprintf("OpenFlow transceiver abnormally terminated: %v", err))
 	}
 	r.trans.Close()
 	if r.device != nil {
+		r.log.Info(fmt.Sprintf("Session controller is disconnected (DPID=%v, AuxID=%v)", r.device.ID(), r.auxID))
 		r.device.RemoveController(r.auxID)
+		// Main connection?
+		if r.auxID == 0 {
+			// Assume the device is disconnected
+			r.processor.ProcessDeviceClose(r.finder, r.device)
+		}
+	} else {
+		r.log.Info(fmt.Sprintf("Session controller is disconnected (AuxID=%v)", r.auxID))
 	}
 }
 

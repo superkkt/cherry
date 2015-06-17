@@ -34,7 +34,9 @@ func (r *L2Switch) Name() string {
 	return "L2Switch"
 }
 
-func flood(f openflow.Factory, ingress *network.Port, packet []byte) error {
+func flood(ingress *network.Port, packet []byte) error {
+	f := ingress.Device().Factory()
+
 	inPort := openflow.NewInPort()
 	inPort.SetValue(ingress.Number())
 
@@ -58,7 +60,9 @@ func flood(f openflow.Factory, ingress *network.Port, packet []byte) error {
 	return ingress.Device().SendMessage(out)
 }
 
-func packetout(f openflow.Factory, egress *network.Port, packet []byte) error {
+func packetout(egress *network.Port, packet []byte) error {
+	f := egress.Device().Factory()
+
 	inPort := openflow.NewInPort()
 	inPort.SetController()
 
@@ -95,7 +99,9 @@ type flowParam struct {
 	dstMAC    net.HardwareAddr
 }
 
-func installFlow(f openflow.Factory, p flowParam) error {
+func installFlow(p flowParam) error {
+	f := p.device.Factory()
+
 	inPort := openflow.NewInPort()
 	inPort.SetValue(p.inPort)
 	match, err := f.NewMatch()
@@ -133,17 +139,16 @@ func installFlow(f openflow.Factory, p flowParam) error {
 	return p.device.SendMessage(flow)
 }
 
-func setFlowRule(f openflow.Factory, p flowParam) error {
+func setFlowRule(p flowParam) error {
 	// Forward
-	if err := installFlow(f, p); err != nil {
+	if err := installFlow(p); err != nil {
 		return err
 	}
 	// Backward
-	return installFlow(f, p)
+	return installFlow(p)
 }
 
 type switchParam struct {
-	factory   openflow.Factory
 	finder    network.Finder
 	ethernet  *protocol.Ethernet
 	ingress   *network.Port
@@ -170,7 +175,7 @@ func (r *L2Switch) switching(p switchParam) error {
 			srcMAC:    p.ethernet.SrcMAC,
 			dstMAC:    p.ethernet.DstMAC,
 		}
-		if err := setFlowRule(p.factory, param); err != nil {
+		if err := setFlowRule(param); err != nil {
 			return err
 		}
 		inPort = v[1].Number()
@@ -185,12 +190,12 @@ func (r *L2Switch) switching(p switchParam) error {
 		srcMAC:    p.ethernet.SrcMAC,
 		dstMAC:    p.ethernet.DstMAC,
 	}
-	if err := setFlowRule(p.factory, param); err != nil {
+	if err := setFlowRule(param); err != nil {
 		return err
 	}
 
 	// Send this ethernet packet directly to the destination node
-	return packetout(p.factory, p.egress, p.rawPacket)
+	return packetout(p.egress, p.rawPacket)
 }
 
 func (r *L2Switch) localSwitching(p switchParam) error {
@@ -202,15 +207,15 @@ func (r *L2Switch) localSwitching(p switchParam) error {
 		srcMAC:    p.ethernet.SrcMAC,
 		dstMAC:    p.ethernet.DstMAC,
 	}
-	if err := setFlowRule(p.factory, param); err != nil {
+	if err := setFlowRule(param); err != nil {
 		return err
 	}
 
 	// Send this ethernet packet directly to the destination node
-	return packetout(p.factory, p.egress, p.rawPacket)
+	return packetout(p.egress, p.rawPacket)
 }
 
-func (r *L2Switch) ProcessPacket(factory openflow.Factory, finder network.Finder, eth *protocol.Ethernet, ingress *network.Port) (drop bool, err error) {
+func (r *L2Switch) ProcessPacket(finder network.Finder, eth *protocol.Ethernet, ingress *network.Port) (drop bool, err error) {
 	packet, err := eth.MarshalBinary()
 	if err != nil {
 		return false, err
@@ -220,11 +225,10 @@ func (r *L2Switch) ProcessPacket(factory openflow.Factory, finder network.Finder
 	// Unknown node or broadcast request?
 	if dstNode == nil || isBroadcast(eth) {
 		r.log.Debug(fmt.Sprintf("Broadcasting (dstMAC=%v)", eth.DstMAC))
-		return true, flood(factory, ingress, packet)
+		return true, flood(ingress, packet)
 	}
 
 	param := switchParam{
-		factory:   factory,
 		finder:    finder,
 		ethernet:  eth,
 		ingress:   ingress,
@@ -244,26 +248,30 @@ func (r *L2Switch) ProcessPacket(factory openflow.Factory, finder network.Finder
 	return true, nil
 }
 
-func (r *L2Switch) ProcessEvent(factory openflow.Factory, finder network.Finder, device *network.Device, status openflow.PortStatus) error {
+func (r *L2Switch) ProcessPortChange(finder network.Finder, device *network.Device, status openflow.PortStatus) error {
 	if status.Port().IsPortDown() || status.Port().IsLinkDown() {
 		port := device.Port(status.Port().Number())
 		if port == nil {
 			return fmt.Errorf("failed to find a port %v on %v", status.Port().Number(), device.ID())
 		}
-		return r.cleanup(factory, finder, port)
+		return r.cleanup(finder, port)
 	}
 
 	return nil
 }
 
-func (r *L2Switch) cleanup(factory openflow.Factory, finder network.Finder, port *network.Port) error {
+func (r *L2Switch) ProcessDeviceClose(finder network.Finder, device *network.Device) error {
+	return r.removeAllFlows(finder)
+}
+
+func (r *L2Switch) cleanup(finder network.Finder, port *network.Port) error {
 	r.log.Debug(fmt.Sprintf("Cleaning up for %v..", port.ID()))
 
 	// We should remove all edges from all switch devices if the port is an edge among two switches.
 	// Otherwise, remaining flow rules in switches may result in incorrect packet routing to the
 	// disconnected port.
 	if finder.IsEdge(port) {
-		return r.removeAllFlows(factory, finder)
+		return r.removeAllFlows(finder)
 	}
 
 	nodes := port.Nodes()
@@ -271,7 +279,7 @@ func (r *L2Switch) cleanup(factory openflow.Factory, finder network.Finder, port
 	for _, n := range nodes {
 		r.log.Debug(fmt.Sprintf("Removing all flows related with a node %v..", n.MAC()))
 
-		if err := r.removeFlowRules(factory, finder, n.MAC()); err != nil {
+		if err := r.removeFlowRules(finder, n.MAC()); err != nil {
 			r.log.Err(fmt.Sprintf("Failed to remove flows related with %v: %v", n.MAC(), err))
 			continue
 		}
@@ -280,18 +288,18 @@ func (r *L2Switch) cleanup(factory openflow.Factory, finder network.Finder, port
 	return nil
 }
 
-func (r *L2Switch) removeAllFlows(factory openflow.Factory, finder network.Finder) error {
+func (r *L2Switch) removeAllFlows(finder network.Finder) error {
 	r.log.Debug("Removing all flows from all devices..")
-
-	// Wildcard match
-	match, err := factory.NewMatch()
-	if err != nil {
-		return err
-	}
 
 	devices := finder.Devices()
 	for _, d := range devices {
-		if err := r.removeFlow(factory, d, match); err != nil {
+		factory := d.Factory()
+		// Wildcard match
+		match, err := factory.NewMatch()
+		if err != nil {
+			return err
+		}
+		if err := r.removeFlow(d, match); err != nil {
 			r.log.Err(fmt.Sprintf("Failed to remove flows on %v: %v", d.ID(), err))
 			continue
 		}
@@ -300,18 +308,19 @@ func (r *L2Switch) removeAllFlows(factory openflow.Factory, finder network.Finde
 	return nil
 }
 
-func (r *L2Switch) removeFlowRules(factory openflow.Factory, finder network.Finder, mac net.HardwareAddr) error {
+func (r *L2Switch) removeFlowRules(finder network.Finder, mac net.HardwareAddr) error {
 	devices := finder.Devices()
 	for _, d := range devices {
 		r.log.Debug(fmt.Sprintf("Removing all flows related with a node %v on device %v..", mac, d.ID()))
 
+		factory := d.Factory()
 		// Remove all flow rules whose source MAC address is mac in its flow match
 		match, err := factory.NewMatch()
 		if err != nil {
 			return err
 		}
 		match.SetSrcMAC(mac)
-		if err := r.removeFlow(factory, d, match); err != nil {
+		if err := r.removeFlow(d, match); err != nil {
 			return err
 		}
 
@@ -321,7 +330,7 @@ func (r *L2Switch) removeFlowRules(factory openflow.Factory, finder network.Find
 			return err
 		}
 		match.SetDstMAC(mac)
-		if err := r.removeFlow(factory, d, match); err != nil {
+		if err := r.removeFlow(d, match); err != nil {
 			return err
 		}
 	}
@@ -329,9 +338,10 @@ func (r *L2Switch) removeFlowRules(factory openflow.Factory, finder network.Find
 	return nil
 }
 
-func (r *L2Switch) removeFlow(f openflow.Factory, d *network.Device, match openflow.Match) error {
+func (r *L2Switch) removeFlow(d *network.Device, match openflow.Match) error {
 	r.log.Debug(fmt.Sprintf("Removing flows on device %v..", d.ID()))
 
+	f := d.Factory()
 	flowmod, err := f.NewFlowMod(openflow.FlowDelete)
 	if err != nil {
 		return err

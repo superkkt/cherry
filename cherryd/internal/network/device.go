@@ -41,6 +41,7 @@ type Device struct {
 	features     Features
 	ports        map[uint32]*Port
 	flowTableID  uint8 // Table IDs that we install flows
+	factory      openflow.Factory
 }
 
 func NewDevice(id string, log log.Logger, w Watcher, f Finder) *Device {
@@ -56,6 +57,25 @@ func NewDevice(id string, log log.Logger, w Watcher, f Finder) *Device {
 
 func (r *Device) ID() string {
 	return r.id
+}
+
+func (r *Device) Factory() openflow.Factory {
+	// Read lock
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	return r.factory
+}
+
+func (r *Device) SetFactory(f openflow.Factory) {
+	// Write lock
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	if r.factory != nil {
+		return
+	}
+	r.factory = f
 }
 
 func (r *Device) AddController(id uint8, c trans.Writer) {
