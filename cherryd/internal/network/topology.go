@@ -15,7 +15,7 @@ import (
 	"sync"
 )
 
-type Watcher interface {
+type watcher interface {
 	DeviceAdded(*Device)
 	DeviceLinked([2]*Port)
 	DeviceRemoved(*Device)
@@ -34,18 +34,19 @@ type Finder interface {
 	Path(srcDeviceID, dstDeviceID string) [][2]*Port
 }
 
-type Topology struct {
+type topology struct {
 	mutex sync.RWMutex
 	// Key is IP address of a device
 	devices map[string]*Device
 	// Key is MAC address of a node
-	nodes map[string]*Node
-	log   log.Logger
-	graph *graph.Graph
+	nodes    map[string]*Node
+	log      log.Logger
+	graph    *graph.Graph
+	listener TopologyEventListener
 }
 
-func NewTopology(log log.Logger) *Topology {
-	return &Topology{
+func newTopology(log log.Logger) *topology {
+	return &topology{
 		devices: make(map[string]*Device),
 		nodes:   make(map[string]*Node),
 		log:     log,
@@ -53,7 +54,28 @@ func NewTopology(log log.Logger) *Topology {
 	}
 }
 
-func (r *Topology) Devices() []*Device {
+func (r *topology) setEventListener(l TopologyEventListener) {
+	r.listener = l
+}
+
+// Caller should make sure the mutex is unlocked before calling this function.
+// Otherwise, event listeners may cause a deadlock by calling other topology functions.
+func (r *topology) sendEvent() {
+	r.log.Debug("sendEvent() is called..")
+
+	if r.listener == nil {
+		return
+	}
+
+	r.log.Debug("calling OnTopologyChange()..")
+	if err := r.listener.OnTopologyChange(r); err != nil {
+		r.log.Err(fmt.Sprintf("topology: executing OnTopologyChange: %v", err))
+		return
+	}
+	r.log.Debug("sendEvent() is done..")
+}
+
+func (r *topology) Devices() []*Device {
 	// Read lock
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
@@ -67,7 +89,7 @@ func (r *Topology) Devices() []*Device {
 }
 
 // Device may return nil if a device whose ID is id does not exist
-func (r *Topology) Device(id string) *Device {
+func (r *topology) Device(id string) *Device {
 	// Read lock
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
@@ -75,30 +97,18 @@ func (r *Topology) Device(id string) *Device {
 	return r.devices[id]
 }
 
-func (r *Topology) removeAllNodes(d *Device) {
-	ports := d.Ports()
-	for _, p := range ports {
-		for _, n := range p.Nodes() {
-			delete(r.nodes, n.MAC().String())
-			p.RemoveNode(n.MAC())
-		}
-	}
-}
-
-func (r *Topology) DeviceAdded(d *Device) {
+func (r *topology) DeviceAdded(d *Device) {
 	// Write lock
 	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
 	r.devices[d.ID()] = d
+	// Unlock
+	r.mutex.Unlock()
+
 	r.graph.AddVertex(d)
+	r.sendEvent()
 }
 
-func (r *Topology) DeviceRemoved(d *Device) {
-	// Write lock
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
+func (r *topology) removeDevice(d *Device) {
 	id := d.ID()
 	// Device exists?
 	d, ok := r.devices[id]
@@ -107,21 +117,42 @@ func (r *Topology) DeviceRemoved(d *Device) {
 	}
 	// Remove all nodes connected to this device
 	r.removeAllNodes(d)
-	// Remove from the network topology
-	r.graph.RemoveVertex(d)
 	// Remove from the device database
 	delete(r.devices, id)
 }
 
-func (r *Topology) DeviceLinked(ports [2]*Port) {
-	link := NewLink(ports)
-	if err := r.graph.AddEdge(link); err != nil {
-		r.log.Err(fmt.Sprintf("DeviceLinked: %v", err))
-		return
+func (r *topology) removeAllNodes(d *Device) {
+	ports := d.Ports()
+	for _, p := range ports {
+		for _, n := range p.Nodes() {
+			delete(r.nodes, n.MAC().String())
+			p.removeNode(n.MAC())
+		}
 	}
 }
 
-func (r *Topology) NodeAdded(n *Node) {
+func (r *topology) DeviceRemoved(d *Device) {
+	// Write lock
+	r.mutex.Lock()
+	r.removeDevice(d)
+	// Unlock
+	r.mutex.Unlock()
+
+	// Remove from the network topology
+	r.graph.RemoveVertex(d)
+	r.sendEvent()
+}
+
+func (r *topology) DeviceLinked(ports [2]*Port) {
+	link := newLink(ports)
+	if err := r.graph.AddEdge(link); err != nil {
+		r.log.Err(fmt.Sprintf("topology: %v", err))
+		return
+	}
+	r.sendEvent()
+}
+
+func (r *topology) NodeAdded(n *Node) {
 	// Write lock
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -133,16 +164,16 @@ func (r *Topology) NodeAdded(n *Node) {
 	node, ok := r.nodes[n.MAC().String()]
 	// Do we already have a port that has this node?
 	if ok {
-		// Remove the node from the port
+		// Remove this node from the port
 		port := node.Port()
-		port.RemoveNode(node.MAC())
+		port.removeNode(node.MAC())
 	}
 	// Add new node
 	r.nodes[n.MAC().String()] = n
 }
 
 // Node may return nil if a node whose MAC is mac does not exist
-func (r *Topology) Node(mac net.HardwareAddr) *Node {
+func (r *topology) Node(mac net.HardwareAddr) *Node {
 	// Read lock
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
@@ -150,21 +181,25 @@ func (r *Topology) Node(mac net.HardwareAddr) *Node {
 	return r.nodes[mac.String()]
 }
 
-func (r *Topology) PortRemoved(p *Port) {
+func (r *topology) PortRemoved(p *Port) {
 	// Write lock
 	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
 	// Remove hosts connected to the port from the host database
 	for _, v := range p.Nodes() {
 		delete(r.nodes, v.MAC().String())
-		p.RemoveNode(v.MAC())
+		p.removeNode(v.MAC())
 	}
-	// Remove an edge from the graph if this port is an edge connected to another switch
-	r.graph.RemoveEdge(p)
+	// Unlock
+	r.mutex.Unlock()
+
+	if r.graph.IsEdge(p) {
+		// Remove an edge from the graph if this port is an edge connected to another switch
+		r.graph.RemoveEdge(p)
+		r.sendEvent()
+	}
 }
 
-func (r *Topology) Path(srcDeviceID, dstDeviceID string) [][2]*Port {
+func (r *topology) Path(srcDeviceID, dstDeviceID string) [][2]*Port {
 	// Read lock
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
@@ -181,14 +216,14 @@ func (r *Topology) Path(srcDeviceID, dstDeviceID string) [][2]*Port {
 	path := r.graph.FindPath(src, dst)
 	for _, p := range path {
 		device := p.V.(*Device)
-		link := p.E.(*Link)
+		link := p.E.(*link)
 		v = append(v, pickPort(device, link))
 	}
 
 	return v
 }
 
-func pickPort(d *Device, l *Link) [2]*Port {
+func pickPort(d *Device, l *link) [2]*Port {
 	p := l.Points()
 	if p[0].Vertex().ID() == d.ID() {
 		return [2]*Port{p[0].(*Port), p[1].(*Port)}
@@ -197,10 +232,10 @@ func pickPort(d *Device, l *Link) [2]*Port {
 	return [2]*Port{p[1].(*Port), p[0].(*Port)}
 }
 
-func (r *Topology) IsEdge(p *Port) bool {
+func (r *topology) IsEdge(p *Port) bool {
 	return r.graph.IsEdge(p)
 }
 
-func (r *Topology) IsEnabledBySTP(p *Port) bool {
+func (r *topology) IsEnabledBySTP(p *Port) bool {
 	return r.graph.IsEnabledPoint(p)
 }

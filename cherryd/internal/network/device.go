@@ -9,10 +9,8 @@ package network
 
 import (
 	"encoding"
-	"errors"
 	"git.sds.co.kr/cherry.git/cherryd/internal/log"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
-	"git.sds.co.kr/cherry.git/cherryd/openflow/trans"
 	"sync"
 )
 
@@ -34,9 +32,7 @@ type Device struct {
 	mutex        sync.RWMutex
 	id           string
 	log          log.Logger
-	watcher      Watcher
-	finder       Finder
-	controllers  map[uint8]trans.Writer
+	session      *session
 	descriptions Descriptions
 	features     Features
 	ports        map[uint32]*Port
@@ -44,19 +40,43 @@ type Device struct {
 	factory      openflow.Factory
 }
 
-func NewDevice(id string, log log.Logger, w Watcher, f Finder) *Device {
+func newDevice(log log.Logger, s *session) *Device {
+	if log == nil {
+		panic("Logger is nil")
+	}
+	if s == nil {
+		panic("Session is nil")
+	}
+
 	return &Device{
-		id:          id,
-		log:         log,
-		watcher:     w,
-		finder:      f,
-		controllers: make(map[uint8]trans.Writer),
-		ports:       make(map[uint32]*Port),
+		log:     log,
+		session: s,
+		ports:   make(map[uint32]*Port),
 	}
 }
 
 func (r *Device) ID() string {
+	// Read lock
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
 	return r.id
+}
+
+func (r *Device) setID(id string) {
+	// Write lock
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	r.id = id
+}
+
+func (r *Device) isValid() bool {
+	// Read lock
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	return len(r.id) > 0
 }
 
 func (r *Device) Factory() openflow.Factory {
@@ -67,42 +87,15 @@ func (r *Device) Factory() openflow.Factory {
 	return r.factory
 }
 
-func (r *Device) SetFactory(f openflow.Factory) {
+func (r *Device) setFactory(f openflow.Factory) {
 	// Write lock
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	if r.factory != nil {
-		return
+	if f == nil {
+		panic("Factory is nil")
 	}
 	r.factory = f
-}
-
-func (r *Device) AddController(id uint8, c trans.Writer) {
-	// Write lock
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	r.controllers[id] = c
-}
-
-func (r *Device) RemoveController(id uint8) {
-	/*
-	 * Start of write lock
-	 */
-	r.mutex.Lock()
-	delete(r.controllers, id)
-	nCtrls := len(r.controllers)
-	r.mutex.Unlock()
-	/*
-	 * End of write lock
-	 */
-
-	// We have no controllers?
-	if nCtrls == 0 {
-		// To avoid deadlock, we first unlock the mutex before calling a watcher function
-		r.watcher.DeviceRemoved(r)
-	}
 }
 
 func (r *Device) Descriptions() Descriptions {
@@ -113,7 +106,7 @@ func (r *Device) Descriptions() Descriptions {
 	return r.descriptions
 }
 
-func (r *Device) SetDescriptions(d Descriptions) {
+func (r *Device) setDescriptions(d Descriptions) {
 	// Write lock
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -129,7 +122,7 @@ func (r *Device) Features() Features {
 	return r.features
 }
 
-func (r *Device) SetFeatures(f Features) {
+func (r *Device) setFeatures(f Features) {
 	// Write lock
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -166,31 +159,30 @@ func (r *Device) setPort(num uint32, p openflow.Port) {
 	r.ports[num] = port
 }
 
-func (r *Device) AddPort(num uint32, p openflow.Port) {
+func (r *Device) addPort(num uint32, p openflow.Port) {
 	// Write lock
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
+	if p == nil {
+		panic("Port is nil")
+	}
 	r.setPort(num, p)
 }
 
-func (r *Device) UpdatePort(num uint32, p openflow.Port) {
-	/*
-	 * Start of write lock
-	 */
+func (r *Device) updatePort(num uint32, p openflow.Port) {
+	// Write lock
 	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	if p == nil {
+		panic("Port is nil")
+	}
 	port := r.ports[num]
 	if port == nil {
 		r.setPort(num, p)
 	} else {
 		port.SetValue(p)
-	}
-	r.mutex.Unlock()
-	/*
-	 * End of write lock
-	 */
-	if port == nil {
-		return
 	}
 }
 
@@ -202,7 +194,7 @@ func (r *Device) FlowTableID() uint8 {
 	return r.flowTableID
 }
 
-func (r *Device) SetFlowTableID(id uint8) {
+func (r *Device) setFlowTableID(id uint8) {
 	// Write lock
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -215,10 +207,9 @@ func (r *Device) SendMessage(msg encoding.BinaryMarshaler) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	c, ok := r.controllers[0]
-	if !ok {
-		return errors.New("not found main transceiver connection whose aux ID is 0")
+	if msg == nil {
+		panic("Message is nil")
 	}
 
-	return c.Write(msg)
+	return r.session.Write(msg)
 }

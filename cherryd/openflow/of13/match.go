@@ -303,7 +303,7 @@ func (r *Match) SrcMAC() (wildcard bool, mac net.HardwareAddr) {
 		return false, v.(net.HardwareAddr)
 	}
 
-	return true, openflow.ZeroMAC
+	return true, net.HardwareAddr([]byte{0, 0, 0, 0, 0, 0})
 }
 
 func (r *Match) SetWildcardDstMAC() {
@@ -336,7 +336,7 @@ func (r *Match) DstMAC() (wildcard bool, mac net.HardwareAddr) {
 		return false, v.(net.HardwareAddr)
 	}
 
-	return true, openflow.ZeroMAC
+	return true, net.HardwareAddr([]byte{0, 0, 0, 0, 0, 0})
 }
 
 func (r *Match) SetSrcIP(ip *net.IPNet) {
@@ -375,7 +375,7 @@ func (r *Match) SrcIP() *net.IPNet {
 	}
 
 	return &net.IPNet{
-		IP:   openflow.ZeroIP,
+		IP:   net.IPv4zero,
 		Mask: net.CIDRMask(0, 32),
 	}
 }
@@ -416,7 +416,7 @@ func (r *Match) DstIP() *net.IPNet {
 	}
 
 	return &net.IPNet{
-		IP:   openflow.ZeroIP,
+		IP:   net.IPv4zero,
 		Mask: net.CIDRMask(0, 32),
 	}
 }

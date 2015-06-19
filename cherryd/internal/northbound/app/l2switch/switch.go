@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"git.sds.co.kr/cherry.git/cherryd/internal/log"
 	"git.sds.co.kr/cherry.git/cherryd/internal/network"
+	"git.sds.co.kr/cherry.git/cherryd/internal/northbound/app"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"git.sds.co.kr/cherry.git/cherryd/protocol"
 	"github.com/dlintw/goconf"
@@ -21,6 +22,7 @@ import (
 type L2Switch struct {
 	conf *goconf.ConfigFile
 	log  log.Logger
+	next app.Processor
 }
 
 func New(conf *goconf.ConfigFile, log log.Logger) *L2Switch {
@@ -215,7 +217,20 @@ func (r *L2Switch) localSwitching(p switchParam) error {
 	return packetout(p.egress, p.rawPacket)
 }
 
-func (r *L2Switch) ProcessPacket(finder network.Finder, eth *protocol.Ethernet, ingress *network.Port) (drop bool, err error) {
+func (r *L2Switch) OnPacketIn(finder network.Finder, ingress *network.Port, eth *protocol.Ethernet) error {
+	drop, err := r.processPacket(finder, ingress, eth)
+	if drop || err != nil {
+		return err
+	}
+
+	next, ok := r.Next()
+	if !ok {
+		return nil
+	}
+	return next.OnPacketIn(finder, ingress, eth)
+}
+
+func (r *L2Switch) processPacket(finder network.Finder, ingress *network.Port, eth *protocol.Ethernet) (drop bool, err error) {
 	packet, err := eth.MarshalBinary()
 	if err != nil {
 		return false, err
@@ -248,31 +263,54 @@ func (r *L2Switch) ProcessPacket(finder network.Finder, eth *protocol.Ethernet, 
 	return true, nil
 }
 
-func (r *L2Switch) ProcessPortChange(finder network.Finder, device *network.Device, status openflow.PortStatus) error {
-	if status.Port().IsPortDown() || status.Port().IsLinkDown() {
-		port := device.Port(status.Port().Number())
-		if port == nil {
-			return fmt.Errorf("failed to find a port %v on %v", status.Port().Number(), device.ID())
-		}
-		return r.cleanup(finder, port)
+func (r *L2Switch) OnDeviceUp(finder network.Finder, device *network.Device) error {
+	// Do nothing when a device is up
+	next, ok := r.Next()
+	if !ok {
+		return nil
 	}
-
-	return nil
+	return next.OnDeviceUp(finder, device)
 }
 
-func (r *L2Switch) ProcessDeviceClose(finder network.Finder, device *network.Device) error {
-	return r.removeAllFlows(finder)
+func (r *L2Switch) OnDeviceDown(finder network.Finder, device *network.Device) error {
+	// Do nothing when a device is down
+	next, ok := r.Next()
+	if !ok {
+		return nil
+	}
+	return next.OnDeviceDown(finder, device)
+}
+
+func (r *L2Switch) OnPortUp(finder network.Finder, port *network.Port) error {
+	// Do nothing when port is up
+	next, ok := r.Next()
+	if !ok {
+		return nil
+	}
+	return next.OnPortUp(finder, port)
+}
+
+func (r *L2Switch) OnPortDown(finder network.Finder, port *network.Port) error {
+	// Remove flow rules related with this downed port
+	if err := r.cleanup(finder, port); err != nil {
+		return err
+	}
+
+	next, ok := r.Next()
+	if !ok {
+		return nil
+	}
+	return next.OnPortDown(finder, port)
+}
+
+func (r *L2Switch) OnTopologyChange(finder network.Finder) error {
+	// We should remove all edges from all switch devices when the network topology is changed.
+	// Otherwise, installed flow rules in switches may result in incorrect packet routing based on the previous topology.
+	return r.removeAllFlows(finder.Devices())
 }
 
 func (r *L2Switch) cleanup(finder network.Finder, port *network.Port) error {
 	r.log.Debug(fmt.Sprintf("Cleaning up for %v..", port.ID()))
-
-	// We should remove all edges from all switch devices if the port is an edge among two switches.
-	// Otherwise, remaining flow rules in switches may result in incorrect packet routing to the
-	// disconnected port.
-	if finder.IsEdge(port) {
-		return r.removeAllFlows(finder)
-	}
 
 	nodes := port.Nodes()
 	// Remove all flows related with the nodes that are connected to this port
@@ -288,10 +326,9 @@ func (r *L2Switch) cleanup(finder network.Finder, port *network.Port) error {
 	return nil
 }
 
-func (r *L2Switch) removeAllFlows(finder network.Finder) error {
+func (r *L2Switch) removeAllFlows(devices []*network.Device) error {
 	r.log.Debug("Removing all flows from all devices..")
 
-	devices := finder.Devices()
 	for _, d := range devices {
 		factory := d.Factory()
 		// Wildcard match
@@ -352,4 +389,16 @@ func (r *L2Switch) removeFlow(d *network.Device, match openflow.Match) error {
 	flowmod.SetFlowMatch(match)
 
 	return d.SendMessage(flowmod)
+}
+
+func (r *L2Switch) Next() (next app.Processor, ok bool) {
+	if r.next != nil {
+		return r.next, true
+	}
+
+	return nil, false
+}
+
+func (r *L2Switch) SetNext(next app.Processor) {
+	r.next = next
 }

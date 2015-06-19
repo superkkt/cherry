@@ -63,7 +63,7 @@ func (r *BaseAction) SetSrcMAC(mac net.HardwareAddr) {
 
 func (r *BaseAction) SrcMAC() (ok bool, mac net.HardwareAddr) {
 	if r.srcMAC == nil {
-		return false, ZeroMAC
+		return false, net.HardwareAddr([]byte{0, 0, 0, 0, 0, 0})
 	}
 
 	return true, *r.srcMAC
@@ -80,7 +80,7 @@ func (r *BaseAction) SetDstMAC(mac net.HardwareAddr) {
 
 func (r *BaseAction) DstMAC() (ok bool, mac net.HardwareAddr) {
 	if r.dstMAC == nil {
-		return false, ZeroMAC
+		return false, net.HardwareAddr([]byte{0, 0, 0, 0, 0, 0})
 	}
 
 	return true, *r.dstMAC

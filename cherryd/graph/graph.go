@@ -42,7 +42,7 @@ type vertex struct {
 }
 
 type Graph struct {
-	mutex     sync.Mutex
+	mutex     sync.RWMutex
 	vertexies map[string]vertex
 	edges     map[string]*edge
 	points    map[string]*edge
@@ -158,8 +158,9 @@ func (r *Graph) RemoveEdge(p Point) {
 
 // IsEdge returns whether p is on an edge between two vertexeis.
 func (r *Graph) IsEdge(p Point) bool {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
+	// Read lock
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
 
 	if p == nil {
 		panic("nil point")
@@ -171,8 +172,9 @@ func (r *Graph) IsEdge(p Point) bool {
 
 // IsEnabledPoint returns whether p is an active point that is not disabled by the minimum spanning tree.
 func (r *Graph) IsEnabledPoint(p Point) bool {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
+	// Read lock
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
 
 	if p == nil {
 		panic("nil point")
@@ -340,8 +342,9 @@ type Path struct {
 }
 
 func (r *Graph) FindPath(src, dst Vertex) []Path {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
+	// Read lock
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
 
 	if len(r.vertexies) == 0 || len(r.edges) == 0 {
 		return []Path{}

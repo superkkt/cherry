@@ -5,7 +5,7 @@
  * Kitae Kim <superkkt@sds.co.kr>
  */
 
-package session
+package network
 
 import (
 	"bytes"
@@ -13,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"git.sds.co.kr/cherry.git/cherryd/internal/log"
-	"git.sds.co.kr/cherry.git/cherryd/internal/network"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"git.sds.co.kr/cherry.git/cherryd/openflow/of10"
 	"git.sds.co.kr/cherry.git/cherryd/openflow/of13"
@@ -24,160 +23,163 @@ import (
 	"strconv"
 )
 
-type processor interface {
-	ProcessPacket(network.Finder, *protocol.Ethernet, *network.Port) error
-	ProcessPortChange(network.Finder, *network.Device, openflow.PortStatus) error
-	ProcessDeviceClose(network.Finder, *network.Device) error
-}
+var (
+	errNotNegotiated = errors.New("invalid command on non-negotiated session")
+)
 
-type sessionHandler interface {
-	trans.Handler
-	setDevice(*network.Device)
-}
-
-type Controller struct {
-	device     *network.Device
-	trans      *trans.Transceiver
-	log        log.Logger
-	handler    sessionHandler
+type session struct {
 	negotiated bool
-	watcher    network.Watcher
-	finder     network.Finder
-	processor  processor
-	auxID      uint8
+	log        log.Logger
+	device     *Device
+	trans      *trans.Transceiver
+	handler    trans.Handler
+	watcher    watcher
+	finder     Finder
+	listener   ControllerEventListener
 }
 
-type Config struct {
-	Conn      io.ReadWriteCloser
-	Logger    log.Logger
-	Watcher   network.Watcher
-	Finder    network.Finder
-	Processor processor
+type sessionConfig struct {
+	conn     net.Conn
+	logger   log.Logger
+	watcher  watcher
+	finder   Finder
+	listener ControllerEventListener
 }
 
-func NewController(c Config) *Controller {
-	stream := trans.NewStream(c.Conn)
+func checkParam(c sessionConfig) {
+	if c.conn == nil {
+		panic("Conn is nil")
+	}
+	if c.logger == nil {
+		panic("Logger is nil")
+	}
+	if c.watcher == nil {
+		panic("Watcher is nil")
+	}
+	if c.finder == nil {
+		panic("Finder is nil")
+	}
+	if c.listener == nil {
+		panic("Listener is nil")
+	}
+}
 
-	v := new(Controller)
-	v.log = c.Logger
-	v.watcher = c.Watcher
-	v.finder = c.Finder
-	v.processor = c.Processor
+func newSession(c sessionConfig) *session {
+	checkParam(c)
+
+	stream := trans.NewStream(c.conn)
+	v := new(session)
+	v.log = c.logger
+	v.watcher = c.watcher
+	v.finder = c.finder
+	v.listener = c.listener
+	v.device = newDevice(c.logger, v)
 	v.trans = trans.NewTransceiver(stream, v)
 
 	return v
 }
 
-func (r *Controller) OnHello(f openflow.Factory, w trans.Writer, v openflow.Hello) error {
+func (r *session) OnHello(f openflow.Factory, w trans.Writer, v openflow.Hello) error {
 	r.log.Debug(fmt.Sprintf("HELLO (ver=%v) is received", v.Version()))
 
 	// Ignore duplicated HELLO messages
 	if r.negotiated {
 		return nil
 	}
-	r.negotiated = true
 
 	switch v.Version() {
 	case openflow.OF10_VERSION:
-		r.handler = NewOF10Controller(r.log)
+		r.handler = newOF10Session(r.log, r.device)
 	case openflow.OF13_VERSION:
-		r.handler = NewOF13Controller(r.log)
+		r.handler = newOF13Session(r.log, r.device)
 	default:
-		err := errors.New(fmt.Sprintf("unsupported OpenFlow version: %v", v.Version()))
-		r.log.Err(err.Error())
-		return err
+		return fmt.Errorf("unsupported OpenFlow version: %v", v.Version())
 	}
+	r.device.setFactory(f)
+	r.negotiated = true
 
 	return r.handler.OnHello(f, w, v)
 }
 
-func (r *Controller) OnError(f openflow.Factory, w trans.Writer, v openflow.Error) error {
+func (r *session) OnError(f openflow.Factory, w trans.Writer, v openflow.Error) error {
 	r.log.Err(fmt.Sprintf("Error: class=%v, code=%v, data=%v", v.Class(), v.Code(), v.Data()))
-	// Just in case
-	if r.device == nil {
-		return nil
+
+	if !r.negotiated {
+		return errNotNegotiated
 	}
+
 	return r.handler.OnError(f, w, v)
 }
 
-func (r *Controller) setDevice(version uint8, device *network.Device, features network.Features) {
-	r.device = device
-	r.handler.setDevice(device)
-	r.device.SetFeatures(features)
-	switch version {
-	case openflow.OF10_VERSION:
-		r.device.SetFactory(of10.NewFactory())
-	case openflow.OF13_VERSION:
-		r.device.SetFactory(of13.NewFactory())
-	default:
-		panic("Unsupported OpenFlow version")
-	}
-}
-
-func (r *Controller) OnFeaturesReply(f openflow.Factory, w trans.Writer, v openflow.FeaturesReply) error {
+func (r *session) OnFeaturesReply(f openflow.Factory, w trans.Writer, v openflow.FeaturesReply) error {
 	r.log.Debug(fmt.Sprintf("FEATURES_REPLY: DPID=%v, NumBufs=%v, NumTables=%v", v.DPID(), v.NumBuffers(), v.NumTables()))
 
-	r.auxID = v.AuxID()
-	dpid := strconv.FormatUint(v.DPID(), 10)
-	device := r.finder.Device(dpid)
-	if device == nil {
-		device = network.NewDevice(dpid, r.log, r.watcher, r.finder)
-		r.watcher.DeviceAdded(device)
+	if !r.negotiated {
+		return errNotNegotiated
 	}
-	device.AddController(v.AuxID(), r)
 
-	features := network.Features{
+	dpid := strconv.FormatUint(v.DPID(), 10)
+	// Already connected device?
+	if r.finder.Device(dpid) != nil {
+		return errors.New("duplicated device DPID (aux. connection is not supported yet)")
+	}
+	r.device.setID(dpid)
+	// We assume a device is up after setting its DPID
+	if err := r.listener.OnDeviceUp(r.finder, r.device); err != nil {
+		return err
+	}
+	r.watcher.DeviceAdded(r.device)
+
+	features := Features{
 		DPID:       v.DPID(),
 		NumBuffers: v.NumBuffers(),
 		NumTables:  v.NumTables(),
 	}
-	r.setDevice(v.Version(), device, features)
+	r.device.setFeatures(features)
 
 	return r.handler.OnFeaturesReply(f, w, v)
 }
 
-func (r *Controller) OnGetConfigReply(f openflow.Factory, w trans.Writer, v openflow.GetConfigReply) error {
+func (r *session) OnGetConfigReply(f openflow.Factory, w trans.Writer, v openflow.GetConfigReply) error {
 	r.log.Debug("GET_CONFIG_REPLY is received")
 
-	if r.device == nil {
-		r.log.Warning("Uninitialized device!")
-		return nil
+	if !r.negotiated {
+		return errNotNegotiated
 	}
 
 	return r.handler.OnGetConfigReply(f, w, v)
 }
 
-func (r *Controller) OnDescReply(f openflow.Factory, w trans.Writer, v openflow.DescReply) error {
+func (r *session) OnDescReply(f openflow.Factory, w trans.Writer, v openflow.DescReply) error {
 	r.log.Debug("DESC_REPLY is received")
+
+	if !r.negotiated {
+		return errNotNegotiated
+	}
+
 	r.log.Debug(fmt.Sprintf("Manufacturer=%v", v.Manufacturer()))
 	r.log.Debug(fmt.Sprintf("Hardware=%v", v.Hardware()))
 	r.log.Debug(fmt.Sprintf("Software=%v", v.Software()))
 	r.log.Debug(fmt.Sprintf("Serial=%v", v.Serial()))
 	r.log.Debug(fmt.Sprintf("Description=%v", v.Description()))
 
-	if r.device == nil {
-		r.log.Warning("Uninitialized device!")
-		return nil
-	}
-
-	desc := network.Descriptions{
+	desc := Descriptions{
 		Manufacturer: v.Manufacturer(),
 		Hardware:     v.Hardware(),
 		Software:     v.Software(),
 		Serial:       v.Serial(),
 		Description:  v.Description(),
 	}
-	r.device.SetDescriptions(desc)
+	r.device.setDescriptions(desc)
 
 	return r.handler.OnDescReply(f, w, v)
 }
 
-func (r *Controller) OnPortDescReply(f openflow.Factory, w trans.Writer, v openflow.PortDescReply) error {
+func (r *session) OnPortDescReply(f openflow.Factory, w trans.Writer, v openflow.PortDescReply) error {
 	r.log.Debug(fmt.Sprintf("PORT_DESC_REPLY is received: %v ports", len(v.Ports())))
 
-	if r.device == nil {
-		r.log.Warning("Uninitialized device!")
-		return nil
+	if !r.negotiated {
+		return errNotNegotiated
 	}
 
 	return r.handler.OnPortDescReply(f, w, v)
@@ -244,28 +246,63 @@ func sendLLDP(deviceID string, f openflow.Factory, w trans.Writer, p openflow.Po
 	return w.Write(out)
 }
 
-func (r *Controller) OnPortStatus(f openflow.Factory, w trans.Writer, v openflow.PortStatus) error {
+func (r *session) sendPortEvent(portNum uint32, up bool) {
+	port := r.device.Port(portNum)
+	if port == nil {
+		return
+	}
+
+	if up {
+		if err := r.listener.OnPortUp(r.finder, port); err != nil {
+			r.log.Err(fmt.Sprintf("session: OnPortUp: %v", err))
+			return
+		}
+	} else {
+		if err := r.listener.OnPortDown(r.finder, port); err != nil {
+			r.log.Err(fmt.Sprintf("session: OnPortDown: %v", err))
+			return
+		}
+	}
+}
+
+func (r *session) updatePort(v openflow.PortStatus) {
+	port := v.Port()
+
+	switch v.Version() {
+	case openflow.OF10_VERSION:
+		if port.Number() > of10.OFPP_MAX {
+			return
+		}
+	case openflow.OF13_VERSION:
+		if port.Number() > of13.OFPP_MAX {
+			return
+		}
+	default:
+		panic("unsupported OpenFlow version")
+	}
+	r.device.updatePort(port.Number(), port)
+}
+
+func (r *session) OnPortStatus(f openflow.Factory, w trans.Writer, v openflow.PortStatus) error {
 	r.log.Debug("PORT_STATUS is received")
 
-	if r.device == nil {
-		r.log.Warning("Uninitialized device!")
-		return nil
+	if !r.negotiated {
+		return errNotNegotiated
 	}
 
 	port := v.Port()
 	r.log.Debug(fmt.Sprintf("Device=%v, PortNum=%v: AdminUp=%v, LinkUp=%v", r.device.ID(), port.Number(), !port.IsPortDown(), !port.IsLinkDown()))
-	if err := r.handler.OnPortStatus(f, w, v); err != nil {
-		return err
-	}
-	if err := r.processor.ProcessPortChange(r.finder, r.device, v); err != nil {
-		return err
-	}
+	r.updatePort(v)
+
+	// Send port event
+	up := !port.IsPortDown() && !port.IsLinkDown()
+	r.sendPortEvent(port.Number(), up)
 
 	// Is this an enabled port?
-	if !port.IsPortDown() && !port.IsLinkDown() {
+	if up && r.device.isValid() {
 		// Send LLDP to update network topology
 		if err := sendLLDP(r.device.ID(), f, w, port); err != nil {
-			return fmt.Errorf("failed to send LLDP: %v", err)
+			return err
 		}
 	} else {
 		// Send port removed event
@@ -275,15 +312,14 @@ func (r *Controller) OnPortStatus(f openflow.Factory, w trans.Writer, v openflow
 		}
 	}
 
-	return nil
+	return r.handler.OnPortStatus(f, w, v)
 }
 
-func (r *Controller) OnFlowRemoved(f openflow.Factory, w trans.Writer, v openflow.FlowRemoved) error {
+func (r *session) OnFlowRemoved(f openflow.Factory, w trans.Writer, v openflow.FlowRemoved) error {
 	r.log.Debug(fmt.Sprintf("FLOW_REMOVED is received: cookie=%v", v.Cookie()))
 
-	if r.device == nil {
-		r.log.Warning("Uninitialized device!")
-		return nil
+	if !r.negotiated {
+		return errNotNegotiated
 	}
 
 	return r.handler.OnFlowRemoved(f, w, v)
@@ -343,7 +379,7 @@ func extractDeviceInfo(p *protocol.LLDP) (deviceID string, portNum uint32, err e
 	return deviceID, uint32(num), nil
 }
 
-func (r *Controller) findNeighborPort(deviceID string, portNum uint32) (*network.Port, error) {
+func (r *session) findNeighborPort(deviceID string, portNum uint32) (*Port, error) {
 	device := r.finder.Device(deviceID)
 	if device == nil {
 		return nil, fmt.Errorf("failed to find a neighbor device: id=%v", deviceID)
@@ -356,7 +392,7 @@ func (r *Controller) findNeighborPort(deviceID string, portNum uint32) (*network
 	return port, nil
 }
 
-func (r *Controller) handleLLDP(inPort *network.Port, ethernet *protocol.Ethernet) error {
+func (r *session) handleLLDP(inPort *Port, ethernet *protocol.Ethernet) error {
 	lldp, err := getLLDP(ethernet.Payload)
 	if err != nil {
 		return err
@@ -371,31 +407,27 @@ func (r *Controller) handleLLDP(inPort *network.Port, ethernet *protocol.Etherne
 	if err != nil {
 		return err
 	}
-	r.watcher.DeviceLinked([2]*network.Port{inPort, port})
+	r.watcher.DeviceLinked([2]*Port{inPort, port})
 
 	return nil
 }
 
-func (r *Controller) addNewNode(inPort *network.Port, mac net.HardwareAddr) error {
+func (r *session) addNewNode(inPort *Port, mac net.HardwareAddr) {
 	r.log.Debug(fmt.Sprintf("Adding a new node %v on %v..", mac, inPort.ID()))
-
-	node := inPort.AddNode(mac)
+	node := inPort.addNode(mac)
 	r.watcher.NodeAdded(node)
-
-	return nil
 }
 
-func (r *Controller) isActivatedPort(p *network.Port) bool {
+func (r *session) isActivatedPort(p *Port) bool {
 	// We assume that a port is in inactive state during 3 seconds after setting its value to avoid broadcast storm.
-	return p.Duration().Seconds() > 3
+	return p.duration().Seconds() > 3
 }
 
-func (r *Controller) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.PacketIn) error {
+func (r *session) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.PacketIn) error {
 	r.log.Debug(fmt.Sprintf("PACKET_IN is received: inport=%v, reason=%v, tableID=%v, cookie=%v", v.InPort(), v.Reason(), v.TableID(), v.Cookie()))
 
-	if r.device == nil {
-		r.log.Warning("Uninitialized device!")
-		return nil
+	if !r.negotiated {
+		return errNotNegotiated
 	}
 
 	ethernet, err := getEthernet(v.Data())
@@ -404,7 +436,8 @@ func (r *Controller) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.P
 	}
 	inPort := r.device.Port(v.InPort())
 	if inPort == nil {
-		return fmt.Errorf("failed to find a port: deviceID=%v, portNum=%v", r.device.ID(), v.InPort())
+		r.log.Err(fmt.Sprintf("session: failed to find a port: deviceID=%v, portNum=%v, so ignore PACKET_IN..", r.device.ID(), v.InPort()))
+		return nil
 	}
 	// Process LLDP, and then add an edge among two switches
 	if isLLDP(ethernet) {
@@ -413,11 +446,8 @@ func (r *Controller) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.P
 	// Do we know packet sender?
 	if r.finder.Node(ethernet.SrcMAC) == nil {
 		r.log.Debug(fmt.Sprintf("MAC learning... %v", ethernet.SrcMAC))
-
 		// MAC learning
-		if err := r.addNewNode(inPort, ethernet.SrcMAC); err != nil {
-			return err
-		}
+		r.addNewNode(inPort, ethernet.SrcMAC)
 	}
 	// Do nothing if the ingress port is in inactive state
 	if !r.isActivatedPort(inPort) {
@@ -429,33 +459,29 @@ func (r *Controller) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.P
 		r.log.Info(fmt.Sprintf("STP: ignoring PACKET_IN from %v:%v", r.device.ID(), v.InPort()))
 		return nil
 	}
-	if err := r.handler.OnPacketIn(f, w, v); err != nil {
+	if err := r.listener.OnPacketIn(r.finder, inPort, ethernet); err != nil {
 		return err
 	}
 
-	return r.processor.ProcessPacket(r.finder, ethernet, inPort)
+	return r.handler.OnPacketIn(f, w, v)
 }
 
 // TODO: Use context to shutdown running controllers
-func (r *Controller) Run() {
+func (r *session) Run() {
 	if err := r.trans.Run(); err != nil && err != io.EOF {
 		r.log.Err(fmt.Sprintf("OpenFlow transceiver abnormally terminated: %v", err))
 	}
-	r.trans.Close()
-	if r.device != nil {
-		r.log.Info(fmt.Sprintf("Session controller is disconnected (DPID=%v, AuxID=%v)", r.device.ID(), r.auxID))
-		r.device.RemoveController(r.auxID)
-		// Main connection?
-		if r.auxID == 0 {
-			// Assume the device is disconnected
-			r.processor.ProcessDeviceClose(r.finder, r.device)
+	r.log.Info(fmt.Sprintf("Session controller is disconnected (DPID=%v)", r.device.ID()))
+
+	if r.device.isValid() {
+		if err := r.listener.OnDeviceDown(r.finder, r.device); err != nil {
+			r.log.Err(fmt.Sprintf("session: executing OnDeviceDown: %v", err))
 		}
-	} else {
-		r.log.Info(fmt.Sprintf("Session controller is disconnected (AuxID=%v)", r.auxID))
+		r.watcher.DeviceRemoved(r.device)
 	}
 }
 
-func (r *Controller) Write(msg encoding.BinaryMarshaler) error {
+func (r *session) Write(msg encoding.BinaryMarshaler) error {
 	return r.trans.Write(msg)
 }
 

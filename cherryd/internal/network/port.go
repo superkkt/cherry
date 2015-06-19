@@ -67,7 +67,7 @@ func (r *Port) SetValue(p openflow.Port) {
 }
 
 // Duration returns the time during which this port activated
-func (r *Port) Duration() time.Duration {
+func (r *Port) duration() time.Duration {
 	// Read lock
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
@@ -92,7 +92,7 @@ func (r *Port) Nodes() []*Node {
 	return v
 }
 
-func (r *Port) AddNode(mac net.HardwareAddr) *Node {
+func (r *Port) addNode(mac net.HardwareAddr) *Node {
 	// Write lock
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -103,7 +103,7 @@ func (r *Port) AddNode(mac net.HardwareAddr) *Node {
 	return node
 }
 
-func (r *Port) RemoveNode(mac net.HardwareAddr) {
+func (r *Port) removeNode(mac net.HardwareAddr) {
 	// Write lock
 	r.mutex.Lock()
 	defer r.mutex.Unlock()

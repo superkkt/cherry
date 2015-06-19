@@ -10,9 +10,8 @@ package main
 import (
 	"flag"
 	"fmt"
-	"git.sds.co.kr/cherry.git/cherryd/internal/application"
 	"git.sds.co.kr/cherry.git/cherryd/internal/network"
-	"git.sds.co.kr/cherry.git/cherryd/internal/session"
+	"git.sds.co.kr/cherry.git/cherryd/internal/northbound"
 	"golang.org/x/net/context"
 	"log/syslog"
 	"net"
@@ -71,8 +70,10 @@ func listen(ctx context.Context, log *syslog.Writer, config *Config) {
 	backlog := make(chan net.Conn, 32)
 	go f(backlog)
 
-	topology := network.NewTopology(log)
+	controller := network.NewController(log)
 	manager := createAppManager(config, log)
+	manager.AddEventSender(controller)
+
 	// Infinite loop
 	for {
 		select {
@@ -87,22 +88,15 @@ func listen(ctx context.Context, log *syslog.Writer, config *Config) {
 					log.Err(fmt.Sprintf("Failed to enable socket keepalive: %v", err))
 				}
 			}
-			ctr := session.NewController(session.Config{
-				Conn:      conn,
-				Logger:    log,
-				Watcher:   topology,
-				Finder:    topology,
-				Processor: manager,
-			})
-			go ctr.Run()
+			controller.AddConnection(conn)
 		case <-ctx.Done():
 			return
 		}
 	}
 }
 
-func createAppManager(config *Config, log *syslog.Writer) *application.Manager {
-	manager := application.NewManager(config.RawConfig(), log)
+func createAppManager(config *Config, log *syslog.Writer) *northbound.Manager {
+	manager := northbound.NewManager(config.RawConfig(), log)
 	for _, v := range config.Apps {
 		manager.Enable(v)
 	}

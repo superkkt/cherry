@@ -5,33 +5,29 @@
  * Kitae Kim <superkkt@sds.co.kr>
  */
 
-package session
+package network
 
 import (
 	"fmt"
 	"git.sds.co.kr/cherry.git/cherryd/internal/log"
-	"git.sds.co.kr/cherry.git/cherryd/internal/network"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"git.sds.co.kr/cherry.git/cherryd/openflow/of10"
 	"git.sds.co.kr/cherry.git/cherryd/openflow/trans"
 )
 
-type OF10Controller struct {
-	device *network.Device
+type of10Session struct {
 	log    log.Logger
+	device *Device
 }
 
-func NewOF10Controller(log log.Logger) *OF10Controller {
-	return &OF10Controller{
-		log: log,
+func newOF10Session(log log.Logger, d *Device) *of10Session {
+	return &of10Session{
+		log:    log,
+		device: d,
 	}
 }
 
-func (r *OF10Controller) setDevice(d *network.Device) {
-	r.device = d
-}
-
-func (r *OF10Controller) OnHello(f openflow.Factory, w trans.Writer, v openflow.Hello) error {
+func (r *of10Session) OnHello(f openflow.Factory, w trans.Writer, v openflow.Hello) error {
 	if err := sendHello(f, w); err != nil {
 		return fmt.Errorf("failed to send HELLO: %v", err)
 	}
@@ -57,18 +53,18 @@ func (r *OF10Controller) OnHello(f openflow.Factory, w trans.Writer, v openflow.
 	return nil
 }
 
-func (r *OF10Controller) OnError(f openflow.Factory, w trans.Writer, v openflow.Error) error {
+func (r *of10Session) OnError(f openflow.Factory, w trans.Writer, v openflow.Error) error {
 	return nil
 }
 
-func (r *OF10Controller) OnFeaturesReply(f openflow.Factory, w trans.Writer, v openflow.FeaturesReply) error {
+func (r *of10Session) OnFeaturesReply(f openflow.Factory, w trans.Writer, v openflow.FeaturesReply) error {
 	ports := v.Ports()
 	for _, p := range ports {
 		if p.Number() > of10.OFPP_MAX {
 			continue
 		}
-		r.device.AddPort(p.Number(), p)
-		if !p.IsPortDown() && !p.IsLinkDown() {
+		r.device.addPort(p.Number(), p)
+		if !p.IsPortDown() && !p.IsLinkDown() && r.device.isValid() {
 			// Send LLDP to update network topology
 			if err := sendLLDP(r.device.ID(), f, w, p); err != nil {
 				r.log.Err(fmt.Sprintf("failed to send LLDP: %v", err))
@@ -80,32 +76,26 @@ func (r *OF10Controller) OnFeaturesReply(f openflow.Factory, w trans.Writer, v o
 	return nil
 }
 
-func (r *OF10Controller) OnGetConfigReply(f openflow.Factory, w trans.Writer, v openflow.GetConfigReply) error {
+func (r *of10Session) OnGetConfigReply(f openflow.Factory, w trans.Writer, v openflow.GetConfigReply) error {
 	return nil
 }
 
-func (r *OF10Controller) OnDescReply(f openflow.Factory, w trans.Writer, v openflow.DescReply) error {
+func (r *of10Session) OnDescReply(f openflow.Factory, w trans.Writer, v openflow.DescReply) error {
 	return nil
 }
 
-func (r *OF10Controller) OnPortDescReply(f openflow.Factory, w trans.Writer, v openflow.PortDescReply) error {
+func (r *of10Session) OnPortDescReply(f openflow.Factory, w trans.Writer, v openflow.PortDescReply) error {
 	return nil
 }
 
-func (r *OF10Controller) OnPortStatus(f openflow.Factory, w trans.Writer, v openflow.PortStatus) error {
-	p := v.Port()
-	if p.Number() > of10.OFPP_MAX {
-		return nil
-	}
-	r.device.UpdatePort(p.Number(), p)
-
+func (r *of10Session) OnPortStatus(f openflow.Factory, w trans.Writer, v openflow.PortStatus) error {
 	return nil
 }
 
-func (r *OF10Controller) OnFlowRemoved(f openflow.Factory, w trans.Writer, v openflow.FlowRemoved) error {
+func (r *of10Session) OnFlowRemoved(f openflow.Factory, w trans.Writer, v openflow.FlowRemoved) error {
 	return nil
 }
 
-func (r *OF10Controller) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.PacketIn) error {
+func (r *of10Session) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.PacketIn) error {
 	return nil
 }

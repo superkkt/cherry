@@ -30,6 +30,11 @@ type Writer interface {
 	Write(msg encoding.BinaryMarshaler) error
 }
 
+type WriteCloser interface {
+	Writer
+	Close() error
+}
+
 type Transceiver struct {
 	stream      *Stream
 	observer    Handler
@@ -38,6 +43,7 @@ type Transceiver struct {
 	timestamp   time.Time     // Last activated time
 	latency     time.Duration // Network latency measured by echo request and reply
 	pingCounter uint
+	closed      bool
 }
 
 type Handler interface {
@@ -463,5 +469,14 @@ func (r *Transceiver) handlePacketIn(packet []byte) error {
 }
 
 func (r *Transceiver) Close() error {
-	return r.stream.Close()
+	if r.closed {
+		return nil
+	}
+
+	if err := r.stream.Close(); err != nil {
+		return err
+	}
+	r.closed = true
+
+	return nil
 }

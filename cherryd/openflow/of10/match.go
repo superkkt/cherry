@@ -155,10 +155,10 @@ type Match struct {
 func NewMatch() openflow.Match {
 	return &Match{
 		wildcards: newWildcardAll(),
-		srcMAC:    openflow.ZeroMAC,
-		dstMAC:    openflow.ZeroMAC,
-		srcIP:     openflow.ZeroIP,
-		dstIP:     openflow.ZeroIP,
+		srcMAC:    net.HardwareAddr([]byte{0, 0, 0, 0, 0, 0}),
+		dstMAC:    net.HardwareAddr([]byte{0, 0, 0, 0, 0, 0}),
+		srcIP:     net.IPv4zero,
+		dstIP:     net.IPv4zero,
 	}
 }
 
@@ -281,7 +281,7 @@ func (r *Match) InPort() (wildcard bool, inport openflow.InPort) {
 }
 
 func (r *Match) SetWildcardSrcMAC() {
-	r.srcMAC = openflow.ZeroMAC
+	r.srcMAC = net.HardwareAddr([]byte{0, 0, 0, 0, 0, 0})
 	r.wildcards.SrcMAC = true
 }
 
@@ -300,7 +300,7 @@ func (r *Match) SrcMAC() (wildcard bool, mac net.HardwareAddr) {
 }
 
 func (r *Match) SetWildcardDstMAC() {
-	r.dstMAC = openflow.ZeroMAC
+	r.dstMAC = net.HardwareAddr([]byte{0, 0, 0, 0, 0, 0})
 	r.wildcards.DstMAC = true
 }
 

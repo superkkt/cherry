@@ -13,28 +13,28 @@ import (
 	"sort"
 )
 
-type Link struct {
+type link struct {
 	ports [2]*Port
 }
 
-func NewLink(ports [2]*Port) *Link {
-	return &Link{
+func newLink(ports [2]*Port) *link {
+	return &link{
 		ports: ports,
 	}
 }
 
-func (r *Link) ID() string {
+func (r *link) ID() string {
 	s := []string{r.ports[0].ID(), r.ports[1].ID()}
 	sort.Strings(s)
 
 	return fmt.Sprintf("%v/%v", s[0], s[1])
 }
 
-func (r *Link) Points() [2]graph.Point {
+func (r *link) Points() [2]graph.Point {
 	return [2]graph.Point{r.ports[0], r.ports[1]}
 }
 
-func (r *Link) Weight() float64 {
+func (r *link) Weight() float64 {
 	// TODO: Calculate weight dynamically based on the link speed among these two ports
 	return 0
 }

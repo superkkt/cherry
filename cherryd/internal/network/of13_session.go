@@ -5,34 +5,30 @@
  * Kitae Kim <superkkt@sds.co.kr>
  */
 
-package session
+package network
 
 import (
 	"fmt"
 	"git.sds.co.kr/cherry.git/cherryd/internal/log"
-	"git.sds.co.kr/cherry.git/cherryd/internal/network"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"git.sds.co.kr/cherry.git/cherryd/openflow/of13"
 	"git.sds.co.kr/cherry.git/cherryd/openflow/trans"
 	"strings"
 )
 
-type OF13Controller struct {
-	device *network.Device
+type of13Session struct {
 	log    log.Logger
+	device *Device
 }
 
-func NewOF13Controller(log log.Logger) *OF13Controller {
-	return &OF13Controller{
-		log: log,
+func newOF13Session(log log.Logger, d *Device) *of13Session {
+	return &of13Session{
+		log:    log,
+		device: d,
 	}
 }
 
-func (r *OF13Controller) setDevice(d *network.Device) {
-	r.device = d
-}
-
-func (r *OF13Controller) OnHello(f openflow.Factory, w trans.Writer, v openflow.Hello) error {
+func (r *of13Session) OnHello(f openflow.Factory, w trans.Writer, v openflow.Hello) error {
 	if err := sendHello(f, w); err != nil {
 		return fmt.Errorf("failed to send HELLO: %v", err)
 	}
@@ -66,15 +62,15 @@ func (r *OF13Controller) OnHello(f openflow.Factory, w trans.Writer, v openflow.
 	return nil
 }
 
-func (r *OF13Controller) OnError(f openflow.Factory, w trans.Writer, v openflow.Error) error {
+func (r *of13Session) OnError(f openflow.Factory, w trans.Writer, v openflow.Error) error {
 	return nil
 }
 
-func (r *OF13Controller) OnFeaturesReply(f openflow.Factory, w trans.Writer, v openflow.FeaturesReply) error {
+func (r *of13Session) OnFeaturesReply(f openflow.Factory, w trans.Writer, v openflow.FeaturesReply) error {
 	return nil
 }
 
-func (r *OF13Controller) OnGetConfigReply(f openflow.Factory, w trans.Writer, v openflow.GetConfigReply) error {
+func (r *of13Session) OnGetConfigReply(f openflow.Factory, w trans.Writer, v openflow.GetConfigReply) error {
 	return nil
 }
 
@@ -86,7 +82,7 @@ func isAS460054_T(msg openflow.DescReply) bool {
 	return strings.Contains(msg.Hardware(), "AS4600-54T")
 }
 
-func (r *OF13Controller) setTableMiss(f openflow.Factory, w trans.Writer, tableID uint8, inst openflow.Instruction) error {
+func (r *of13Session) setTableMiss(f openflow.Factory, w trans.Writer, tableID uint8, inst openflow.Instruction) error {
 	match, err := f.NewMatch() // Wildcard
 	if err != nil {
 		return err
@@ -110,7 +106,7 @@ func (r *OF13Controller) setTableMiss(f openflow.Factory, w trans.Writer, tableI
 	return w.Write(msg)
 }
 
-func (r *OF13Controller) setHP2920TableMiss(f openflow.Factory, w trans.Writer) error {
+func (r *of13Session) setHP2920TableMiss(f openflow.Factory, w trans.Writer) error {
 	// Table-100 is a hardware table, and Table-200 is a software table
 	// that has very low performance.
 	inst, err := f.NewInstruction()
@@ -142,12 +138,12 @@ func (r *OF13Controller) setHP2920TableMiss(f openflow.Factory, w trans.Writer) 
 	if err := r.setTableMiss(f, w, 200, inst); err != nil {
 		return fmt.Errorf("failed to set table_miss flow entry: %v", err)
 	}
-	r.device.SetFlowTableID(200)
+	r.device.setFlowTableID(200)
 
 	return nil
 }
 
-func (r *OF13Controller) setAS4600TableMiss(f openflow.Factory, w trans.Writer) error {
+func (r *of13Session) setAS4600TableMiss(f openflow.Factory, w trans.Writer) error {
 	// FIXME:
 	// AS460054-T gives an error (type=5, code=1) that means TABLE_FULL
 	// when we install a table-miss flow on Table-0 after we delete all
@@ -156,7 +152,7 @@ func (r *OF13Controller) setAS4600TableMiss(f openflow.Factory, w trans.Writer) 
 	return nil
 }
 
-func (r *OF13Controller) setDefaultTableMiss(f openflow.Factory, w trans.Writer) error {
+func (r *of13Session) setDefaultTableMiss(f openflow.Factory, w trans.Writer) error {
 	inst, err := f.NewInstruction()
 	if err != nil {
 		return err
@@ -175,12 +171,12 @@ func (r *OF13Controller) setDefaultTableMiss(f openflow.Factory, w trans.Writer)
 	if err := r.setTableMiss(f, w, 0, inst); err != nil {
 		return fmt.Errorf("failed to set table_miss flow entry: %v", err)
 	}
-	r.device.SetFlowTableID(0)
+	r.device.setFlowTableID(0)
 
 	return nil
 }
 
-func (r *OF13Controller) OnDescReply(f openflow.Factory, w trans.Writer, v openflow.DescReply) error {
+func (r *of13Session) OnDescReply(f openflow.Factory, w trans.Writer, v openflow.DescReply) error {
 	var err error
 
 	// FIXME:
@@ -198,14 +194,14 @@ func (r *OF13Controller) OnDescReply(f openflow.Factory, w trans.Writer, v openf
 	return err
 }
 
-func (r *OF13Controller) OnPortDescReply(f openflow.Factory, w trans.Writer, v openflow.PortDescReply) error {
+func (r *of13Session) OnPortDescReply(f openflow.Factory, w trans.Writer, v openflow.PortDescReply) error {
 	ports := v.Ports()
 	for _, p := range ports {
 		if p.Number() > of13.OFPP_MAX {
 			continue
 		}
-		r.device.AddPort(p.Number(), p)
-		if !p.IsPortDown() && !p.IsLinkDown() {
+		r.device.addPort(p.Number(), p)
+		if !p.IsPortDown() && !p.IsLinkDown() && r.device.isValid() {
 			// Send LLDP to update network topology
 			if err := sendLLDP(r.device.ID(), f, w, p); err != nil {
 				r.log.Err(fmt.Sprintf("failed to send LLDP: %v", err))
@@ -217,20 +213,14 @@ func (r *OF13Controller) OnPortDescReply(f openflow.Factory, w trans.Writer, v o
 	return nil
 }
 
-func (r *OF13Controller) OnPortStatus(f openflow.Factory, w trans.Writer, v openflow.PortStatus) error {
-	p := v.Port()
-	if p.Number() > of13.OFPP_MAX {
-		return nil
-	}
-	r.device.UpdatePort(p.Number(), p)
-
+func (r *of13Session) OnPortStatus(f openflow.Factory, w trans.Writer, v openflow.PortStatus) error {
 	return nil
 }
 
-func (r *OF13Controller) OnFlowRemoved(f openflow.Factory, w trans.Writer, v openflow.FlowRemoved) error {
+func (r *of13Session) OnFlowRemoved(f openflow.Factory, w trans.Writer, v openflow.FlowRemoved) error {
 	return nil
 }
 
-func (r *OF13Controller) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.PacketIn) error {
+func (r *of13Session) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.PacketIn) error {
 	return nil
 }
