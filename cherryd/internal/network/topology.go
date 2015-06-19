@@ -61,18 +61,14 @@ func (r *topology) setEventListener(l TopologyEventListener) {
 // Caller should make sure the mutex is unlocked before calling this function.
 // Otherwise, event listeners may cause a deadlock by calling other topology functions.
 func (r *topology) sendEvent() {
-	r.log.Debug("sendEvent() is called..")
-
 	if r.listener == nil {
 		return
 	}
 
-	r.log.Debug("calling OnTopologyChange()..")
 	if err := r.listener.OnTopologyChange(r); err != nil {
 		r.log.Err(fmt.Sprintf("topology: executing OnTopologyChange: %v", err))
 		return
 	}
-	r.log.Debug("sendEvent() is done..")
 }
 
 func (r *topology) Devices() []*Device {

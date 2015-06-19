@@ -9,6 +9,7 @@ package network
 
 import (
 	"encoding"
+	"errors"
 	"git.sds.co.kr/cherry.git/cherryd/internal/log"
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"sync"
@@ -38,6 +39,7 @@ type Device struct {
 	ports        map[uint32]*Port
 	flowTableID  uint8 // Table IDs that we install flows
 	factory      openflow.Factory
+	closed       bool
 }
 
 func newDevice(log log.Logger, s *session) *Device {
@@ -210,6 +212,25 @@ func (r *Device) SendMessage(msg encoding.BinaryMarshaler) error {
 	if msg == nil {
 		panic("Message is nil")
 	}
+	if r.closed {
+		return errors.New("send message request on an already closed device")
+	}
 
 	return r.session.Write(msg)
+}
+
+func (r *Device) IsClosed() bool {
+	// Read lock
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	return r.closed
+}
+
+func (r *Device) Close() {
+	// Write lock
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	r.closed = true
 }

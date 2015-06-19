@@ -330,6 +330,9 @@ func (r *L2Switch) removeAllFlows(devices []*network.Device) error {
 	r.log.Debug("Removing all flows from all devices..")
 
 	for _, d := range devices {
+		if d.IsClosed() {
+			continue
+		}
 		factory := d.Factory()
 		// Wildcard match
 		match, err := factory.NewMatch()
@@ -350,6 +353,9 @@ func (r *L2Switch) removeFlowRules(finder network.Finder, mac net.HardwareAddr) 
 	for _, d := range devices {
 		r.log.Debug(fmt.Sprintf("Removing all flows related with a node %v on device %v..", mac, d.ID()))
 
+		if d.IsClosed() {
+			continue
+		}
 		factory := d.Factory()
 		// Remove all flow rules whose source MAC address is mac in its flow match
 		match, err := factory.NewMatch()

@@ -22,6 +22,14 @@ import (
 	"time"
 )
 
+const (
+	defaultConfigFile = "/usr/local/etc/cherryd.conf"
+)
+
+var (
+	configFile = flag.String("config", defaultConfigFile, "Absolute path of the configuration file")
+)
+
 func waitSignal(log *syslog.Writer, shutdown context.CancelFunc) {
 	c := make(chan os.Signal, 5)
 	// All incoming signals will be transferred to the channel
@@ -33,7 +41,7 @@ func waitSignal(log *syslog.Writer, shutdown context.CancelFunc) {
 			// Graceful shutdown
 			log.Info("Shutting down...")
 			shutdown()
-			//time.Sleep(10 * time.Second) // let cancelation propagate
+			time.Sleep(5 * time.Second) // let cancelation propagate
 			log.Info("Halted")
 			os.Exit(0)
 		} else if s == syscall.SIGHUP {
@@ -59,12 +67,21 @@ func listen(ctx context.Context, log *syslog.Writer, config *Config) {
 	f := func(c chan<- net.Conn) {
 		for {
 			conn, err := listener.Accept()
-			log.Debug("New TCP connection is accepted..")
+
+			// Check shutdown signal
+			select {
+			case <-ctx.Done():
+				log.Info("Socket listener is finished by the shutdown signal")
+				return
+			default:
+			}
+
 			if err != nil {
 				log.Err(fmt.Sprintf("Failed to accept a new connection: %v", err))
 				continue
 			}
 			c <- conn
+			log.Debug("New TCP connection is accepted..")
 		}
 	}
 	backlog := make(chan net.Conn, 32)
@@ -88,7 +105,7 @@ func listen(ctx context.Context, log *syslog.Writer, config *Config) {
 					log.Err(fmt.Sprintf("Failed to enable socket keepalive: %v", err))
 				}
 			}
-			controller.AddConnection(conn)
+			controller.AddConnection(ctx, conn)
 		case <-ctx.Done():
 			return
 		}
@@ -121,6 +138,6 @@ func main() {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	go waitSignal(log, cancel)
-	listen(ctx, log, conf)
+	go listen(ctx, log, conf)
+	waitSignal(log, cancel)
 }

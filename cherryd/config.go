@@ -9,18 +9,9 @@ package main
 
 import (
 	"errors"
-	"flag"
 	"fmt"
 	"github.com/dlintw/goconf"
 	"strings"
-)
-
-const (
-	defaultConfigFile = "/usr/local/etc/cherryd.conf"
-)
-
-var (
-	configFile = flag.String("config", defaultConfigFile, "Absolute path of the configuration file")
 )
 
 type Config struct {
@@ -38,7 +29,7 @@ func NewConfig() *Config {
 func (c *Config) Read() error {
 	conf, err := goconf.ReadConfigFile(*configFile)
 	if err != nil {
-		return fmt.Errorf("failed to read the config file: %v", err)
+		return err
 	}
 	c.conf = conf
 

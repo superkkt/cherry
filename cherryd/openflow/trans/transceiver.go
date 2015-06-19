@@ -15,6 +15,7 @@ import (
 	"git.sds.co.kr/cherry.git/cherryd/openflow"
 	"git.sds.co.kr/cherry.git/cherryd/openflow/of10"
 	"git.sds.co.kr/cherry.git/cherryd/openflow/of13"
+	"golang.org/x/net/context"
 	"time"
 )
 
@@ -22,8 +23,8 @@ const (
 	// Allowed idle time before we send an echo request to a switch (in seconds)
 	maxIdleTime = 30
 	// I/O timeouts in second (These timeouts should be less than maxIdleTime)
-	readTimeout  = 5
-	writeTimeout = 10
+	readTimeout  = 1
+	writeTimeout = readTimeout * 2
 )
 
 type Writer interface {
@@ -150,8 +151,7 @@ func (r *Transceiver) sendEchoRequest() error {
 	return nil
 }
 
-// TODO: Use context to shutdown a running transceiver
-func (r *Transceiver) Run() error {
+func (r *Transceiver) Run(ctx context.Context) error {
 	r.stream.SetReadTimeout(readTimeout * time.Second)
 	r.stream.SetWriteTimeout(writeTimeout * time.Second)
 
@@ -173,6 +173,13 @@ func (r *Transceiver) Run() error {
 		r.updateTimestamp()
 
 	retry:
+		// Check shutdown signal
+		select {
+		case <-ctx.Done():
+			return errors.New("closed by user's shutdown signal")
+		default:
+		}
+
 		// Read next packet
 		packet, err = r.readPacket()
 		if err == nil {

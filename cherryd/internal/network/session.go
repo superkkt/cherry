@@ -18,6 +18,7 @@ import (
 	"git.sds.co.kr/cherry.git/cherryd/openflow/of13"
 	"git.sds.co.kr/cherry.git/cherryd/openflow/trans"
 	"git.sds.co.kr/cherry.git/cherryd/protocol"
+	"golang.org/x/net/context"
 	"io"
 	"net"
 	"strconv"
@@ -419,8 +420,8 @@ func (r *session) addNewNode(inPort *Port, mac net.HardwareAddr) {
 }
 
 func (r *session) isActivatedPort(p *Port) bool {
-	// We assume that a port is in inactive state during 3 seconds after setting its value to avoid broadcast storm.
-	return p.duration().Seconds() > 3
+	// We assume that a port is in inactive state during specified time after setting its value to avoid broadcast storm.
+	return p.duration().Seconds() > 1.5
 }
 
 func (r *session) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.PacketIn) error {
@@ -466,12 +467,13 @@ func (r *session) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.Pack
 	return r.handler.OnPacketIn(f, w, v)
 }
 
-// TODO: Use context to shutdown running controllers
-func (r *session) Run() {
-	if err := r.trans.Run(); err != nil && err != io.EOF {
+func (r *session) Run(ctx context.Context) {
+	if err := r.trans.Run(ctx); err != nil && err != io.EOF {
 		r.log.Err(fmt.Sprintf("OpenFlow transceiver abnormally terminated: %v", err))
 	}
-	r.log.Info(fmt.Sprintf("Session controller is disconnected (DPID=%v)", r.device.ID()))
+	r.trans.Close()
+	r.device.Close()
+	r.log.Info(fmt.Sprintf("session: disconnected device (DPID=%v)", r.device.ID()))
 
 	if r.device.isValid() {
 		if err := r.listener.OnDeviceDown(r.finder, r.device); err != nil {

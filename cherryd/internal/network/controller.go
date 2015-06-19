@@ -10,6 +10,7 @@ package network
 import (
 	"git.sds.co.kr/cherry.git/cherryd/internal/log"
 	"git.sds.co.kr/cherry.git/cherryd/protocol"
+	"golang.org/x/net/context"
 	"net"
 )
 
@@ -47,7 +48,7 @@ func NewController(log log.Logger) *Controller {
 	}
 }
 
-func (r *Controller) AddConnection(c net.Conn) {
+func (r *Controller) AddConnection(ctx context.Context, c net.Conn) {
 	conf := sessionConfig{
 		conn:     c,
 		logger:   r.log,
@@ -56,10 +57,7 @@ func (r *Controller) AddConnection(c net.Conn) {
 		listener: r.listener,
 	}
 	session := newSession(conf)
-	go func() {
-		session.Run()
-		c.Close()
-	}()
+	go session.Run(ctx)
 }
 
 func (r *Controller) SetEventListener(l EventListener) {
