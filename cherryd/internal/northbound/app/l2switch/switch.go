@@ -20,9 +20,9 @@ import (
 )
 
 type L2Switch struct {
+	app.BaseProcessor
 	conf *goconf.ConfigFile
 	log  log.Logger
-	next app.Processor
 }
 
 func New(conf *goconf.ConfigFile, log log.Logger) *L2Switch {
@@ -30,6 +30,10 @@ func New(conf *goconf.ConfigFile, log log.Logger) *L2Switch {
 		conf: conf,
 		log:  log,
 	}
+}
+
+func (r *L2Switch) Init() error {
+	return nil
 }
 
 func (r *L2Switch) Name() string {
@@ -218,6 +222,8 @@ func (r *L2Switch) localSwitching(p switchParam) error {
 }
 
 func (r *L2Switch) OnPacketIn(finder network.Finder, ingress *network.Port, eth *protocol.Ethernet) error {
+	r.log.Debug(fmt.Sprintf("OnPacketIn: dpid=%v, src=%v, dst=%v", ingress.Device().ID(), eth.SrcMAC, eth.DstMAC))
+
 	drop, err := r.processPacket(finder, ingress, eth)
 	if drop || err != nil {
 		return err
@@ -252,8 +258,10 @@ func (r *L2Switch) processPacket(finder network.Finder, ingress *network.Port, e
 	}
 	// Two nodes on a same switch device?
 	if ingress.Device().ID() == dstNode.Port().Device().ID() {
+		r.log.Debug(fmt.Sprintf("local switching: dpid=%v, src=%v, dst=%v", ingress.Device().ID(), eth.SrcMAC, eth.DstMAC))
 		err = r.localSwitching(param)
 	} else {
+		r.log.Debug(fmt.Sprintf("switching: dpid=%v, src=%v, dst=%v", ingress.Device().ID(), eth.SrcMAC, eth.DstMAC))
 		err = r.switching(param)
 	}
 	if err != nil {
@@ -261,33 +269,6 @@ func (r *L2Switch) processPacket(finder network.Finder, ingress *network.Port, e
 	}
 
 	return true, nil
-}
-
-func (r *L2Switch) OnDeviceUp(finder network.Finder, device *network.Device) error {
-	// Do nothing when a device is up
-	next, ok := r.Next()
-	if !ok {
-		return nil
-	}
-	return next.OnDeviceUp(finder, device)
-}
-
-func (r *L2Switch) OnDeviceDown(finder network.Finder, device *network.Device) error {
-	// Do nothing when a device is down
-	next, ok := r.Next()
-	if !ok {
-		return nil
-	}
-	return next.OnDeviceDown(finder, device)
-}
-
-func (r *L2Switch) OnPortUp(finder network.Finder, port *network.Port) error {
-	// Do nothing when port is up
-	next, ok := r.Next()
-	if !ok {
-		return nil
-	}
-	return next.OnPortUp(finder, port)
 }
 
 func (r *L2Switch) OnPortDown(finder network.Finder, port *network.Port) error {
@@ -306,7 +287,15 @@ func (r *L2Switch) OnPortDown(finder network.Finder, port *network.Port) error {
 func (r *L2Switch) OnTopologyChange(finder network.Finder) error {
 	// We should remove all edges from all switch devices when the network topology is changed.
 	// Otherwise, installed flow rules in switches may result in incorrect packet routing based on the previous topology.
-	return r.removeAllFlows(finder.Devices())
+	if err := r.removeAllFlows(finder.Devices()); err != nil {
+		return err
+	}
+
+	next, ok := r.Next()
+	if !ok {
+		return nil
+	}
+	return next.OnTopologyChange(finder)
 }
 
 func (r *L2Switch) cleanup(finder network.Finder, port *network.Port) error {
@@ -395,16 +384,4 @@ func (r *L2Switch) removeFlow(d *network.Device, match openflow.Match) error {
 	flowmod.SetFlowMatch(match)
 
 	return d.SendMessage(flowmod)
-}
-
-func (r *L2Switch) Next() (next app.Processor, ok bool) {
-	if r.next != nil {
-		return r.next, true
-	}
-
-	return nil, false
-}
-
-func (r *L2Switch) SetNext(next app.Processor) {
-	r.next = next
 }

@@ -41,8 +41,8 @@ func waitSignal(log *syslog.Writer, shutdown context.CancelFunc) {
 			// Graceful shutdown
 			log.Info("Shutting down...")
 			shutdown()
-			time.Sleep(5 * time.Second) // let cancelation propagate
-			log.Info("Halted")
+			// Timeout for cancelation
+			time.Sleep(15 * time.Second)
 			os.Exit(0)
 		} else if s == syscall.SIGHUP {
 			// XXX: Do something you need
@@ -88,7 +88,11 @@ func listen(ctx context.Context, log *syslog.Writer, config *Config) {
 	go f(backlog)
 
 	controller := network.NewController(log)
-	manager := createAppManager(config, log)
+	manager, err := createAppManager(config, log)
+	if err != nil {
+		log.Err(fmt.Sprintf("Failed to create application manager: %v", err))
+		return
+	}
 	manager.AddEventSender(controller)
 
 	// Infinite loop
@@ -112,13 +116,15 @@ func listen(ctx context.Context, log *syslog.Writer, config *Config) {
 	}
 }
 
-func createAppManager(config *Config, log *syslog.Writer) *northbound.Manager {
+func createAppManager(config *Config, log *syslog.Writer) (*northbound.Manager, error) {
 	manager := northbound.NewManager(config.RawConfig(), log)
 	for _, v := range config.Apps {
-		manager.Enable(v)
+		if err := manager.Enable(v); err != nil {
+			return nil, fmt.Errorf("%v: %v", v, err)
+		}
 	}
 
-	return manager
+	return manager, nil
 }
 
 func main() {
@@ -138,6 +144,6 @@ func main() {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	go listen(ctx, log, conf)
-	waitSignal(log, cancel)
+	go waitSignal(log, cancel)
+	listen(ctx, log, conf)
 }

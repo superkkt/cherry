@@ -8,10 +8,12 @@
 package northbound
 
 import (
+	"fmt"
 	"git.sds.co.kr/cherry.git/cherryd/internal/log"
 	"git.sds.co.kr/cherry.git/cherryd/internal/network"
 	"git.sds.co.kr/cherry.git/cherryd/internal/northbound/app"
 	"git.sds.co.kr/cherry.git/cherryd/internal/northbound/app/l2switch"
+	"git.sds.co.kr/cherry.git/cherryd/internal/northbound/app/proxyarp"
 	"github.com/dlintw/goconf"
 	"strings"
 )
@@ -42,6 +44,7 @@ func NewManager(conf *goconf.ConfigFile, log log.Logger) *Manager {
 	}
 	// Registering north-bound applications
 	v.register(l2switch.New(conf, log))
+	v.register(proxyarp.New(conf, log))
 
 	return v
 }
@@ -50,19 +53,26 @@ func (r *Manager) register(app app.Processor) {
 	r.apps[strings.ToUpper(app.Name())] = app
 }
 
-func (r *Manager) Enable(appName string) {
+func (r *Manager) Enable(appName string) error {
+	r.log.Debug(fmt.Sprintf("Enabling %v application..", appName))
+
 	app, ok := r.apps[strings.ToUpper(appName)]
 	if !ok {
-		return
+		return fmt.Errorf("unknown application: %v", appName)
+	}
+	if err := app.Init(); err != nil {
+		return err
 	}
 
 	if r.head == nil {
 		r.head = app
 		r.tail = app
-		return
+		return nil
 	}
 	r.tail.SetNext(app)
 	r.tail = app
+
+	return nil
 }
 
 func (r *Manager) AddEventSender(sender EventSender) {
