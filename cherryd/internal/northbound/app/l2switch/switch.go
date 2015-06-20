@@ -169,6 +169,11 @@ func (r *L2Switch) switching(p switchParam) error {
 		r.log.Debug(fmt.Sprintf("Not found a path from %v to %v", p.ethernet.SrcMAC, p.ethernet.DstMAC))
 		return nil
 	}
+	// Drop this packet if it goes back to the ingress port to avoid duplicated packet routing
+	if p.ingress.Number() == path[0][0].Number() {
+		r.log.Debug("Ignore routing path that goes back to the ingress port")
+		return nil
+	}
 
 	inPort := p.ingress.Number()
 	// Install bi-directional flow rules into all devices on the path
