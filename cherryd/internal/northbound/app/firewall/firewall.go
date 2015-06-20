@@ -19,19 +19,27 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-package openflow
+package firewall
 
 import (
-	"encoding"
+	"git.sds.co.kr/cherry.git/cherryd/internal/log"
+	"git.sds.co.kr/cherry.git/cherryd/internal/northbound/app"
+	"github.com/dlintw/goconf"
 )
 
-type PortDescRequest interface {
-	Header
-	encoding.BinaryMarshaler
+type Firewall struct {
+	app.BaseProcessor
+	conf *goconf.ConfigFile
+	log  log.Logger
 }
 
-type PortDescReply interface {
-	Header
-	Ports() []Port
-	encoding.BinaryUnmarshaler
+func New(conf *goconf.ConfigFile, log log.Logger) *Firewall {
+	return &Firewall{
+		conf: conf,
+		log:  log,
+	}
+}
+
+func (r *Firewall) Name() string {
+	return "Firewall"
 }

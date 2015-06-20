@@ -3,6 +3,20 @@
  *
  * Copyright (C) 2015 Samjung Data Service Co., Ltd.,
  * Kitae Kim <superkkt@sds.co.kr>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
 package l2switch
@@ -227,8 +241,6 @@ func (r *L2Switch) localSwitching(p switchParam) error {
 }
 
 func (r *L2Switch) OnPacketIn(finder network.Finder, ingress *network.Port, eth *protocol.Ethernet) error {
-	r.log.Debug(fmt.Sprintf("OnPacketIn: dpid=%v, src=%v, dst=%v", ingress.Device().ID(), eth.SrcMAC, eth.DstMAC))
-
 	drop, err := r.processPacket(finder, ingress, eth)
 	if drop || err != nil {
 		return err
@@ -263,10 +275,8 @@ func (r *L2Switch) processPacket(finder network.Finder, ingress *network.Port, e
 	}
 	// Two nodes on a same switch device?
 	if ingress.Device().ID() == dstNode.Port().Device().ID() {
-		r.log.Debug(fmt.Sprintf("local switching: dpid=%v, src=%v, dst=%v", ingress.Device().ID(), eth.SrcMAC, eth.DstMAC))
 		err = r.localSwitching(param)
 	} else {
-		r.log.Debug(fmt.Sprintf("switching: dpid=%v, src=%v, dst=%v", ingress.Device().ID(), eth.SrcMAC, eth.DstMAC))
 		err = r.switching(param)
 	}
 	if err != nil {
