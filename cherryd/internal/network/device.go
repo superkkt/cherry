@@ -24,8 +24,8 @@ package network
 import (
 	"encoding"
 	"errors"
-	"git.sds.co.kr/cherry.git/cherryd/internal/log"
-	"git.sds.co.kr/cherry.git/cherryd/openflow"
+	"github.com/superkkt/cherry/cherryd/internal/log"
+	"github.com/superkkt/cherry/cherryd/openflow"
 	"sync"
 )
 

@@ -26,9 +26,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"git.sds.co.kr/cherry.git/cherryd/openflow"
-	"git.sds.co.kr/cherry.git/cherryd/openflow/of10"
-	"git.sds.co.kr/cherry.git/cherryd/openflow/of13"
+	"github.com/superkkt/cherry/cherryd/openflow"
+	"github.com/superkkt/cherry/cherryd/openflow/of10"
+	"github.com/superkkt/cherry/cherryd/openflow/of13"
 	"golang.org/x/net/context"
 	"time"
 )

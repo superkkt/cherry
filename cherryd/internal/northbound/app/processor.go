@@ -22,8 +22,8 @@
 package app
 
 import (
-	"git.sds.co.kr/cherry.git/cherryd/internal/network"
-	"git.sds.co.kr/cherry.git/cherryd/protocol"
+	"github.com/superkkt/cherry/cherryd/internal/network"
+	"github.com/superkkt/cherry/cherryd/protocol"
 )
 
 // Processor should prepare to be executed by multiple goroutines simultaneously.

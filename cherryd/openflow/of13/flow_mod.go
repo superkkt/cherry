@@ -24,7 +24,7 @@ package of13
 import (
 	"encoding/binary"
 	"errors"
-	"git.sds.co.kr/cherry.git/cherryd/openflow"
+	"github.com/superkkt/cherry/cherryd/openflow"
 )
 
 type FlowMod struct {

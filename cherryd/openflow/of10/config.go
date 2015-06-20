@@ -24,7 +24,7 @@ package of10
 import (
 	"encoding/binary"
 	"fmt"
-	"git.sds.co.kr/cherry.git/cherryd/openflow"
+	"github.com/superkkt/cherry/cherryd/openflow"
 )
 
 type Config struct {

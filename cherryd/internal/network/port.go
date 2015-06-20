@@ -23,8 +23,8 @@ package network
 
 import (
 	"fmt"
-	"git.sds.co.kr/cherry.git/cherryd/graph"
-	"git.sds.co.kr/cherry.git/cherryd/openflow"
+	"github.com/superkkt/cherry/cherryd/graph"
+	"github.com/superkkt/cherry/cherryd/openflow"
 	"net"
 	"sync"
 	"time"

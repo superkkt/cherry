@@ -23,7 +23,7 @@ package network
 
 import (
 	"fmt"
-	"git.sds.co.kr/cherry.git/cherryd/graph"
+	"github.com/superkkt/cherry/cherryd/graph"
 	"sort"
 )
 

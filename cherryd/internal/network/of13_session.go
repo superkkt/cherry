@@ -23,10 +23,10 @@ package network
 
 import (
 	"fmt"
-	"git.sds.co.kr/cherry.git/cherryd/internal/log"
-	"git.sds.co.kr/cherry.git/cherryd/openflow"
-	"git.sds.co.kr/cherry.git/cherryd/openflow/of13"
-	"git.sds.co.kr/cherry.git/cherryd/openflow/trans"
+	"github.com/superkkt/cherry/cherryd/internal/log"
+	"github.com/superkkt/cherry/cherryd/openflow"
+	"github.com/superkkt/cherry/cherryd/openflow/of13"
+	"github.com/superkkt/cherry/cherryd/openflow/trans"
 	"strings"
 )
 

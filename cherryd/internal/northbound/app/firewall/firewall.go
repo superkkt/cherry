@@ -22,8 +22,8 @@
 package firewall
 
 import (
-	"git.sds.co.kr/cherry.git/cherryd/internal/log"
-	"git.sds.co.kr/cherry.git/cherryd/internal/northbound/app"
+	"github.com/superkkt/cherry/cherryd/internal/log"
+	"github.com/superkkt/cherry/cherryd/internal/northbound/app"
 	"github.com/dlintw/goconf"
 )
 

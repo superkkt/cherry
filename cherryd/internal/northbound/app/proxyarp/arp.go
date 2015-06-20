@@ -24,11 +24,11 @@ package proxyarp
 import (
 	"bytes"
 	"fmt"
-	"git.sds.co.kr/cherry.git/cherryd/internal/log"
-	"git.sds.co.kr/cherry.git/cherryd/internal/network"
-	"git.sds.co.kr/cherry.git/cherryd/internal/northbound/app"
-	"git.sds.co.kr/cherry.git/cherryd/openflow"
-	"git.sds.co.kr/cherry.git/cherryd/protocol"
+	"github.com/superkkt/cherry/cherryd/internal/log"
+	"github.com/superkkt/cherry/cherryd/internal/network"
+	"github.com/superkkt/cherry/cherryd/internal/northbound/app"
+	"github.com/superkkt/cherry/cherryd/openflow"
+	"github.com/superkkt/cherry/cherryd/protocol"
 	"github.com/dlintw/goconf"
 	"net"
 )

@@ -22,7 +22,7 @@
 package of10
 
 import (
-	"git.sds.co.kr/cherry.git/cherryd/openflow"
+	"github.com/superkkt/cherry/cherryd/openflow"
 )
 
 type PortStatus struct {

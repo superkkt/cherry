@@ -25,7 +25,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"git.sds.co.kr/cherry.git/cherryd/openflow"
+	"github.com/superkkt/cherry/cherryd/openflow"
 	"net"
 )
 

@@ -22,8 +22,8 @@
 package network
 
 import (
-	"git.sds.co.kr/cherry.git/cherryd/internal/log"
-	"git.sds.co.kr/cherry.git/cherryd/protocol"
+	"github.com/superkkt/cherry/cherryd/internal/log"
+	"github.com/superkkt/cherry/cherryd/protocol"
 	"golang.org/x/net/context"
 	"net"
 )

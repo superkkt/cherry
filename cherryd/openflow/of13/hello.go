@@ -22,7 +22,7 @@
 package of13
 
 import (
-	"git.sds.co.kr/cherry.git/cherryd/openflow"
+	"github.com/superkkt/cherry/cherryd/openflow"
 )
 
 func NewHello(xid uint32) openflow.Hello {

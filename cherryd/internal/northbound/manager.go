@@ -23,14 +23,14 @@ package northbound
 
 import (
 	"fmt"
-	"git.sds.co.kr/cherry.git/cherryd/internal/log"
-	"git.sds.co.kr/cherry.git/cherryd/internal/network"
-	"git.sds.co.kr/cherry.git/cherryd/internal/northbound/app"
-	"git.sds.co.kr/cherry.git/cherryd/internal/northbound/app/firewall"
-	"git.sds.co.kr/cherry.git/cherryd/internal/northbound/app/l2switch"
-	"git.sds.co.kr/cherry.git/cherryd/internal/northbound/app/lb"
-	"git.sds.co.kr/cherry.git/cherryd/internal/northbound/app/proxyarp"
-	"git.sds.co.kr/cherry.git/cherryd/internal/northbound/app/router"
+	"github.com/superkkt/cherry/cherryd/internal/log"
+	"github.com/superkkt/cherry/cherryd/internal/network"
+	"github.com/superkkt/cherry/cherryd/internal/northbound/app"
+	"github.com/superkkt/cherry/cherryd/internal/northbound/app/firewall"
+	"github.com/superkkt/cherry/cherryd/internal/northbound/app/l2switch"
+	"github.com/superkkt/cherry/cherryd/internal/northbound/app/lb"
+	"github.com/superkkt/cherry/cherryd/internal/northbound/app/proxyarp"
+	"github.com/superkkt/cherry/cherryd/internal/northbound/app/router"
 	"github.com/dlintw/goconf"
 	"strings"
 )

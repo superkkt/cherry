@@ -22,7 +22,7 @@
 package of13
 
 import (
-	"git.sds.co.kr/cherry.git/cherryd/openflow"
+	"github.com/superkkt/cherry/cherryd/openflow"
 )
 
 func NewEchoRequest(xid uint32) openflow.EchoRequest {

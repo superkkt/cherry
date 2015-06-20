@@ -24,8 +24,8 @@ package main
 import (
 	"flag"
 	"fmt"
-	"git.sds.co.kr/cherry.git/cherryd/internal/network"
-	"git.sds.co.kr/cherry.git/cherryd/internal/northbound"
+	"github.com/superkkt/cherry/cherryd/internal/network"
+	"github.com/superkkt/cherry/cherryd/internal/northbound"
 	"golang.org/x/net/context"
 	"log/syslog"
 	"net"
