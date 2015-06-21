@@ -37,3 +37,15 @@ in progress..
 
 * Support loadbalancer, router, and firewall applications until June 2015
 * Support multiple controllers for load balancing and automatic failover until July 2015
+
+## Copyright and License
+
+```
+Copyright (C) 2015 Samjung Data Service Co., Ltd.,
+Kitae Kim <superkkt@sds.co.kr>
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+any later version.
+```
