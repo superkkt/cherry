@@ -27,7 +27,7 @@ Cherry is an OpenFlow controller written in Go that supports OpenFlow 1.0 and 1.
 
  ```$ /usr/local/bin/cherryd &```
 
-* That's it! Cherry will be started as L2 switch mode.
+* That's it! Cherry will be started in L2 switch mode.
 
 ## Documentation
 
