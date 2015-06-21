@@ -41,7 +41,7 @@ in progress..
 ## Copyright and License
 
 ```
-Copyright (C) 2015 Samjung Data Service Co., Ltd.,
+Copyright (C) 2015 Samjung Data Service
 Kitae Kim <superkkt@sds.co.kr>
 
 This program is free software; you can redistribute it and/or modify
