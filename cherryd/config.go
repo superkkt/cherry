@@ -25,13 +25,15 @@ import (
 	"errors"
 	"fmt"
 	"github.com/dlintw/goconf"
+	"github.com/superkkt/cherry/cherryd/internal/log"
 	"strings"
 )
 
 type Config struct {
-	conf *goconf.ConfigFile
-	Port int
-	Apps []string
+	conf     *goconf.ConfigFile
+	Port     int
+	LogLevel log.Level
+	Apps     []string
 }
 
 func NewConfig() *Config {
@@ -72,17 +74,44 @@ func (c *Config) parseApplications(apps string) error {
 	return nil
 }
 
+func (c *Config) parseLogLevel(l string) error {
+	switch strings.ToUpper(l) {
+	case "DEBUG":
+		c.LogLevel = log.Debug
+	case "INFO":
+		c.LogLevel = log.Info
+	case "NOTICE":
+		c.LogLevel = log.Notice
+	case "WARNING":
+		c.LogLevel = log.Warning
+	case "ERROR":
+		c.LogLevel = log.Error
+	default:
+		return fmt.Errorf("invalid log level: %v", l)
+	}
+
+	return nil
+}
+
 func (c *Config) readDefaultConfig(conf *goconf.ConfigFile) error {
 	var err error
 
 	c.Port, err = conf.GetInt("default", "port")
 	if err != nil || c.Port <= 0 || c.Port > 0xFFFF {
-		return errors.New("invalid port config")
+		return errors.New("invalid port in the config file")
+	}
+
+	logLevel, err := conf.GetString("default", "log_level")
+	if err != nil || len(logLevel) == 0 {
+		return errors.New("invalid log level in the config file")
+	}
+	if err := c.parseLogLevel(logLevel); err != nil {
+		return err
 	}
 
 	apps, err := conf.GetString("default", "applications")
 	if err != nil || len(apps) == 0 {
-		return errors.New("empty applications config")
+		return errors.New("empty applications in the config file")
 	}
 	if err := c.parseApplications(apps); err != nil {
 		return fmt.Errorf("invalid applications config: %v", err)

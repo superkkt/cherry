@@ -466,12 +466,12 @@ func (r *session) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.Pack
 	}
 	// Do nothing if the ingress port is in inactive state
 	if !r.isActivatedPort(inPort) {
-		r.log.Info(fmt.Sprintf("Ignoring PACKET_IN from %v:%v because the ingress port is not in active state yet", r.device.ID(), v.InPort()))
+		r.log.Debug(fmt.Sprintf("Ignoring PACKET_IN from %v:%v because the ingress port is not in active state yet", r.device.ID(), v.InPort()))
 		return nil
 	}
 	// Do nothing if the ingress port is an edge between switches and is disabled by STP.
 	if r.finder.IsEdge(inPort) && !r.finder.IsEnabledBySTP(inPort) {
-		r.log.Info(fmt.Sprintf("STP: ignoring PACKET_IN from %v:%v", r.device.ID(), v.InPort()))
+		r.log.Debug(fmt.Sprintf("STP: ignoring PACKET_IN from %v:%v", r.device.ID(), v.InPort()))
 		return nil
 	}
 	if err := r.listener.OnPacketIn(r.finder, inPort, ethernet); err != nil {
@@ -483,11 +483,11 @@ func (r *session) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.Pack
 
 func (r *session) Run(ctx context.Context) {
 	if err := r.trans.Run(ctx); err != nil && err != io.EOF {
-		r.log.Err(fmt.Sprintf("OpenFlow transceiver abnormally terminated: %v", err))
+		r.log.Err(fmt.Sprintf("Transceiver is closed: %v", err))
 	}
 	r.trans.Close()
 	r.device.Close()
-	r.log.Info(fmt.Sprintf("session: disconnected device (DPID=%v)", r.device.ID()))
+	r.log.Debug(fmt.Sprintf("session: disconnected device (DPID=%v)", r.device.ID()))
 
 	if r.device.isValid() {
 		if err := r.listener.OnDeviceDown(r.finder, r.device); err != nil {

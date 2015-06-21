@@ -24,10 +24,10 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/superkkt/cherry/cherryd/internal/log"
 	"github.com/superkkt/cherry/cherryd/internal/network"
 	"github.com/superkkt/cherry/cherryd/internal/northbound"
 	"golang.org/x/net/context"
-	"log/syslog"
 	"net"
 	"os"
 	"os/signal"
@@ -44,7 +44,7 @@ var (
 	configFile = flag.String("config", defaultConfigFile, "Absolute path of the configuration file")
 )
 
-func waitSignal(log *syslog.Writer, shutdown context.CancelFunc) {
+func waitSignal(log *log.Syslog, shutdown context.CancelFunc) {
 	c := make(chan os.Signal, 5)
 	// All incoming signals will be transferred to the channel
 	signal.Notify(c)
@@ -65,7 +65,7 @@ func waitSignal(log *syslog.Writer, shutdown context.CancelFunc) {
 	}
 }
 
-func listen(ctx context.Context, log *syslog.Writer, config *Config) {
+func listen(ctx context.Context, log *log.Syslog, config *Config) {
 	type KeepAliver interface {
 		SetKeepAlive(keepalive bool) error
 		SetKeepAlivePeriod(d time.Duration) error
@@ -95,7 +95,7 @@ func listen(ctx context.Context, log *syslog.Writer, config *Config) {
 				continue
 			}
 			c <- conn
-			log.Debug("New TCP connection is accepted..")
+			log.Info(fmt.Sprintf("New device is connected from %v", conn.RemoteAddr()))
 		}
 	}
 	backlog := make(chan net.Conn, 32)
@@ -130,7 +130,7 @@ func listen(ctx context.Context, log *syslog.Writer, config *Config) {
 	}
 }
 
-func createAppManager(config *Config, log *syslog.Writer) (*northbound.Manager, error) {
+func createAppManager(config *Config, log *log.Syslog) (*northbound.Manager, error) {
 	manager := northbound.NewManager(config.RawConfig(), log)
 	for _, v := range config.Apps {
 		if err := manager.Enable(v); err != nil {
@@ -151,9 +151,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	log, err := syslog.New(syslog.LOG_INFO|syslog.LOG_DAEMON, "cherryd")
+	log, err := log.NewSyslog(conf.LogLevel)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to init syslog: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to init logger: %v\n", err)
 		os.Exit(1)
 	}
 
