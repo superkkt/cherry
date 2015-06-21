@@ -10,6 +10,11 @@ Cherry is an OpenFlow controller written in Go that supports OpenFlow 1.0 and 1.
 * Provides several northbound applications: ProxyARP, L2Switch, Router (in progress), Firewall (in progress), Loadbalancer (in progress), etc.
 * Provides simple plugin system for northbound applications
 
+## Tested OpenFlow-enabled Switches
+
+* Dell Force10 S4810
+* HP 2920G
+
 ## Quick Start
 
 * Install Go language if you don't have it on your system by following instruction: http://golang.org/doc/install
