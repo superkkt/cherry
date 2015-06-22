@@ -40,8 +40,8 @@ in progress..
 
 ## Roadmap
 
-* Support loadbalancer, router, and firewall applications until June 2015
-* Support multiple controllers for load balancing and automatic failover until July 2015
+* Support loadbalancer, router, and firewall applications until June 30, 2015
+* Support multiple controllers for load balancing and automatic failover until July 31, 2015
 
 ## Copyright and License
 
