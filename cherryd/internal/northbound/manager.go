@@ -1,7 +1,7 @@
 /*
  * Cherry - An OpenFlow Controller
  *
- * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved. 
+ * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved.
  * Kitae Kim <superkkt@sds.co.kr>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -23,6 +23,7 @@ package northbound
 
 import (
 	"fmt"
+	"github.com/dlintw/goconf"
 	"github.com/superkkt/cherry/cherryd/internal/log"
 	"github.com/superkkt/cherry/cherryd/internal/network"
 	"github.com/superkkt/cherry/cherryd/internal/northbound/app"
@@ -31,7 +32,6 @@ import (
 	"github.com/superkkt/cherry/cherryd/internal/northbound/app/lb"
 	"github.com/superkkt/cherry/cherryd/internal/northbound/app/proxyarp"
 	"github.com/superkkt/cherry/cherryd/internal/northbound/app/router"
-	"github.com/dlintw/goconf"
 	"strings"
 )
 
@@ -44,9 +44,10 @@ type Manager struct {
 	conf       *goconf.ConfigFile
 	apps       map[string]app.Processor // Registered applications
 	head, tail app.Processor
+	db         *database
 }
 
-func NewManager(conf *goconf.ConfigFile, log log.Logger) *Manager {
+func NewManager(conf *goconf.ConfigFile, log log.Logger) (*Manager, error) {
 	if conf == nil {
 		panic("nil config")
 	}
@@ -54,19 +55,25 @@ func NewManager(conf *goconf.ConfigFile, log log.Logger) *Manager {
 		panic("nil logger")
 	}
 
+	db, err := newDatabase(conf)
+	if err != nil {
+		return nil, err
+	}
+
 	v := &Manager{
 		log:  log,
 		conf: conf,
 		apps: make(map[string]app.Processor),
+		db:   db,
 	}
 	// Registering north-bound applications
 	v.register(l2switch.New(conf, log))
-	v.register(proxyarp.New(conf, log))
-	v.register(lb.New(conf, log))
-	v.register(router.New(conf, log))
-	v.register(firewall.New(conf, log))
+	v.register(proxyarp.New(conf, log, db))
+	v.register(lb.New(conf, log, db))
+	v.register(router.New(conf, log, db))
+	v.register(firewall.New(conf, log, db))
 
-	return v
+	return v, nil
 }
 
 func (r *Manager) register(app app.Processor) {

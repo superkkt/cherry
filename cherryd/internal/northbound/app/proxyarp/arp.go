@@ -1,7 +1,7 @@
 /*
  * Cherry - An OpenFlow Controller
  *
- * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved. 
+ * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved.
  * Kitae Kim <superkkt@sds.co.kr>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -24,36 +24,35 @@ package proxyarp
 import (
 	"bytes"
 	"fmt"
+	"github.com/dlintw/goconf"
 	"github.com/superkkt/cherry/cherryd/internal/log"
 	"github.com/superkkt/cherry/cherryd/internal/network"
 	"github.com/superkkt/cherry/cherryd/internal/northbound/app"
 	"github.com/superkkt/cherry/cherryd/openflow"
 	"github.com/superkkt/cherry/cherryd/protocol"
-	"github.com/dlintw/goconf"
 	"net"
 )
 
 type ProxyARP struct {
 	app.BaseProcessor
-	conf  *goconf.ConfigFile
-	log   log.Logger
-	hosts *database
+	conf *goconf.ConfigFile
+	log  log.Logger
+	db   database
 }
 
-func New(conf *goconf.ConfigFile, log log.Logger) *ProxyARP {
+type database interface {
+	FindMAC(ip net.IP) (mac net.HardwareAddr, ok bool, err error)
+}
+
+func New(conf *goconf.ConfigFile, log log.Logger, db database) *ProxyARP {
 	return &ProxyARP{
 		conf: conf,
 		log:  log,
+		db:   db,
 	}
 }
 
 func (r *ProxyARP) Init() error {
-	db, err := newDatabase(r.conf)
-	if err != nil {
-		return err
-	}
-	r.hosts = db
-
 	return nil
 }
 
@@ -61,18 +60,10 @@ func (r *ProxyARP) Name() string {
 	return "ProxyARP"
 }
 
-func (r *ProxyARP) execNextOnPacketIn(finder network.Finder, ingress *network.Port, eth *protocol.Ethernet) error {
-	next, ok := r.Next()
-	if !ok {
-		return nil
-	}
-	return next.OnPacketIn(finder, ingress, eth)
-}
-
 func (r *ProxyARP) OnPacketIn(finder network.Finder, ingress *network.Port, eth *protocol.Ethernet) error {
 	// ARP?
 	if eth.Type != 0x0806 {
-		return r.execNextOnPacketIn(finder, ingress, eth)
+		return r.BaseProcessor.OnPacketIn(finder, ingress, eth)
 	}
 
 	r.log.Debug("Received ARP packet..")
@@ -101,9 +92,9 @@ func (r *ProxyARP) OnPacketIn(finder network.Finder, ingress *network.Port, eth 
 		}
 		r.log.Debug("Pass valid ARP announcements to the network")
 		// Pass valid ARP announcements to the network
-		return r.execNextOnPacketIn(finder, ingress, eth)
+		return r.BaseProcessor.OnPacketIn(finder, ingress, eth)
 	}
-	mac, ok, err := r.hosts.mac(arp.TPA)
+	mac, ok, err := r.db.FindMAC(arp.TPA)
 	if err != nil {
 		return err
 	}
@@ -159,7 +150,7 @@ func isARPAnnouncement(request *protocol.ARP) bool {
 
 func (r *ProxyARP) isValidARPAnnouncement(request *protocol.ARP) (bool, error) {
 	// Trusted MAC address?
-	mac, ok, err := r.hosts.mac(request.SPA)
+	mac, ok, err := r.db.FindMAC(request.SPA)
 	if err != nil {
 		return false, err
 	}

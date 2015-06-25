@@ -1,7 +1,7 @@
 /*
  * Cherry - An OpenFlow Controller
  *
- * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved. 
+ * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved.
  * Kitae Kim <superkkt@sds.co.kr>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -22,21 +22,25 @@
 package firewall
 
 import (
+	"github.com/dlintw/goconf"
 	"github.com/superkkt/cherry/cherryd/internal/log"
 	"github.com/superkkt/cherry/cherryd/internal/northbound/app"
-	"github.com/dlintw/goconf"
 )
 
 type Firewall struct {
 	app.BaseProcessor
 	conf *goconf.ConfigFile
 	log  log.Logger
+	db   database
 }
 
-func New(conf *goconf.ConfigFile, log log.Logger) *Firewall {
+type database interface{}
+
+func New(conf *goconf.ConfigFile, log log.Logger, db database) *Firewall {
 	return &Firewall{
 		conf: conf,
 		log:  log,
+		db:   db,
 	}
 }
 

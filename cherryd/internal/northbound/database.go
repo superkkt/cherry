@@ -1,7 +1,7 @@
 /*
  * Cherry - An OpenFlow Controller
  *
- * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved. 
+ * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved.
  * Kitae Kim <superkkt@sds.co.kr>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -19,19 +19,29 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-package proxyarp
+package northbound
 
 import (
 	"database/sql"
 	"errors"
 	"fmt"
 	"github.com/dlintw/goconf"
-	_ "github.com/go-sql-driver/mysql"
 	"net"
 )
 
 type database struct {
 	db *sql.DB
+}
+
+func newDatabase(conf *goconf.ConfigFile) (*database, error) {
+	db, err := newDBConn(conf)
+	if err != nil {
+		return nil, err
+	}
+
+	return &database{
+		db: db,
+	}, nil
 }
 
 func newDBConn(conf *goconf.ConfigFile) (*sql.DB, error) {
@@ -67,20 +77,9 @@ func newDBConn(conf *goconf.ConfigFile) (*sql.DB, error) {
 	return db, nil
 }
 
-func newDatabase(conf *goconf.ConfigFile) (*database, error) {
-	c, err := newDBConn(conf)
-	if err != nil {
-		return nil, err
-	}
-
-	return &database{
-		db: c,
-	}, nil
-}
-
-func (r *database) mac(ip net.IP) (mac net.HardwareAddr, ok bool, err error) {
+func (r *database) FindMAC(ip net.IP) (mac net.HardwareAddr, ok bool, err error) {
 	if ip == nil {
-		panic("nil IP address")
+		panic("IP address is nil")
 	}
 
 	qry := "SELECT mac FROM host A JOIN ip B ON A.ip_id = B.id "
@@ -109,4 +108,31 @@ func (r *database) mac(ip net.IP) (mac net.HardwareAddr, ok bool, err error) {
 	}
 
 	return mac, true, nil
+}
+
+func (r *database) GetNetworks() ([]*net.IPNet, error) {
+	qry := "SELECT INET_NTOA(address), mask FROM network"
+	row, err := r.db.Query(qry)
+	if err != nil {
+		return nil, err
+	}
+	defer row.Close()
+
+	result := make([]*net.IPNet, 0)
+	for row.Next() {
+		var addr, mask string
+		if err := row.Scan(&addr, &mask); err != nil {
+			return nil, err
+		}
+		_, ipnet, err := net.ParseCIDR(fmt.Sprintf("%v/%v", addr, mask))
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, ipnet)
+	}
+	if err := row.Err(); err != nil {
+		return nil, err
+	}
+
+	return result, nil
 }

@@ -1,7 +1,7 @@
 /*
  * Cherry - An OpenFlow Controller
  *
- * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved. 
+ * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved.
  * Kitae Kim <superkkt@sds.co.kr>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -131,7 +131,11 @@ func listen(ctx context.Context, log *log.Syslog, config *Config) {
 }
 
 func createAppManager(config *Config, log *log.Syslog) (*northbound.Manager, error) {
-	manager := northbound.NewManager(config.RawConfig(), log)
+	manager, err := northbound.NewManager(config.RawConfig(), log)
+	if err != nil {
+		return nil, err
+	}
+
 	for _, v := range config.Apps {
 		if err := manager.Enable(v); err != nil {
 			return nil, fmt.Errorf("%v: %v", v, err)

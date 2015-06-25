@@ -1,7 +1,7 @@
 /*
  * Cherry - An OpenFlow Controller
  *
- * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved. 
+ * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved.
  * Kitae Kim <superkkt@sds.co.kr>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -24,12 +24,12 @@ package l2switch
 import (
 	"bytes"
 	"fmt"
+	"github.com/dlintw/goconf"
 	"github.com/superkkt/cherry/cherryd/internal/log"
 	"github.com/superkkt/cherry/cherryd/internal/network"
 	"github.com/superkkt/cherry/cherryd/internal/northbound/app"
 	"github.com/superkkt/cherry/cherryd/openflow"
 	"github.com/superkkt/cherry/cherryd/protocol"
-	"github.com/dlintw/goconf"
 	"net"
 )
 
@@ -246,11 +246,7 @@ func (r *L2Switch) OnPacketIn(finder network.Finder, ingress *network.Port, eth 
 		return err
 	}
 
-	next, ok := r.Next()
-	if !ok {
-		return nil
-	}
-	return next.OnPacketIn(finder, ingress, eth)
+	return r.BaseProcessor.OnPacketIn(finder, ingress, eth)
 }
 
 func (r *L2Switch) processPacket(finder network.Finder, ingress *network.Port, eth *protocol.Ethernet) (drop bool, err error) {
@@ -292,11 +288,7 @@ func (r *L2Switch) OnPortDown(finder network.Finder, port *network.Port) error {
 		return err
 	}
 
-	next, ok := r.Next()
-	if !ok {
-		return nil
-	}
-	return next.OnPortDown(finder, port)
+	return r.BaseProcessor.OnPortDown(finder, port)
 }
 
 func (r *L2Switch) OnTopologyChange(finder network.Finder) error {
@@ -306,11 +298,7 @@ func (r *L2Switch) OnTopologyChange(finder network.Finder) error {
 		return err
 	}
 
-	next, ok := r.Next()
-	if !ok {
-		return nil
-	}
-	return next.OnTopologyChange(finder)
+	return r.BaseProcessor.OnTopologyChange(finder)
 }
 
 func (r *L2Switch) cleanup(finder network.Finder, port *network.Port) error {
