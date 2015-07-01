@@ -26,6 +26,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/dlintw/goconf"
+	_ "github.com/go-sql-driver/mysql"
 	"net"
 )
 
@@ -129,6 +130,75 @@ func (r *database) GetNetworks() ([]*net.IPNet, error) {
 			return nil, err
 		}
 		result = append(result, ipnet)
+	}
+	if err := row.Err(); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+func (r *database) IsRouter(ip net.IP) (bool, error) {
+	if ip == nil {
+		panic("IP address is nil")
+	}
+
+	qry := `SELECT 
+			A.id FROM router A 
+		JOIN 
+			ip B ON A.ip_id = B.id 
+		WHERE 
+			B.address = INET_ATON(?)`
+	row, err := r.db.Query(qry, ip.String())
+	if err != nil {
+		return false, err
+	}
+	defer row.Close()
+
+	if !row.Next() {
+		return false, nil
+	}
+
+	return true, nil
+}
+
+func (r *database) IsGateway(mac net.HardwareAddr) (bool, error) {
+	if mac == nil {
+		panic("MAC address is nil")
+	}
+
+	qry := "SELECT id FROM gateway WHERE mac = ?"
+	row, err := r.db.Query(qry, mac.String())
+	if err != nil {
+		return false, err
+	}
+	defer row.Close()
+
+	if !row.Next() {
+		return false, nil
+	}
+
+	return true, nil
+}
+
+func (r *database) GetGateways() ([]net.HardwareAddr, error) {
+	row, err := r.db.Query("SELECT mac FROM gateway")
+	if err != nil {
+		return nil, err
+	}
+	defer row.Close()
+
+	result := make([]net.HardwareAddr, 0)
+	for row.Next() {
+		var v string
+		if err := row.Scan(&v); err != nil {
+			return nil, err
+		}
+		mac, err := net.ParseMAC(v)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, mac)
 	}
 	if err := row.Err(); err != nil {
 		return nil, err

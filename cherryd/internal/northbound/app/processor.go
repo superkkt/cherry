@@ -1,7 +1,7 @@
 /*
  * Cherry - An OpenFlow Controller
  *
- * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved. 
+ * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved.
  * Kitae Kim <superkkt@sds.co.kr>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -23,6 +23,7 @@ package app
 
 import (
 	"github.com/superkkt/cherry/cherryd/internal/network"
+	"github.com/superkkt/cherry/cherryd/openflow"
 	"github.com/superkkt/cherry/cherryd/protocol"
 )
 
@@ -112,4 +113,30 @@ func (r *BaseProcessor) Next() (next Processor, ok bool) {
 
 func (r *BaseProcessor) SetNext(next Processor) {
 	r.next = next
+}
+
+func (r *BaseProcessor) PacketOut(egress *network.Port, packet []byte) error {
+	f := egress.Device().Factory()
+
+	inPort := openflow.NewInPort()
+	inPort.SetController()
+
+	outPort := openflow.NewOutPort()
+	outPort.SetValue(egress.Number())
+
+	action, err := f.NewAction()
+	if err != nil {
+		return err
+	}
+	action.SetOutPort(outPort)
+
+	out, err := f.NewPacketOut()
+	if err != nil {
+		return err
+	}
+	out.SetInPort(inPort)
+	out.SetAction(action)
+	out.SetData(packet)
+
+	return egress.Device().SendMessage(out)
 }

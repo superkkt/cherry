@@ -31,6 +31,7 @@ import (
 	"github.com/superkkt/cherry/cherryd/internal/northbound/app"
 	"github.com/superkkt/cherry/cherryd/openflow"
 	"github.com/superkkt/cherry/cherryd/protocol"
+	"math/rand"
 	"net"
 )
 
@@ -46,7 +47,10 @@ type Router struct {
 
 type database interface {
 	FindMAC(ip net.IP) (mac net.HardwareAddr, ok bool, err error)
+	GetGateways() ([]net.HardwareAddr, error)
 	GetNetworks() ([]*net.IPNet, error)
+	IsGateway(mac net.HardwareAddr) (bool, error)
+	IsRouter(ip net.IP) (bool, error)
 }
 
 func New(conf *goconf.ConfigFile, log log.Logger, db database) *Router {
@@ -75,6 +79,8 @@ func (r *Router) Init() error {
 }
 
 func (r *Router) OnPacketIn(finder network.Finder, ingress *network.Port, eth *protocol.Ethernet) error {
+	r.log.Debug(fmt.Sprintf("Router PACKET_IN.. DstMAC=%v, r.mac=%v", eth.DstMAC, r.mac))
+
 	// Is this packet going to the router?
 	if bytes.Compare(eth.DstMAC, r.mac) != 0 {
 		return r.BaseProcessor.OnPacketIn(finder, ingress, eth)
@@ -82,6 +88,7 @@ func (r *Router) OnPacketIn(finder network.Finder, ingress *network.Port, eth *p
 
 	// IPv4?
 	if eth.Type != 0x0800 {
+		r.log.Debug(fmt.Sprintf("Drop non-IPv4 packet.. (ethType=%v)", eth.Type))
 		// Drop the packet if it is not an IPv4 packet
 		return nil
 	}
@@ -89,15 +96,28 @@ func (r *Router) OnPacketIn(finder network.Finder, ingress *network.Port, eth *p
 	if err := ipv4.UnmarshalBinary(eth.Payload); err != nil {
 		return err
 	}
+	ok, err := r.db.IsRouter(ipv4.DstIP)
+	if err != nil {
+		return fmt.Errorf("check router IP: %v", err)
+	}
+	if ok {
+		// TODO: Send ICMP response if this packet is an ICMP echo
+		return nil
+	}
 
 	networks, err := r.db.GetNetworks()
 	if err != nil {
 		return err
 	}
+	p := packet{
+		ingress:  ingress,
+		ethernet: eth,
+		ipv4:     ipv4,
+	}
 	if isMyNetwork(networks, ipv4.DstIP) {
-		return r.handleIncoming(finder, ingress, eth, ipv4)
+		return r.handleIncoming(finder, p)
 	} else {
-		return r.handleOutgoing(finder, ingress, eth, ipv4)
+		return r.handleOutgoing(finder, p)
 	}
 }
 
@@ -111,56 +131,109 @@ func isMyNetwork(networks []*net.IPNet, ip net.IP) bool {
 	return false
 }
 
-func (r *Router) handleIncoming(finder network.Finder, ingress *network.Port, eth *protocol.Ethernet, ipv4 *protocol.IPv4) error {
-	mac, ok, err := r.db.FindMAC(ipv4.DstIP)
+type packet struct {
+	ingress  *network.Port
+	ethernet *protocol.Ethernet
+	ipv4     *protocol.IPv4
+}
+
+func (r *Router) handleIncoming(finder network.Finder, p packet) error {
+	mac, ok, err := r.db.FindMAC(p.ipv4.DstIP)
 	if err != nil {
 		return err
 	}
 	if !ok {
-		r.log.Debug(fmt.Sprintf("Router: incoming packet to an unknown host %v from %v", ipv4.DstIP, ipv4.SrcIP))
+		r.log.Debug(fmt.Sprintf("Router: incoming packet to an unknown host %v from %v", p.ipv4.DstIP, p.ipv4.SrcIP))
 		return nil
 	}
-	r.log.Debug(fmt.Sprintf("Router: forwarding to a host.. IP=%v, MAC=%v", ipv4.DstIP, mac))
+	r.log.Debug(fmt.Sprintf("Router: routing to a host.. IP=%v, MAC=%v", p.ipv4.DstIP, mac))
 
+	return r.route(finder, p, mac)
+}
+
+// XXX: We only support static default routing
+func (r *Router) handleOutgoing(finder network.Finder, p packet) error {
+	ok, err := r.db.IsGateway(p.ethernet.SrcMAC)
+	if err != nil {
+		return fmt.Errorf("check gateway MAC: %v", err)
+	}
+	if ok {
+		r.log.Err(fmt.Sprintf("Loop is detected!! Did you add network address for %v?", p.ipv4.DstIP))
+		// Drop this packet
+		return nil
+	}
+
+	gateways, err := r.db.GetGateways()
+	if err != nil {
+		return fmt.Errorf("query gateway MAC addresses: %v", err)
+	}
+	if gateways == nil || len(gateways) == 0 {
+		r.log.Err("Not found a gateway MAC address for outgoing packets!")
+		// Drop this packet
+		return nil
+	}
+	mac := pickGateway(gateways)
+
+	return r.route(finder, p, mac)
+}
+
+func (r *Router) route(finder network.Finder, p packet, mac net.HardwareAddr) error {
 	// Do we have the destination node?
 	dstNode := finder.Node(mac)
 	if dstNode == nil {
-		r.log.Debug(fmt.Sprintf("Router: we don't know where the host is connected.. IP=%v, MAC=%v", ipv4.DstIP, mac))
-		return r.BaseProcessor.OnPacketIn(finder, ingress, eth)
-	}
-	// Two nodes on a same switch device?
-	if ingress.Device().ID() == dstNode.Port().Device().ID() {
-		param := flowParam{
-			device:    ingress.Device(),
-			etherType: eth.Type,
-			inPort:    ingress.Number(),
-			outPort:   dstNode.Port().Number(),
-			srcMAC:    eth.SrcMAC,
-			dstMAC:    eth.DstMAC,
-			newDstMAC: mac,
-			dstIP:     &net.IPNet{IP: ipv4.DstIP, Mask: net.IPv4Mask(255, 255, 255, 255)},
-		}
-		if err := installFlow(param); err != nil {
-			return err
-		}
-		// TODO: packet out
+		r.log.Debug(fmt.Sprintf("Router: we don't know where the node is connected.. (MAC=%v)", mac))
+		// Replace destination MAC address
+		p.ethernet.DstMAC = mac
+		return r.BaseProcessor.OnPacketIn(finder, p.ingress, p.ethernet)
 	}
 
-	path := finder.Path(ingress.Device().ID(), dstNode.Port().Device().ID())
+	// Two nodes on a same switch device?
+	if p.ingress.Device().ID() == dstNode.Port().Device().ID() {
+		return r.sendPacket(p, dstNode.Port(), mac)
+	}
+	path := finder.Path(p.ingress.Device().ID(), dstNode.Port().Device().ID())
 	if path == nil || len(path) == 0 {
-		r.log.Info(fmt.Sprintf("Router: not found a path from %v to %v", ingress.ID(), dstNode.Port().ID()))
+		r.log.Info(fmt.Sprintf("Router: not found a path from %v to %v", p.ingress.ID(), dstNode.Port().ID()))
 		return nil
 	}
-
-	// TODO: install a flow rule
-
-	// TODO: set ingress to next device's port and pass the ethernet packet whose dst MAC is modified to the next app
-
-	return nil
+	return r.sendPacket(p, path[0][0], mac)
 }
 
-func (r *Router) handleOutgoing(finder network.Finder, ingress *network.Port, eth *protocol.Ethernet, ipv4 *protocol.IPv4) error {
-	return nil
+func (r *Router) sendPacket(p packet, egress *network.Port, mac net.HardwareAddr) error {
+	param := flowParam{
+		device:    p.ingress.Device(),
+		etherType: p.ethernet.Type,
+		inPort:    p.ingress.Number(),
+		outPort:   egress.Number(),
+		srcMAC:    p.ethernet.SrcMAC,
+		dstMAC:    p.ethernet.DstMAC,
+		targetMAC: mac,
+		dstIP:     &net.IPNet{IP: p.ipv4.DstIP, Mask: net.IPv4Mask(255, 255, 255, 255)},
+	}
+
+	// Replace destination MAC address
+	p.ethernet.DstMAC = mac
+	packet, err := p.ethernet.MarshalBinary()
+	if err != nil {
+		return err
+	}
+	// Install a flow rule that replaces the destination MAC address
+	if err := installFlow(param); err != nil {
+		return err
+	}
+
+	return r.PacketOut(egress, packet)
+}
+
+func pickGateway(gateways []net.HardwareAddr) net.HardwareAddr {
+	if gateways == nil || len(gateways) == 0 {
+		panic("Invalid gateways")
+	}
+
+	if len(gateways) == 1 {
+		return gateways[0]
+	}
+	return gateways[rand.Intn(len(gateways))]
 }
 
 type flowParam struct {
@@ -170,7 +243,7 @@ type flowParam struct {
 	outPort   uint32
 	srcMAC    net.HardwareAddr
 	dstMAC    net.HardwareAddr
-	newDstMAC net.HardwareAddr
+	targetMAC net.HardwareAddr
 	dstIP     *net.IPNet
 }
 
@@ -195,7 +268,7 @@ func installFlow(p flowParam) error {
 	if err != nil {
 		return err
 	}
-	action.SetDstMAC(p.newDstMAC)
+	action.SetDstMAC(p.targetMAC)
 	action.SetOutPort(outPort)
 	inst, err := f.NewInstruction()
 	if err != nil {

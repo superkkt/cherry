@@ -80,32 +80,6 @@ func flood(ingress *network.Port, packet []byte) error {
 	return ingress.Device().SendMessage(out)
 }
 
-func packetout(egress *network.Port, packet []byte) error {
-	f := egress.Device().Factory()
-
-	inPort := openflow.NewInPort()
-	inPort.SetController()
-
-	outPort := openflow.NewOutPort()
-	outPort.SetValue(egress.Number())
-
-	action, err := f.NewAction()
-	if err != nil {
-		return err
-	}
-	action.SetOutPort(outPort)
-
-	out, err := f.NewPacketOut()
-	if err != nil {
-		return err
-	}
-	out.SetInPort(inPort)
-	out.SetAction(action)
-	out.SetData(packet)
-
-	return egress.Device().SendMessage(out)
-}
-
 func isBroadcast(eth *protocol.Ethernet) bool {
 	return bytes.Compare(eth.DstMAC, []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}) == 0
 }
@@ -220,7 +194,7 @@ func (r *L2Switch) switching(p switchParam) error {
 	}
 
 	// Send this ethernet packet directly to the destination node
-	return packetout(p.egress, p.rawPacket)
+	return r.PacketOut(p.egress, p.rawPacket)
 }
 
 func (r *L2Switch) localSwitching(p switchParam) error {
@@ -237,7 +211,7 @@ func (r *L2Switch) localSwitching(p switchParam) error {
 	}
 
 	// Send this ethernet packet directly to the destination node
-	return packetout(p.egress, p.rawPacket)
+	return r.PacketOut(p.egress, p.rawPacket)
 }
 
 func (r *L2Switch) OnPacketIn(finder network.Finder, ingress *network.Port, eth *protocol.Ethernet) error {

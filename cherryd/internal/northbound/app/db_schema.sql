@@ -17,7 +17,7 @@ CREATE TABLE `ip` (
 
 CREATE TABLE `gateway` (
   `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-  `mac` bigint unsigned NOT NULL,
+  `mac` char(17) NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `mac` (`mac`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
@@ -28,7 +28,7 @@ CREATE TABLE `host` (
   `mac` char(17) NOT NULL,
   PRIMARY KEY (`id`),
   FOREIGN KEY (`ip_id`) REFERENCES `ip`(`id`) ON UPDATE CASCADE ON DELETE RESTRICT,
-  UNIQUE KEY `mac` (`mac`)
+  UNIQUE KEY `ip-mac` (`ip_id`, `mac`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 CREATE TABLE `router` (
