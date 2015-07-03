@@ -164,7 +164,7 @@ func (r *Router) handleOutgoing(finder network.Finder, p packet) error {
 	}
 	// IP spoofing?
 	if !mine {
-		r.log.Warning(fmt.Sprintf("IP spoofing is detected!! SrcIP=%v", p.ipv4.SrcIP))
+		r.log.Warning(fmt.Sprintf("IP spoofing is detected!! SrcIP=%v, DstIP=%v", p.ipv4.SrcIP, p.ipv4.DstIP))
 		// Drop this packet
 		return nil
 	}
