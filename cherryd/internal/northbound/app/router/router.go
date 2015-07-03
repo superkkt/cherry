@@ -98,37 +98,42 @@ func (r *Router) OnPacketIn(finder network.Finder, ingress *network.Port, eth *p
 	}
 	ok, err := r.db.IsRouter(ipv4.DstIP)
 	if err != nil {
-		return fmt.Errorf("check router IP: %v", err)
+		return fmt.Errorf("checking router IP: %v", err)
 	}
 	if ok {
 		// TODO: Send ICMP response if this packet is an ICMP echo
 		return nil
 	}
 
-	networks, err := r.db.GetNetworks()
+	mine, err := r.isMyNetwork(ipv4.DstIP)
 	if err != nil {
-		return err
+		return fmt.Errorf("checking my networks: %v", err)
 	}
 	p := packet{
 		ingress:  ingress,
 		ethernet: eth,
 		ipv4:     ipv4,
 	}
-	if isMyNetwork(networks, ipv4.DstIP) {
+	if mine {
 		return r.handleIncoming(finder, p)
 	} else {
 		return r.handleOutgoing(finder, p)
 	}
 }
 
-func isMyNetwork(networks []*net.IPNet, ip net.IP) bool {
+func (r *Router) isMyNetwork(ip net.IP) (bool, error) {
+	networks, err := r.db.GetNetworks()
+	if err != nil {
+		return false, err
+	}
+
 	for _, n := range networks {
 		if n.Contains(ip) {
-			return true
+			return true, nil
 		}
 	}
 
-	return false
+	return false, nil
 }
 
 type packet struct {
@@ -153,9 +158,20 @@ func (r *Router) handleIncoming(finder network.Finder, p packet) error {
 
 // XXX: We only support static default routing
 func (r *Router) handleOutgoing(finder network.Finder, p packet) error {
+	mine, err := r.isMyNetwork(p.ipv4.SrcIP)
+	if err != nil {
+		return fmt.Errorf("checking my networks: %v", err)
+	}
+	// IP spoofing?
+	if !mine {
+		r.log.Warning(fmt.Sprintf("IP spoofing is detected!! SrcIP=%v", p.ipv4.SrcIP))
+		// Drop this packet
+		return nil
+	}
+
 	ok, err := r.db.IsGateway(p.ethernet.SrcMAC)
 	if err != nil {
-		return fmt.Errorf("check gateway MAC: %v", err)
+		return fmt.Errorf("checking gateway MAC: %v", err)
 	}
 	if ok {
 		r.log.Err(fmt.Sprintf("Loop is detected!! Did you add network address for %v?", p.ipv4.DstIP))
