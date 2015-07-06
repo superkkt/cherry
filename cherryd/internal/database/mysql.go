@@ -109,16 +109,15 @@ func (r *MySQL) FindMAC(ip net.IP) (mac net.HardwareAddr, ok bool, err error) {
 		return nil, false, err
 	}
 
-	var v string
+	var v []byte
 	if err := row.Scan(&v); err != nil {
 		return nil, false, err
 	}
-	mac, err = net.ParseMAC(v)
-	if err != nil {
-		return nil, false, err
+	if v == nil || len(v) != 6 {
+		panic("Invalid MAC address")
 	}
 
-	return mac, true, nil
+	return net.HardwareAddr(v), true, nil
 }
 
 func (r *MySQL) GetNetworks() ([]*net.IPNet, error) {
@@ -180,7 +179,7 @@ func (r *MySQL) IsGateway(mac net.HardwareAddr) (bool, error) {
 	qry := `SELECT id 
 		FROM gateway 
 		WHERE mac = ?`
-	row, err := r.db.Query(qry, mac.String())
+	row, err := r.db.Query(qry, []byte(mac))
 	if err != nil {
 		return false, err
 	}
@@ -204,15 +203,14 @@ func (r *MySQL) GetGateways() ([]net.HardwareAddr, error) {
 
 	result := make([]net.HardwareAddr, 0)
 	for row.Next() {
-		var v string
+		var v []byte
 		if err := row.Scan(&v); err != nil {
 			return nil, err
 		}
-		mac, err := net.ParseMAC(v)
-		if err != nil {
-			return nil, err
+		if v == nil || len(v) != 6 {
+			panic("Invalid MAC address")
 		}
-		result = append(result, mac)
+		result = append(result, net.HardwareAddr(v))
 	}
 	if err := row.Err(); err != nil {
 		return nil, err

@@ -81,7 +81,7 @@ func (r *MySQL) createIPTable() error {
 func (r *MySQL) createGatewayTable() error {
 	qry := "CREATE TABLE IF NOT EXISTS `gateway` ("
 	qry += " `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,"
-	qry += " `mac` char(17) NOT NULL,"
+	qry += " `mac` binary(6) NOT NULL,"
 	qry += " PRIMARY KEY (`id`),"
 	qry += " UNIQUE KEY `mac` (`mac`)"
 	qry += ") ENGINE=InnoDB DEFAULT CHARSET=utf8;"
@@ -94,7 +94,7 @@ func (r *MySQL) createHostTable() error {
 	qry := "CREATE TABLE IF NOT EXISTS `host` ("
 	qry += " `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,"
 	qry += " `ip_id` bigint(20) unsigned DEFAULT NULL,"
-	qry += " `mac` char(17) NOT NULL,"
+	qry += " `mac` binary(6) NOT NULL,"
 	qry += " PRIMARY KEY (`id`),"
 	qry += " FOREIGN KEY (`ip_id`) REFERENCES `ip`(`id`) ON UPDATE CASCADE ON DELETE RESTRICT,"
 	qry += " UNIQUE KEY `ip-mac` (`ip_id`, `mac`)"

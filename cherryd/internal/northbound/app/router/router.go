@@ -158,6 +158,17 @@ func (r *Router) handleIncoming(finder network.Finder, p packet) error {
 
 // XXX: We only support static default routing
 func (r *Router) handleOutgoing(finder network.Finder, p packet) error {
+	r.log.Debug(fmt.Sprintf("Checking gateway MAC address: %v", p.ethernet.SrcMAC))
+	ok, err := r.db.IsGateway(p.ethernet.SrcMAC)
+	if err != nil {
+		return fmt.Errorf("checking gateway MAC: %v", err)
+	}
+	if ok {
+		r.log.Err(fmt.Sprintf("Loop is detected!! Did you add network address for %v?", p.ipv4.DstIP))
+		// Drop this packet
+		return nil
+	}
+
 	mine, err := r.isMyNetwork(p.ipv4.SrcIP)
 	if err != nil {
 		return fmt.Errorf("checking my networks: %v", err)
@@ -165,16 +176,6 @@ func (r *Router) handleOutgoing(finder network.Finder, p packet) error {
 	// IP spoofing?
 	if !mine {
 		r.log.Warning(fmt.Sprintf("IP spoofing is detected!! SrcIP=%v, DstIP=%v", p.ipv4.SrcIP, p.ipv4.DstIP))
-		// Drop this packet
-		return nil
-	}
-
-	ok, err := r.db.IsGateway(p.ethernet.SrcMAC)
-	if err != nil {
-		return fmt.Errorf("checking gateway MAC: %v", err)
-	}
-	if ok {
-		r.log.Err(fmt.Sprintf("Loop is detected!! Did you add network address for %v?", p.ipv4.DstIP))
 		// Drop this packet
 		return nil
 	}
@@ -187,6 +188,9 @@ func (r *Router) handleOutgoing(finder network.Finder, p packet) error {
 		r.log.Err("Not found a gateway MAC address for outgoing packets!")
 		// Drop this packet
 		return nil
+	}
+	for _, v := range gateways {
+		r.log.Debug(fmt.Sprintf("Gateway MAC: %v", v))
 	}
 	mac := pickGateway(gateways)
 

@@ -103,11 +103,12 @@ func (r *ProxyARP) OnPacketIn(finder network.Finder, ingress *network.Port, eth 
 		// Unknown hosts. Drop the packet.
 		return nil
 	}
+	r.log.Debug(fmt.Sprintf("ARP request for %v (%v)", arp.TPA, mac))
+
 	reply, err := makeARPReply(arp, mac)
 	if err != nil {
 		return err
 	}
-
 	r.log.Debug("Sending ARP reply..")
 	return sendARPReply(ingress, reply)
 }
