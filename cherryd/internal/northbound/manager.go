@@ -24,6 +24,7 @@ package northbound
 import (
 	"fmt"
 	"github.com/dlintw/goconf"
+	"github.com/superkkt/cherry/cherryd/internal/database"
 	"github.com/superkkt/cherry/cherryd/internal/log"
 	"github.com/superkkt/cherry/cherryd/internal/network"
 	"github.com/superkkt/cherry/cherryd/internal/northbound/app"
@@ -44,7 +45,7 @@ type Manager struct {
 	conf       *goconf.ConfigFile
 	apps       map[string]app.Processor // Registered applications
 	head, tail app.Processor
-	db         *database
+	db         *database.MySQL
 }
 
 func NewManager(conf *goconf.ConfigFile, log log.Logger) (*Manager, error) {
@@ -55,7 +56,7 @@ func NewManager(conf *goconf.ConfigFile, log log.Logger) (*Manager, error) {
 		panic("nil logger")
 	}
 
-	db, err := newDatabase(conf)
+	db, err := database.NewMySQL(conf)
 	if err != nil {
 		return nil, err
 	}

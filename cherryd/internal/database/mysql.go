@@ -19,7 +19,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-package northbound
+package database
 
 import (
 	"database/sql"
@@ -30,19 +30,26 @@ import (
 	"net"
 )
 
-type database struct {
+type MySQL struct {
 	db *sql.DB
 }
 
-func newDatabase(conf *goconf.ConfigFile) (*database, error) {
+func NewMySQL(conf *goconf.ConfigFile) (*MySQL, error) {
 	db, err := newDBConn(conf)
 	if err != nil {
 		return nil, err
 	}
+	db.SetMaxOpenConns(64)
+	db.SetMaxIdleConns(8)
 
-	return &database{
+	mysql := &MySQL{
 		db: db,
-	}, nil
+	}
+	if err := mysql.createTables(); err != nil {
+		return nil, err
+	}
+
+	return mysql, nil
 }
 
 func newDBConn(conf *goconf.ConfigFile) (*sql.DB, error) {
@@ -78,13 +85,16 @@ func newDBConn(conf *goconf.ConfigFile) (*sql.DB, error) {
 	return db, nil
 }
 
-func (r *database) FindMAC(ip net.IP) (mac net.HardwareAddr, ok bool, err error) {
+func (r *MySQL) FindMAC(ip net.IP) (mac net.HardwareAddr, ok bool, err error) {
 	if ip == nil {
 		panic("IP address is nil")
 	}
 
-	qry := "SELECT mac FROM host A JOIN ip B ON A.ip_id = B.id "
-	qry += "WHERE B.address = INET_ATON(?)"
+	qry := `SELECT mac 
+		FROM host A 
+		JOIN ip B 
+		ON A.ip_id = B.id 
+		WHERE B.address = INET_ATON(?)`
 	row, err := r.db.Query(qry, ip.String())
 	if err != nil {
 		return nil, false, err
@@ -111,8 +121,9 @@ func (r *database) FindMAC(ip net.IP) (mac net.HardwareAddr, ok bool, err error)
 	return mac, true, nil
 }
 
-func (r *database) GetNetworks() ([]*net.IPNet, error) {
-	qry := "SELECT INET_NTOA(address), mask FROM network"
+func (r *MySQL) GetNetworks() ([]*net.IPNet, error) {
+	qry := `SELECT INET_NTOA(address), mask 
+		FROM network`
 	row, err := r.db.Query(qry)
 	if err != nil {
 		return nil, err
@@ -138,17 +149,16 @@ func (r *database) GetNetworks() ([]*net.IPNet, error) {
 	return result, nil
 }
 
-func (r *database) IsRouter(ip net.IP) (bool, error) {
+func (r *MySQL) IsRouter(ip net.IP) (bool, error) {
 	if ip == nil {
 		panic("IP address is nil")
 	}
 
-	qry := `SELECT 
-			A.id FROM router A 
-		JOIN 
-			ip B ON A.ip_id = B.id 
-		WHERE 
-			B.address = INET_ATON(?)`
+	qry := `SELECT A.id 
+		FROM router A 
+		JOIN ip B 
+		ON A.ip_id = B.id 
+		WHERE B.address = INET_ATON(?)`
 	row, err := r.db.Query(qry, ip.String())
 	if err != nil {
 		return false, err
@@ -162,12 +172,14 @@ func (r *database) IsRouter(ip net.IP) (bool, error) {
 	return true, nil
 }
 
-func (r *database) IsGateway(mac net.HardwareAddr) (bool, error) {
+func (r *MySQL) IsGateway(mac net.HardwareAddr) (bool, error) {
 	if mac == nil {
 		panic("MAC address is nil")
 	}
 
-	qry := "SELECT id FROM gateway WHERE mac = ?"
+	qry := `SELECT id 
+		FROM gateway 
+		WHERE mac = ?`
 	row, err := r.db.Query(qry, mac.String())
 	if err != nil {
 		return false, err
@@ -181,8 +193,10 @@ func (r *database) IsGateway(mac net.HardwareAddr) (bool, error) {
 	return true, nil
 }
 
-func (r *database) GetGateways() ([]net.HardwareAddr, error) {
-	row, err := r.db.Query("SELECT mac FROM gateway")
+func (r *MySQL) GetGateways() ([]net.HardwareAddr, error) {
+	qry := `SELECT mac 
+		FROM gateway`
+	row, err := r.db.Query(qry)
 	if err != nil {
 		return nil, err
 	}
