@@ -96,12 +96,21 @@ func (r *Router) OnPacketIn(finder network.Finder, ingress *network.Port, eth *p
 	if err := ipv4.UnmarshalBinary(eth.Payload); err != nil {
 		return err
 	}
+	p := packet{
+		ingress:  ingress,
+		ethernet: eth,
+		ipv4:     ipv4,
+	}
+
 	ok, err := r.db.IsRouter(ipv4.DstIP)
 	if err != nil {
 		return fmt.Errorf("checking router IP: %v", err)
 	}
 	if ok {
-		// TODO: Send ICMP response if this packet is an ICMP echo
+		// ICMP?
+		if ipv4.Protocol == 0x01 {
+			return r.sendICMPReply(p)
+		}
 		return nil
 	}
 
@@ -109,16 +118,46 @@ func (r *Router) OnPacketIn(finder network.Finder, ingress *network.Port, eth *p
 	if err != nil {
 		return fmt.Errorf("checking my networks: %v", err)
 	}
-	p := packet{
-		ingress:  ingress,
-		ethernet: eth,
-		ipv4:     ipv4,
-	}
 	if mine {
 		return r.handleIncoming(finder, p)
 	} else {
 		return r.handleOutgoing(finder, p)
 	}
+}
+
+func (r *Router) sendICMPReply(p packet) error {
+	echo := new(protocol.ICMPEcho)
+	if err := echo.UnmarshalBinary(p.ipv4.Payload); err != nil || echo.Type != 8 {
+		// Ignores all other ICMP messages except ICMP echo reqeust
+		r.log.Debug("Ignores ICMP message that is not echo request..")
+		return nil
+	}
+
+	reply := protocol.NewICMPEchoReply(echo.ID, echo.Sequence, echo.Payload)
+	replyPacket, err := reply.MarshalBinary()
+	if err != nil {
+		return fmt.Errorf("marshaling ICMP echo reply: %v", err)
+	}
+
+	ip := protocol.NewIPv4(p.ipv4.DstIP, p.ipv4.SrcIP, 0x01, replyPacket)
+	ipPacket, err := ip.MarshalBinary()
+	if err != nil {
+		return fmt.Errorf("marshaling IPv4 packet: %v", err)
+	}
+
+	eth := protocol.Ethernet{
+		SrcMAC:  p.ethernet.DstMAC,
+		DstMAC:  p.ethernet.SrcMAC,
+		Type:    0x0800,
+		Payload: ipPacket,
+	}
+	ethPacket, err := eth.MarshalBinary()
+	if err != nil {
+		return fmt.Errorf("marshaling ethernet packet: %v", err)
+	}
+
+	r.log.Debug(fmt.Sprintf("Sending ICMP reply to %v..", p.ipv4.SrcIP))
+	return r.PacketOut(p.ingress, ethPacket)
 }
 
 func (r *Router) isMyNetwork(ip net.IP) (bool, error) {
