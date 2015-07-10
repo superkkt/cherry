@@ -1,7 +1,7 @@
 /*
  * Cherry - An OpenFlow Controller
  *
- * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved. 
+ * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved.
  * Kitae Kim <superkkt@sds.co.kr>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -23,7 +23,7 @@ package network
 
 import (
 	"fmt"
-	"github.com/superkkt/cherry/cherryd/internal/log"
+	"github.com/superkkt/cherry/cherryd/log"
 	"github.com/superkkt/cherry/cherryd/openflow"
 	"github.com/superkkt/cherry/cherryd/openflow/of13"
 	"github.com/superkkt/cherry/cherryd/openflow/trans"

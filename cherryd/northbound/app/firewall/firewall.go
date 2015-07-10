@@ -23,8 +23,8 @@ package firewall
 
 import (
 	"github.com/dlintw/goconf"
-	"github.com/superkkt/cherry/cherryd/internal/log"
-	"github.com/superkkt/cherry/cherryd/internal/northbound/app"
+	"github.com/superkkt/cherry/cherryd/log"
+	"github.com/superkkt/cherry/cherryd/northbound/app"
 )
 
 type Firewall struct {

@@ -24,9 +24,9 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/superkkt/cherry/cherryd/internal/log"
-	"github.com/superkkt/cherry/cherryd/internal/network"
-	"github.com/superkkt/cherry/cherryd/internal/northbound"
+	"github.com/superkkt/cherry/cherryd/log"
+	"github.com/superkkt/cherry/cherryd/network"
+	"github.com/superkkt/cherry/cherryd/northbound"
 	"golang.org/x/net/context"
 	"net"
 	"os"

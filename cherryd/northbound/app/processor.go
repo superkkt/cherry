@@ -22,7 +22,7 @@
 package app
 
 import (
-	"github.com/superkkt/cherry/cherryd/internal/network"
+	"github.com/superkkt/cherry/cherryd/network"
 	"github.com/superkkt/cherry/cherryd/openflow"
 	"github.com/superkkt/cherry/cherryd/protocol"
 )
