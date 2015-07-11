@@ -17,6 +17,8 @@ Cherry is an OpenFlow controller written in Go that supports OpenFlow 1.0 and 1.
 
 ## Quick Start
 
+You can install Cherry on Docker or natively from source based on your preference.
+
 ### Installing on Docker
 
 * Install Docker if you don't have it on your system by following instruction: https://docs.docker.com/installation/
