@@ -32,6 +32,8 @@ Cherry is an OpenFlow controller written in Go that supports OpenFlow 1.0 and 1.
 
  ```# docker run -d -p 6633:6633 cherryd```
 
+* That's it! Cherry will be started in L2 switch mode.
+
 ### Installing from source
 
 * Install Go language if you don't have it on your system by following instruction: http://golang.org/doc/install
