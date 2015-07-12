@@ -49,7 +49,7 @@ You can install Cherry on Docker or natively from source based on your preferenc
  
  ```$ sudo cp $GOPATH/src/github.com/superkkt/cherry/cherryd/cherryd.conf /usr/local/etc```
 
-* Edit MySQL information from /usr/local/etc/cherryd.conf:
+* Edit MySQL information from */usr/local/etc/cherryd.conf*:
 
  ```
 [database]
