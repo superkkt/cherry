@@ -17,7 +17,7 @@ Cherry is an OpenFlow controller written in Go that supports OpenFlow 1.0 and 1.
 
 ## Quick Start
 
-You can install Cherry on Docker or natively from source based on your preference. Cherry requires MySQL database server.
+You can install Cherry on Docker or natively from source based on your preference. Cherry requires MySQL (or MariaDB) database server.
 
 ### Installing on Docker
 
