@@ -19,6 +19,8 @@ RUN sed -i 's/httpredir.debian.org/ftp.daum.net/g' /etc/apt/sources.list \
 RUN go get github.com/superkkt/cherry/cherryd \
  && go install github.com/superkkt/cherry/cherryd
 
+VOLUME /var/log
+
 # Run the cherryd command by default when the container starts.
 ENTRYPOINT ["/entrypoint.sh"]
 
