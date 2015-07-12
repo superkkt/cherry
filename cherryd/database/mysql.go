@@ -74,7 +74,7 @@ func newDBConn(conf *goconf.ConfigFile) (*sql.DB, error) {
 		return nil, errors.New("empty database name in the config file")
 	}
 
-	db, err := sql.Open("mysql", fmt.Sprintf("%v:%v@tcp(%v:%v)/%v", user, password, host, port, dbname))
+	db, err := sql.Open("mysql", fmt.Sprintf("%v:%v@tcp(%v:%v)/%v?timeout=5s", user, password, host, port, dbname))
 	if err != nil {
 		return nil, err
 	}

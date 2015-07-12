@@ -56,7 +56,7 @@ func waitSignal(log *log.Syslog, shutdown context.CancelFunc) {
 			log.Info("Shutting down...")
 			shutdown()
 			// Timeout for cancelation
-			time.Sleep(15 * time.Second)
+			time.Sleep(5 * time.Second)
 			os.Exit(0)
 		} else if s == syscall.SIGHUP {
 			// XXX: Do something you need
@@ -65,15 +65,15 @@ func waitSignal(log *log.Syslog, shutdown context.CancelFunc) {
 	}
 }
 
-func listen(ctx context.Context, log *log.Syslog, config *Config) {
+func listen(ctx context.Context, log *log.Syslog, port int, controller *network.Controller) {
 	type KeepAliver interface {
 		SetKeepAlive(keepalive bool) error
 		SetKeepAlivePeriod(d time.Duration) error
 	}
 
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%v", config.Port))
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%v", port))
 	if err != nil {
-		log.Err(fmt.Sprintf("Failed to listen on %v port: %v", config.Port, err))
+		log.Err(fmt.Sprintf("Failed to listen on %v port: %v", port, err))
 		return
 	}
 	defer listener.Close()
@@ -100,14 +100,6 @@ func listen(ctx context.Context, log *log.Syslog, config *Config) {
 	}
 	backlog := make(chan net.Conn, 32)
 	go f(backlog)
-
-	controller := network.NewController(log)
-	manager, err := createAppManager(config, log)
-	if err != nil {
-		log.Err(fmt.Sprintf("Failed to create application manager: %v", err))
-		return
-	}
-	manager.AddEventSender(controller)
 
 	// Infinite loop
 	for {
@@ -163,5 +155,13 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go waitSignal(log, cancel)
-	listen(ctx, log, conf)
+
+	controller := network.NewController(log)
+	manager, err := createAppManager(conf, log)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create application manager: %v\n", err)
+		os.Exit(1)
+	}
+	manager.AddEventSender(controller)
+	listen(ctx, log, conf.Port, controller)
 }
