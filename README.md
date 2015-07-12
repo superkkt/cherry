@@ -17,7 +17,7 @@ Cherry is an OpenFlow controller written in Go that supports OpenFlow 1.0 and 1.
 
 ## Quick Start
 
-You can install Cherry on Docker or natively from source based on your preference.
+You can install Cherry on Docker or natively from source based on your preference. Cherry requires MySQL database server.
 
 ### Installing on Docker
 
@@ -32,7 +32,7 @@ You can install Cherry on Docker or natively from source based on your preferenc
 
 * Run as root:
 
- ```# docker run -d -p 6633:6633 -e DB_HOST=YOUR-DB.com -e DB_PORT=3306 -e DB_USER=YOUR-DB-USER -e DB_PASSWORD=YOUR-DB-PASSWD -e DB_NAME=YOUR-DB-NAME cherryd```
+ ```# docker run -d -p 6633:6633 -e DB_HOST=YOUR-DB-HOST -e DB_PORT=3306 -e DB_USER=YOUR-DB-USER -e DB_PASSWORD=YOUR-DB-PASSWD -e DB_NAME=YOUR-DB-NAME cherryd```
 
 * That's it! Cherry will be started in L2 switch mode.
 
@@ -48,6 +48,17 @@ You can install Cherry on Docker or natively from source based on your preferenc
  ```$ sudo cp $GOPATH/bin/cherryd /usr/local/bin```
  
  ```$ sudo cp $GOPATH/src/github.com/superkkt/cherry/cherryd/cherryd.conf /usr/local/etc```
+
+* Edit MySQL information from /usr/local/etc/cherryd.conf:
+
+ ```
+[database]
+host = DB_HOST
+port = DB_PORT
+user = DB_USER
+password = DB_PASSWORD
+name = DB_NAME
+```
 
 * Run:
 
