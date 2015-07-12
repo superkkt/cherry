@@ -32,7 +32,7 @@ You can install Cherry on Docker or natively from source based on your preferenc
 
 * Run as root:
 
- ```# docker run -d -p 6633:6633 cherryd```
+ ```# docker run -d -p 6633:6633 -e DB_HOST=YOUR-DB.com -e DB_PORT=3306 -e DB_USER=YOUR-DB-USER -e DB_PASSWORD=YOUR-DB-PASSWD -e DB_NAME=YOUR-DB-NAME cherryd```
 
 * That's it! Cherry will be started in L2 switch mode.
 
