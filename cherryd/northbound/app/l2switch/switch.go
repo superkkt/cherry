@@ -140,6 +140,10 @@ func (r *L2Switch) setFlowRule(p flowParam) error {
 		return err
 	}
 
+	// Reverse
+	p.inPort, p.outPort = p.outPort, p.inPort
+	p.srcMAC, p.dstMAC = p.dstMAC, p.srcMAC
+
 	// Install backward flow
 	r.log.Debug(fmt.Sprintf("L2Switch: installing a backward flow.. %+v", p))
 	return installFlow(p)
