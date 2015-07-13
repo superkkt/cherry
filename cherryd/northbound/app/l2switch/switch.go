@@ -133,12 +133,15 @@ func installFlow(p flowParam) error {
 	return p.device.SendMessage(flow)
 }
 
-func setFlowRule(p flowParam) error {
-	// Forward
+func (r *L2Switch) setFlowRule(p flowParam) error {
+	r.log.Debug(fmt.Sprintf("L2Switch: installing a forward flow.. %+v", p))
+	// Install forward flow
 	if err := installFlow(p); err != nil {
 		return err
 	}
-	// Backward
+
+	// Install backward flow
+	r.log.Debug(fmt.Sprintf("L2Switch: installing a backward flow.. %+v", p))
 	return installFlow(p)
 }
 
@@ -154,12 +157,12 @@ func (r *L2Switch) switching(p switchParam) error {
 	// Find path between the ingress device and the other one that has that destination node
 	path := p.finder.Path(p.ingress.Device().ID(), p.egress.Device().ID())
 	if path == nil || len(path) == 0 {
-		r.log.Debug(fmt.Sprintf("Not found a path from %v to %v", p.ethernet.SrcMAC, p.ethernet.DstMAC))
+		r.log.Debug(fmt.Sprintf("L2Switch: not found a path from %v to %v", p.ethernet.SrcMAC, p.ethernet.DstMAC))
 		return nil
 	}
 	// Drop this packet if it goes back to the ingress port to avoid duplicated packet routing
 	if p.ingress.Number() == path[0][0].Number() {
-		r.log.Debug("Ignore routing path that goes back to the ingress port")
+		r.log.Debug("L2Switch: ignore routing path that goes back to the ingress port")
 		return nil
 	}
 
@@ -174,7 +177,7 @@ func (r *L2Switch) switching(p switchParam) error {
 			srcMAC:    p.ethernet.SrcMAC,
 			dstMAC:    p.ethernet.DstMAC,
 		}
-		if err := setFlowRule(param); err != nil {
+		if err := r.setFlowRule(param); err != nil {
 			return err
 		}
 		inPort = v[1].Number()
@@ -189,11 +192,12 @@ func (r *L2Switch) switching(p switchParam) error {
 		srcMAC:    p.ethernet.SrcMAC,
 		dstMAC:    p.ethernet.DstMAC,
 	}
-	if err := setFlowRule(param); err != nil {
+	if err := r.setFlowRule(param); err != nil {
 		return err
 	}
 
 	// Send this ethernet packet directly to the destination node
+	r.log.Debug(fmt.Sprintf("L2Switch: sending a packet (Src=%v, Dst=%v) to egress port %v..", p.ethernet.SrcMAC, p.ethernet.DstMAC, p.egress.ID()))
 	return r.PacketOut(p.egress, p.rawPacket)
 }
 
@@ -206,11 +210,12 @@ func (r *L2Switch) localSwitching(p switchParam) error {
 		srcMAC:    p.ethernet.SrcMAC,
 		dstMAC:    p.ethernet.DstMAC,
 	}
-	if err := setFlowRule(param); err != nil {
+	if err := r.setFlowRule(param); err != nil {
 		return err
 	}
 
 	// Send this ethernet packet directly to the destination node
+	r.log.Debug(fmt.Sprintf("L2Switch: sending a packet (Src=%v, Dst=%v) to egress port %v..", p.ethernet.SrcMAC, p.ethernet.DstMAC, p.egress.ID()))
 	return r.PacketOut(p.egress, p.rawPacket)
 }
 
@@ -224,6 +229,8 @@ func (r *L2Switch) OnPacketIn(finder network.Finder, ingress *network.Port, eth 
 }
 
 func (r *L2Switch) processPacket(finder network.Finder, ingress *network.Port, eth *protocol.Ethernet) (drop bool, err error) {
+	r.log.Debug(fmt.Sprintf("L2Switch: PACKET_IN.. Ingress=%v, SrcMAC=%v, DstMAC=%v", ingress.ID(), eth.SrcMAC, eth.DstMAC))
+
 	packet, err := eth.MarshalBinary()
 	if err != nil {
 		return false, err
@@ -232,7 +239,7 @@ func (r *L2Switch) processPacket(finder network.Finder, ingress *network.Port, e
 	dstNode := finder.Node(eth.DstMAC)
 	// Unknown node or broadcast request?
 	if dstNode == nil || isBroadcast(eth) {
-		r.log.Debug(fmt.Sprintf("Broadcasting (dstMAC=%v)", eth.DstMAC))
+		r.log.Debug(fmt.Sprintf("L2Switch: broadcasting.. DstMAC=%v", eth.DstMAC))
 		return true, flood(ingress, packet)
 	}
 
@@ -245,6 +252,7 @@ func (r *L2Switch) processPacket(finder network.Finder, ingress *network.Port, e
 	}
 	// Two nodes on a same switch device?
 	if ingress.Device().ID() == dstNode.Port().Device().ID() {
+		r.log.Debug("L2Switch: two nodes are connected to a same switch..")
 		err = r.localSwitching(param)
 	} else {
 		err = r.switching(param)
@@ -266,6 +274,8 @@ func (r *L2Switch) OnPortDown(finder network.Finder, port *network.Port) error {
 }
 
 func (r *L2Switch) OnTopologyChange(finder network.Finder) error {
+	r.log.Debug("L2Switch: OnTopologyChange..")
+
 	// We should remove all edges from all switch devices when the network topology is changed.
 	// Otherwise, installed flow rules in switches may result in incorrect packet routing based on the previous topology.
 	if err := r.removeAllFlows(finder.Devices()); err != nil {
@@ -293,7 +303,7 @@ func (r *L2Switch) cleanup(finder network.Finder, port *network.Port) error {
 }
 
 func (r *L2Switch) removeAllFlows(devices []*network.Device) error {
-	r.log.Debug("Removing all flows from all devices..")
+	r.log.Debug("L2Switch: removing all flows from all devices..")
 
 	for _, d := range devices {
 		if d.IsClosed() {
@@ -317,7 +327,7 @@ func (r *L2Switch) removeAllFlows(devices []*network.Device) error {
 func (r *L2Switch) removeFlowRules(finder network.Finder, mac net.HardwareAddr) error {
 	devices := finder.Devices()
 	for _, d := range devices {
-		r.log.Debug(fmt.Sprintf("Removing all flows related with a node %v on device %v..", mac, d.ID()))
+		r.log.Debug(fmt.Sprintf("L2Switch: removing all flows related with a node %v on device %v..", mac, d.ID()))
 
 		if d.IsClosed() {
 			continue
@@ -348,7 +358,7 @@ func (r *L2Switch) removeFlowRules(finder network.Finder, mac net.HardwareAddr) 
 }
 
 func (r *L2Switch) removeFlow(d *network.Device, match openflow.Match) error {
-	r.log.Debug(fmt.Sprintf("Removing flows on device %v..", d.ID()))
+	r.log.Debug(fmt.Sprintf("L2Switch: removing flows on device %v..", d.ID()))
 
 	f := d.Factory()
 	flowmod, err := f.NewFlowMod(openflow.FlowDelete)

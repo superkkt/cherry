@@ -79,16 +79,17 @@ func (r *Router) Init() error {
 }
 
 func (r *Router) OnPacketIn(finder network.Finder, ingress *network.Port, eth *protocol.Ethernet) error {
-	r.log.Debug(fmt.Sprintf("Router PACKET_IN.. DstMAC=%v, r.mac=%v", eth.DstMAC, r.mac))
+	r.log.Debug(fmt.Sprintf("Router: PACKET_IN.. Ingress=%v, SrcMAC=%v, DstMAC=%v", ingress.ID(), eth.SrcMAC, eth.DstMAC))
 
 	// Is this packet going to the router?
 	if bytes.Compare(eth.DstMAC, r.mac) != 0 {
+		r.log.Debug("Router: Ignore last PACKET_IN as it's not going to the router!")
 		return r.BaseProcessor.OnPacketIn(finder, ingress, eth)
 	}
 
 	// IPv4?
 	if eth.Type != 0x0800 {
-		r.log.Debug(fmt.Sprintf("Drop non-IPv4 packet.. (ethType=%v)", eth.Type))
+		r.log.Debug(fmt.Sprintf("Router: drop non-IPv4 packet.. (ethType=%v)", eth.Type))
 		// Drop the packet if it is not an IPv4 packet
 		return nil
 	}
@@ -129,7 +130,7 @@ func (r *Router) sendICMPReply(p packet) error {
 	echo := new(protocol.ICMPEcho)
 	if err := echo.UnmarshalBinary(p.ipv4.Payload); err != nil || echo.Type != 8 {
 		// Ignores all other ICMP messages except ICMP echo reqeust
-		r.log.Debug("Ignores ICMP message that is not echo request..")
+		r.log.Debug("Rotuer: ignores ICMP message that is not echo request..")
 		return nil
 	}
 
@@ -156,7 +157,7 @@ func (r *Router) sendICMPReply(p packet) error {
 		return fmt.Errorf("marshaling ethernet packet: %v", err)
 	}
 
-	r.log.Debug(fmt.Sprintf("Sending ICMP reply to %v..", p.ipv4.SrcIP))
+	r.log.Debug(fmt.Sprintf("Router: sending ICMP reply to %v..", p.ipv4.SrcIP))
 	return r.PacketOut(p.ingress, ethPacket)
 }
 
@@ -182,28 +183,32 @@ type packet struct {
 }
 
 func (r *Router) handleIncoming(finder network.Finder, p packet) error {
+	r.log.Debug(fmt.Sprintf("Router: handle incoming packet.. SrcMAC=%v, DstMAC=%v, SrcIP=%v, DstIP=%v", p.ethernet.SrcMAC, p.ethernet.DstMAC, p.ipv4.SrcIP, p.ipv4.DstIP))
+
 	mac, ok, err := r.db.FindMAC(p.ipv4.DstIP)
 	if err != nil {
 		return err
 	}
 	if !ok {
-		r.log.Debug(fmt.Sprintf("Router: incoming packet to an unknown host %v from %v", p.ipv4.DstIP, p.ipv4.SrcIP))
+		r.log.Debug(fmt.Sprintf("Router: drop the incoming packet that goes to an unknown host %v from %v", p.ipv4.DstIP, p.ipv4.SrcIP))
 		return nil
 	}
-	r.log.Debug(fmt.Sprintf("Router: routing to a host.. IP=%v, MAC=%v", p.ipv4.DstIP, mac))
+	r.log.Debug(fmt.Sprintf("Router: routing the incoming packet to a host.. IP=%v, MAC=%v", p.ipv4.DstIP, mac))
 
 	return r.route(finder, p, mac)
 }
 
 // XXX: We only support static default routing
 func (r *Router) handleOutgoing(finder network.Finder, p packet) error {
-	r.log.Debug(fmt.Sprintf("Checking gateway MAC address: %v", p.ethernet.SrcMAC))
+	r.log.Debug(fmt.Sprintf("Router: handle outgoing packet.. SrcMAC=%v, DstMAC=%v, SrcIP=%v, DstIP=%v", p.ethernet.SrcMAC, p.ethernet.DstMAC, p.ipv4.SrcIP, p.ipv4.DstIP))
+
+	r.log.Debug(fmt.Sprintf("Router: checking whether the outgoing packet (%v) came from a gateway..", p.ethernet.SrcMAC))
 	ok, err := r.db.IsGateway(p.ethernet.SrcMAC)
 	if err != nil {
 		return fmt.Errorf("checking gateway MAC: %v", err)
 	}
 	if ok {
-		r.log.Err(fmt.Sprintf("Loop is detected!! Did you add network address for %v?", p.ipv4.DstIP))
+		r.log.Err(fmt.Sprintf("Router: Loop is detected!! Did you add network address for %v?", p.ipv4.DstIP))
 		// Drop this packet
 		return nil
 	}
@@ -214,7 +219,7 @@ func (r *Router) handleOutgoing(finder network.Finder, p packet) error {
 	}
 	// IP spoofing?
 	if !mine {
-		r.log.Warning(fmt.Sprintf("IP spoofing is detected!! SrcIP=%v, DstIP=%v", p.ipv4.SrcIP, p.ipv4.DstIP))
+		r.log.Warning(fmt.Sprintf("Router: IP spoofing is detected!! SrcIP=%v, DstIP=%v", p.ipv4.SrcIP, p.ipv4.DstIP))
 		// Drop this packet
 		return nil
 	}
@@ -224,14 +229,15 @@ func (r *Router) handleOutgoing(finder network.Finder, p packet) error {
 		return fmt.Errorf("query gateway MAC addresses: %v", err)
 	}
 	if gateways == nil || len(gateways) == 0 {
-		r.log.Err("Not found a gateway MAC address for outgoing packets!")
+		r.log.Err("Router: not found a gateway MAC address for outgoing packets!")
 		// Drop this packet
 		return nil
 	}
 	for _, v := range gateways {
-		r.log.Debug(fmt.Sprintf("Gateway MAC: %v", v))
+		r.log.Debug(fmt.Sprintf("Router: found a Gateway MAC: %v", v))
 	}
 	mac := pickGateway(gateways)
+	r.log.Debug(fmt.Sprintf("Router: gateway %v is selected for the outgoing packet!", mac))
 
 	return r.route(finder, p, mac)
 }
@@ -248,6 +254,7 @@ func (r *Router) route(finder network.Finder, p packet, mac net.HardwareAddr) er
 
 	// Two nodes on a same switch device?
 	if p.ingress.Device().ID() == dstNode.Port().Device().ID() {
+		r.log.Debug("Router: two nodes are connected to a same switch..")
 		return r.sendPacket(p, dstNode.Port(), mac)
 	}
 	path := finder.Path(p.ingress.Device().ID(), dstNode.Port().Device().ID())
@@ -259,6 +266,7 @@ func (r *Router) route(finder network.Finder, p packet, mac net.HardwareAddr) er
 }
 
 func (r *Router) sendPacket(p packet, egress *network.Port, mac net.HardwareAddr) error {
+	// Make a flow parameter using unmodified destination MAC address
 	param := flowParam{
 		device:    p.ingress.Device(),
 		etherType: p.ethernet.Type,
@@ -277,10 +285,12 @@ func (r *Router) sendPacket(p packet, egress *network.Port, mac net.HardwareAddr
 		return err
 	}
 	// Install a flow rule that replaces the destination MAC address
+	r.log.Debug(fmt.Sprintf("Router: installing a flow.. %+v", param))
 	if err := installFlow(param); err != nil {
 		return err
 	}
 
+	r.log.Debug(fmt.Sprintf("Router: sending a packet to egress port %v..", egress.ID()))
 	return r.PacketOut(egress, packet)
 }
 

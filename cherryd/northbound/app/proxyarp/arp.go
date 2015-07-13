@@ -66,7 +66,7 @@ func (r *ProxyARP) OnPacketIn(finder network.Finder, ingress *network.Port, eth 
 		return r.BaseProcessor.OnPacketIn(finder, ingress, eth)
 	}
 
-	r.log.Debug("Received ARP packet..")
+	r.log.Debug("ProxyARP: received ARP packet..")
 
 	arp := new(protocol.ARP)
 	if err := arp.UnmarshalBinary(eth.Payload); err != nil {
@@ -74,13 +74,13 @@ func (r *ProxyARP) OnPacketIn(finder network.Finder, ingress *network.Port, eth 
 	}
 	// ARP request?
 	if arp.Operation != 1 {
-		r.log.Debug("Drop ARP packet whose type is not a request")
+		r.log.Debug("ProxyARP: drop ARP packet whose type is not a request")
 		// Drop all ARP packets if their type is not a reqeust.
 		return nil
 	}
 	// Pass ARP announcements packets if it has valid source IP & MAC addresses
 	if isARPAnnouncement(arp) {
-		r.log.Debug("Received ARP announcements..")
+		r.log.Debug("ProxyARP: received ARP announcements..")
 		valid, err := r.isValidARPAnnouncement(arp)
 		if err != nil {
 			return err
@@ -90,7 +90,7 @@ func (r *ProxyARP) OnPacketIn(finder network.Finder, ingress *network.Port, eth 
 			r.log.Info(fmt.Sprintf("ProxyARP: drop suspicious ARP announcement from %v to %v", eth.SrcMAC.String(), eth.DstMAC.String()))
 			return nil
 		}
-		r.log.Debug("Pass valid ARP announcements to the network")
+		r.log.Debug("ProxyARP: pass valid ARP announcements to the network")
 		// Pass valid ARP announcements to the network
 		return r.BaseProcessor.OnPacketIn(finder, ingress, eth)
 	}
@@ -99,17 +99,17 @@ func (r *ProxyARP) OnPacketIn(finder network.Finder, ingress *network.Port, eth 
 		return err
 	}
 	if !ok {
-		r.log.Debug(fmt.Sprintf("ARP request for unknown host (%v)", arp.TPA))
+		r.log.Debug(fmt.Sprintf("ProxyARP: ARP request for unknown host (%v)", arp.TPA))
 		// Unknown hosts. Drop the packet.
 		return nil
 	}
-	r.log.Debug(fmt.Sprintf("ARP request for %v (%v)", arp.TPA, mac))
+	r.log.Debug(fmt.Sprintf("ProxyARP: ARP request for %v (%v)", arp.TPA, mac))
 
 	reply, err := makeARPReply(arp, mac)
 	if err != nil {
 		return err
 	}
-	r.log.Debug("Sending ARP reply..")
+	r.log.Debug("ProxyARP: sending ARP reply..")
 	return sendARPReply(ingress, reply)
 }
 
