@@ -1,7 +1,7 @@
 /*
  * Cherry - An OpenFlow Controller
  *
- * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved. 
+ * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved.
  * Kitae Kim <superkkt@sds.co.kr>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -22,6 +22,7 @@
 package network
 
 import (
+	"fmt"
 	"net"
 )
 
@@ -35,6 +36,10 @@ func NewNode(p *Port, mac net.HardwareAddr) *Node {
 		port: p,
 		mac:  mac,
 	}
+}
+
+func (r *Node) String() string {
+	return fmt.Sprintf("Node Port=(%v), MAC=%v", r.port, r.mac)
 }
 
 func (r *Node) Port() *Port {

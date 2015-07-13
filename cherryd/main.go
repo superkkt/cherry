@@ -44,27 +44,6 @@ var (
 	configFile = flag.String("config", defaultConfigFile, "Absolute path of the configuration file")
 )
 
-func waitSignal(log *log.Syslog, shutdown context.CancelFunc) {
-	c := make(chan os.Signal, 5)
-	// All incoming signals will be transferred to the channel
-	signal.Notify(c)
-
-	for {
-		s := <-c
-		if s == syscall.SIGTERM || s == syscall.SIGINT {
-			// Graceful shutdown
-			log.Info("Shutting down...")
-			shutdown()
-			// Timeout for cancelation
-			time.Sleep(5 * time.Second)
-			os.Exit(0)
-		} else if s == syscall.SIGHUP {
-			// XXX: Do something you need
-			log.Debug("SIGHUP")
-		}
-	}
-}
-
 func listen(ctx context.Context, log *log.Syslog, port int, controller *network.Controller) {
 	type KeepAliver interface {
 		SetKeepAlive(keepalive bool) error
@@ -154,7 +133,6 @@ func main() {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	go waitSignal(log, cancel)
 
 	controller := network.NewController(log)
 	manager, err := createAppManager(conf, log)
@@ -163,5 +141,28 @@ func main() {
 		os.Exit(1)
 	}
 	manager.AddEventSender(controller)
+
+	// Signal handler
+	go func() {
+		c := make(chan os.Signal, 5)
+		// All incoming signals will be transferred to the channel
+		signal.Notify(c)
+
+		for {
+			s := <-c
+			if s == syscall.SIGTERM || s == syscall.SIGINT {
+				// Graceful shutdown
+				log.Info("Shutting down...")
+				cancel()
+				// Timeout for cancelation
+				time.Sleep(5 * time.Second)
+				os.Exit(0)
+			} else if s == syscall.SIGHUP {
+				fmt.Println("* Current status:")
+				fmt.Println(controller.String())
+			}
+		}
+	}()
+
 	listen(ctx, log, conf.Port, controller)
 }

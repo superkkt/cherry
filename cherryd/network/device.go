@@ -24,6 +24,7 @@ package network
 import (
 	"encoding"
 	"errors"
+	"fmt"
 	"github.com/superkkt/cherry/cherryd/log"
 	"github.com/superkkt/cherry/cherryd/openflow"
 	"sync"
@@ -69,6 +70,10 @@ func newDevice(log log.Logger, s *session) *Device {
 		session: s,
 		ports:   make(map[uint32]*Port),
 	}
+}
+
+func (r *Device) String() string {
+	return fmt.Sprintf("Device ID=%v, Descriptions=%+v, Features=%+v, # of ports=%v, FlowTableID=%v, Connected=%v", r.id, r.descriptions, r.features, len(r.ports), r.flowTableID, !r.closed)
 }
 
 func (r *Device) ID() string {

@@ -78,3 +78,7 @@ func (r *Controller) SetEventListener(l EventListener) {
 	r.listener = l
 	r.topo.setEventListener(l)
 }
+
+func (r *Controller) String() string {
+	return r.topo.String()
+}

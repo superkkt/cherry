@@ -1,7 +1,7 @@
 /*
  * Cherry - An OpenFlow Controller
  *
- * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved. 
+ * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved.
  * Kitae Kim <superkkt@sds.co.kr>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -45,6 +45,10 @@ func NewPort(d *Device, num uint32) *Port {
 		number: num,
 		nodes:  make(map[string]*Node),
 	}
+}
+
+func (r *Port) String() string {
+	return fmt.Sprintf("Port Number=%v, Device_id=%v, # of nodes=%v", r.number, r.device.ID(), len(r.nodes))
 }
 
 func (r *Port) ID() string {

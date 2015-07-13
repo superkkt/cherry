@@ -22,6 +22,7 @@
 package network
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/superkkt/cherry/cherryd/graph"
 	"github.com/superkkt/cherry/cherryd/log"
@@ -50,7 +51,7 @@ type Finder interface {
 
 type topology struct {
 	mutex sync.RWMutex
-	// Key is IP address of a device
+	// Key is the device ID
 	devices map[string]*Device
 	// Key is MAC address of a node
 	nodes    map[string]*Node
@@ -66,6 +67,23 @@ func newTopology(log log.Logger) *topology {
 		log:     log,
 		graph:   graph.New(),
 	}
+}
+
+func (r *topology) String() string {
+	// Read lock
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	var buf bytes.Buffer
+	for _, v := range r.devices {
+		buf.WriteString(fmt.Sprintf("%v\n", v))
+	}
+	for _, v := range r.nodes {
+		buf.WriteString(fmt.Sprintf("%v\n", v))
+	}
+	buf.WriteString(fmt.Sprintf("%v\n", r.graph))
+
+	return buf.String()
 }
 
 func (r *topology) setEventListener(l TopologyEventListener) {

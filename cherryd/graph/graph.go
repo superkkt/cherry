@@ -1,7 +1,7 @@
 /*
  * Cherry - An OpenFlow Controller
  *
- * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved. 
+ * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved.
  * Kitae Kim <superkkt@sds.co.kr>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -22,8 +22,10 @@
 package graph
 
 import (
+	"bytes"
 	"container/list"
 	"errors"
+	"fmt"
 	"sort"
 	"sync"
 )
@@ -68,6 +70,20 @@ func New() *Graph {
 		edges:     make(map[string]*edge),
 		points:    make(map[string]*edge),
 	}
+}
+
+func (r *Graph) String() string {
+	// Read lock
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	var buf bytes.Buffer
+	for _, v := range r.edges {
+		e := v.value
+		buf.WriteString(fmt.Sprintf("Edge ID=%v, Enabled=%v\n", e.ID(), v.enabled))
+	}
+
+	return buf.String()
 }
 
 func (r *Graph) AddVertex(v Vertex) {
