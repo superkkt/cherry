@@ -83,13 +83,13 @@ func (r *Router) OnPacketIn(finder network.Finder, ingress *network.Port, eth *p
 
 	// Is this packet going to the router?
 	if bytes.Compare(eth.DstMAC, r.mac) != 0 {
-		r.log.Debug("Router: Ignore last PACKET_IN as it's not going to the router!")
+		r.log.Debug(fmt.Sprintf("Router: ignore PACKET_IN as it's not going to the router.. Ingress=%v, SrcMAC=%v, DstMAC=%v", ingress.ID(), eth.SrcMAC, eth.DstMAC))
 		return r.BaseProcessor.OnPacketIn(finder, ingress, eth)
 	}
 
 	// IPv4?
 	if eth.Type != 0x0800 {
-		r.log.Debug(fmt.Sprintf("Router: drop non-IPv4 packet.. (ethType=%v)", eth.Type))
+		r.log.Debug(fmt.Sprintf("Router: drop non-IPv4 packet.. (ethType=%v, SrcMAC=%v, DstMAC=%v)", eth.Type, eth.SrcMAC, eth.DstMAC))
 		// Drop the packet if it is not an IPv4 packet
 		return nil
 	}
@@ -193,7 +193,7 @@ func (r *Router) handleIncoming(finder network.Finder, p packet) error {
 		r.log.Debug(fmt.Sprintf("Router: drop the incoming packet that goes to an unknown host %v from %v", p.ipv4.DstIP, p.ipv4.SrcIP))
 		return nil
 	}
-	r.log.Debug(fmt.Sprintf("Router: routing the incoming packet to a host.. IP=%v, MAC=%v", p.ipv4.DstIP, mac))
+	r.log.Debug(fmt.Sprintf("Router: routing the incoming packet to a host.. DstIP=%v, DstMAC=%v", p.ipv4.DstIP, mac))
 
 	return r.route(finder, p, mac)
 }
@@ -202,7 +202,7 @@ func (r *Router) handleIncoming(finder network.Finder, p packet) error {
 func (r *Router) handleOutgoing(finder network.Finder, p packet) error {
 	r.log.Debug(fmt.Sprintf("Router: handle outgoing packet.. SrcMAC=%v, DstMAC=%v, SrcIP=%v, DstIP=%v", p.ethernet.SrcMAC, p.ethernet.DstMAC, p.ipv4.SrcIP, p.ipv4.DstIP))
 
-	r.log.Debug(fmt.Sprintf("Router: checking whether the outgoing packet (%v) came from a gateway..", p.ethernet.SrcMAC))
+	r.log.Debug(fmt.Sprintf("Router: checking whether the outgoing packet (SrcMAC=%v) came from a gateway..", p.ethernet.SrcMAC))
 	ok, err := r.db.IsGateway(p.ethernet.SrcMAC)
 	if err != nil {
 		return fmt.Errorf("checking gateway MAC: %v", err)

@@ -166,7 +166,7 @@ func (r *L2Switch) switching(p switchParam) error {
 	}
 	// Drop this packet if it goes back to the ingress port to avoid duplicated packet routing
 	if p.ingress.Number() == path[0][0].Number() {
-		r.log.Debug("L2Switch: ignore routing path that goes back to the ingress port")
+		r.log.Debug(fmt.Sprintf("L2Switch: ignore routing path that goes back to the ingress port (SrcMAC=%v, DstMAC=%v)", p.ethernet.SrcMAC, p.ethernet.DstMAC))
 		return nil
 	}
 
@@ -243,7 +243,7 @@ func (r *L2Switch) processPacket(finder network.Finder, ingress *network.Port, e
 	dstNode := finder.Node(eth.DstMAC)
 	// Unknown node or broadcast request?
 	if dstNode == nil || isBroadcast(eth) {
-		r.log.Debug(fmt.Sprintf("L2Switch: broadcasting.. DstMAC=%v", eth.DstMAC))
+		r.log.Debug(fmt.Sprintf("L2Switch: broadcasting.. SrcMAC=%v, DstMAC=%v", eth.SrcMAC, eth.DstMAC))
 		return true, flood(ingress, packet)
 	}
 
