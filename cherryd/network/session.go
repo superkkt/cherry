@@ -95,7 +95,7 @@ func newSession(c sessionConfig) *session {
 }
 
 func (r *session) OnHello(f openflow.Factory, w trans.Writer, v openflow.Hello) error {
-	r.log.Debug(fmt.Sprintf("HELLO (ver=%v) is received", v.Version()))
+	r.log.Debug(fmt.Sprintf("Session: HELLO (ver=%v) is received", v.Version()))
 
 	// Ignore duplicated HELLO messages
 	if r.negotiated {
@@ -117,7 +117,7 @@ func (r *session) OnHello(f openflow.Factory, w trans.Writer, v openflow.Hello) 
 }
 
 func (r *session) OnError(f openflow.Factory, w trans.Writer, v openflow.Error) error {
-	r.log.Err(fmt.Sprintf("Error: class=%v, code=%v, data=%v", v.Class(), v.Code(), v.Data()))
+	r.log.Err(fmt.Sprintf("Session: ERROR (class=%v, code=%v, data=%v)", v.Class(), v.Code(), v.Data()))
 
 	if !r.negotiated {
 		return errNotNegotiated
@@ -127,7 +127,7 @@ func (r *session) OnError(f openflow.Factory, w trans.Writer, v openflow.Error) 
 }
 
 func (r *session) OnFeaturesReply(f openflow.Factory, w trans.Writer, v openflow.FeaturesReply) error {
-	r.log.Debug(fmt.Sprintf("FEATURES_REPLY: DPID=%v, NumBufs=%v, NumTables=%v", v.DPID(), v.NumBuffers(), v.NumTables()))
+	r.log.Debug(fmt.Sprintf("Session: FEATURES_REPLY (DPID=%v, NumBufs=%v, NumTables=%v)", v.DPID(), v.NumBuffers(), v.NumTables()))
 
 	if !r.negotiated {
 		return errNotNegotiated
@@ -156,7 +156,7 @@ func (r *session) OnFeaturesReply(f openflow.Factory, w trans.Writer, v openflow
 }
 
 func (r *session) OnGetConfigReply(f openflow.Factory, w trans.Writer, v openflow.GetConfigReply) error {
-	r.log.Debug("GET_CONFIG_REPLY is received")
+	r.log.Debug("Session: GET_CONFIG_REPLY is received")
 
 	if !r.negotiated {
 		return errNotNegotiated
@@ -166,17 +166,17 @@ func (r *session) OnGetConfigReply(f openflow.Factory, w trans.Writer, v openflo
 }
 
 func (r *session) OnDescReply(f openflow.Factory, w trans.Writer, v openflow.DescReply) error {
-	r.log.Debug("DESC_REPLY is received")
+	r.log.Debug("Session: DESC_REPLY is received")
 
 	if !r.negotiated {
 		return errNotNegotiated
 	}
 
-	r.log.Debug(fmt.Sprintf("Manufacturer=%v", v.Manufacturer()))
-	r.log.Debug(fmt.Sprintf("Hardware=%v", v.Hardware()))
-	r.log.Debug(fmt.Sprintf("Software=%v", v.Software()))
-	r.log.Debug(fmt.Sprintf("Serial=%v", v.Serial()))
-	r.log.Debug(fmt.Sprintf("Description=%v", v.Description()))
+	r.log.Debug(fmt.Sprintf("Session: Manufacturer=%v", v.Manufacturer()))
+	r.log.Debug(fmt.Sprintf("Session: Hardware=%v", v.Hardware()))
+	r.log.Debug(fmt.Sprintf("Session: Software=%v", v.Software()))
+	r.log.Debug(fmt.Sprintf("Session: Serial=%v", v.Serial()))
+	r.log.Debug(fmt.Sprintf("Session: Description=%v", v.Description()))
 
 	desc := Descriptions{
 		Manufacturer: v.Manufacturer(),
@@ -191,7 +191,7 @@ func (r *session) OnDescReply(f openflow.Factory, w trans.Writer, v openflow.Des
 }
 
 func (r *session) OnPortDescReply(f openflow.Factory, w trans.Writer, v openflow.PortDescReply) error {
-	r.log.Debug(fmt.Sprintf("PORT_DESC_REPLY is received: %v ports", len(v.Ports())))
+	r.log.Debug(fmt.Sprintf("Session: PORT_DESC_REPLY is received (# of ports=%v)", len(v.Ports())))
 
 	if !r.negotiated {
 		return errNotNegotiated
@@ -269,12 +269,12 @@ func (r *session) sendPortEvent(portNum uint32, up bool) {
 
 	if up {
 		if err := r.listener.OnPortUp(r.finder, port); err != nil {
-			r.log.Err(fmt.Sprintf("session: OnPortUp: %v", err))
+			r.log.Err(fmt.Sprintf("Session: OnPortUp: %v", err))
 			return
 		}
 	} else {
 		if err := r.listener.OnPortDown(r.finder, port); err != nil {
-			r.log.Err(fmt.Sprintf("session: OnPortDown: %v", err))
+			r.log.Err(fmt.Sprintf("Session: OnPortDown: %v", err))
 			return
 		}
 	}
@@ -299,14 +299,14 @@ func (r *session) updatePort(v openflow.PortStatus) {
 }
 
 func (r *session) OnPortStatus(f openflow.Factory, w trans.Writer, v openflow.PortStatus) error {
-	r.log.Debug("PORT_STATUS is received")
+	r.log.Debug("Session: PORT_STATUS is received")
 
 	if !r.negotiated {
 		return errNotNegotiated
 	}
 
 	port := v.Port()
-	r.log.Debug(fmt.Sprintf("Device=%v, PortNum=%v: AdminUp=%v, LinkUp=%v", r.device.ID(), port.Number(), !port.IsPortDown(), !port.IsLinkDown()))
+	r.log.Debug(fmt.Sprintf("Session: Device=%v, PortNum=%v, AdminUp=%v, LinkUp=%v", r.device.ID(), port.Number(), !port.IsPortDown(), !port.IsLinkDown()))
 	r.updatePort(v)
 
 	// Send port event
@@ -331,7 +331,7 @@ func (r *session) OnPortStatus(f openflow.Factory, w trans.Writer, v openflow.Po
 }
 
 func (r *session) OnFlowRemoved(f openflow.Factory, w trans.Writer, v openflow.FlowRemoved) error {
-	r.log.Debug(fmt.Sprintf("FLOW_REMOVED is received: cookie=%v", v.Cookie()))
+	r.log.Debug(fmt.Sprintf("Session: FLOW_REMOVED is received (cookie=%v)", v.Cookie()))
 
 	if !r.negotiated {
 		return errNotNegotiated
@@ -415,7 +415,7 @@ func (r *session) handleLLDP(inPort *Port, ethernet *protocol.Ethernet) error {
 	deviceID, portNum, err := extractDeviceInfo(lldp)
 	if err != nil {
 		// Do nothing if this packet is not the one we sent
-		r.log.Info("Ignoring a LLDP packet issued by an unknown device")
+		r.log.Info("Session: ignoring a LLDP packet issued by an unknown device")
 		return nil
 	}
 	port, err := r.findNeighborPort(deviceID, portNum)
@@ -428,7 +428,7 @@ func (r *session) handleLLDP(inPort *Port, ethernet *protocol.Ethernet) error {
 }
 
 func (r *session) addNewNode(inPort *Port, mac net.HardwareAddr) {
-	r.log.Debug(fmt.Sprintf("Adding a new node %v on %v..", mac, inPort.ID()))
+	r.log.Debug(fmt.Sprintf("Session: adding a new node %v on %v..", mac, inPort.ID()))
 	node := inPort.addNode(mac)
 	r.watcher.NodeAdded(node)
 }
@@ -439,11 +439,10 @@ func (r *session) isActivatedPort(p *Port) bool {
 }
 
 func (r *session) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.PacketIn) error {
-	r.log.Debug(fmt.Sprintf("PACKET_IN is received: inport=%v, reason=%v, tableID=%v, cookie=%v", v.InPort(), v.Reason(), v.TableID(), v.Cookie()))
-
 	if !r.negotiated {
 		return errNotNegotiated
 	}
+	r.log.Debug(fmt.Sprintf("Session: PACKET_IN is received (device=%v, inport=%v, reason=%v, tableID=%v, cookie=%v)", r.device.ID(), v.InPort(), v.Reason(), v.TableID(), v.Cookie()))
 
 	ethernet, err := getEthernet(v.Data())
 	if err != nil {
@@ -451,7 +450,7 @@ func (r *session) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.Pack
 	}
 	inPort := r.device.Port(v.InPort())
 	if inPort == nil {
-		r.log.Err(fmt.Sprintf("session: failed to find a port: deviceID=%v, portNum=%v, so ignore PACKET_IN..", r.device.ID(), v.InPort()))
+		r.log.Err(fmt.Sprintf("Session: failed to find a port: deviceID=%v, portNum=%v, so ignore PACKET_IN..", r.device.ID(), v.InPort()))
 		return nil
 	}
 	// Process LLDP, and then add an edge among two switches
@@ -460,18 +459,18 @@ func (r *session) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.Pack
 	}
 	// Do we know packet sender?
 	if r.finder.Node(ethernet.SrcMAC) == nil {
-		r.log.Debug(fmt.Sprintf("MAC learning... %v", ethernet.SrcMAC))
+		r.log.Debug(fmt.Sprintf("Session: MAC learning... %v", ethernet.SrcMAC))
 		// MAC learning
 		r.addNewNode(inPort, ethernet.SrcMAC)
 	}
 	// Do nothing if the ingress port is in inactive state
 	if !r.isActivatedPort(inPort) {
-		r.log.Debug(fmt.Sprintf("Ignoring PACKET_IN from %v:%v because the ingress port is not in active state yet", r.device.ID(), v.InPort()))
+		r.log.Debug(fmt.Sprintf("Session: ignoring PACKET_IN from %v:%v because the ingress port is not in active state yet", r.device.ID(), v.InPort()))
 		return nil
 	}
 	// Do nothing if the ingress port is an edge between switches and is disabled by STP.
 	if r.finder.IsEdge(inPort) && !r.finder.IsEnabledBySTP(inPort) {
-		r.log.Debug(fmt.Sprintf("STP: ignoring PACKET_IN from %v:%v", r.device.ID(), v.InPort()))
+		r.log.Debug(fmt.Sprintf("Session: ignoring PACKET_IN from %v:%v by STP", r.device.ID(), v.InPort()))
 		return nil
 	}
 	if err := r.listener.OnPacketIn(r.finder, inPort, ethernet); err != nil {
@@ -483,15 +482,15 @@ func (r *session) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.Pack
 
 func (r *session) Run(ctx context.Context) {
 	if err := r.trans.Run(ctx); err != nil && err != io.EOF {
-		r.log.Err(fmt.Sprintf("Transceiver is closed: %v", err))
+		r.log.Err(fmt.Sprintf("Session: transceiver is closed: %v", err))
 	}
 	r.trans.Close()
 	r.device.Close()
-	r.log.Debug(fmt.Sprintf("session: disconnected device (DPID=%v)", r.device.ID()))
+	r.log.Debug(fmt.Sprintf("Session: disconnected device (DPID=%v)", r.device.ID()))
 
 	if r.device.isValid() {
 		if err := r.listener.OnDeviceDown(r.finder, r.device); err != nil {
-			r.log.Err(fmt.Sprintf("session: executing OnDeviceDown: %v", err))
+			r.log.Err(fmt.Sprintf("Session: executing OnDeviceDown: %v", err))
 		}
 		r.watcher.DeviceRemoved(r.device)
 	}

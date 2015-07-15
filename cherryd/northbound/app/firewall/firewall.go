@@ -22,6 +22,7 @@
 package firewall
 
 import (
+	"fmt"
 	"github.com/dlintw/goconf"
 	"github.com/superkkt/cherry/cherryd/log"
 	"github.com/superkkt/cherry/cherryd/northbound/app"
@@ -46,4 +47,8 @@ func New(conf *goconf.ConfigFile, log log.Logger, db database) *Firewall {
 
 func (r *Firewall) Name() string {
 	return "Firewall"
+}
+
+func (r *Firewall) String() string {
+	return fmt.Sprintf("%v", r.Name())
 }

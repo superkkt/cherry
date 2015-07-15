@@ -90,7 +90,7 @@ func (r *ProxyARP) OnPacketIn(finder network.Finder, ingress *network.Port, eth 
 			r.log.Info(fmt.Sprintf("ProxyARP: drop suspicious ARP announcement from %v to %v", eth.SrcMAC.String(), eth.DstMAC.String()))
 			return nil
 		}
-		r.log.Debug("ProxyARP: pass valid ARP announcements to the network")
+		r.log.Debug("ProxyARP: pass valid ARP announcements into the network")
 		// Pass valid ARP announcements to the network
 		return r.BaseProcessor.OnPacketIn(finder, ingress, eth)
 	}
@@ -99,7 +99,7 @@ func (r *ProxyARP) OnPacketIn(finder network.Finder, ingress *network.Port, eth 
 		return err
 	}
 	if !ok {
-		r.log.Debug(fmt.Sprintf("ProxyARP: ARP request for unknown host (%v)", arp.TPA))
+		r.log.Debug(fmt.Sprintf("ProxyARP: drop the ARP request for unknown host (%v)", arp.TPA))
 		// Unknown hosts. Drop the packet.
 		return nil
 	}
@@ -177,4 +177,8 @@ func makeARPReply(request *protocol.ARP, mac net.HardwareAddr) ([]byte, error) {
 	}
 
 	return eth.MarshalBinary()
+}
+
+func (r *ProxyARP) String() string {
+	return fmt.Sprintf("%v", r.Name())
 }

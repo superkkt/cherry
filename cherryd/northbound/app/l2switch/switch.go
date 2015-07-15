@@ -93,6 +93,10 @@ type flowParam struct {
 	dstMAC    net.HardwareAddr
 }
 
+func (r flowParam) String() string {
+	return fmt.Sprintf("Device=%v, EtherType=%v, InPort=%v, OutPort=%v, SrcMAC=%v, DstMAC=%v", r.device.ID(), r.etherType, r.inPort, r.outPort, r.srcMAC, r.dstMAC)
+}
+
 func installFlow(p flowParam) error {
 	f := p.device.Factory()
 
@@ -134,7 +138,7 @@ func installFlow(p flowParam) error {
 }
 
 func (r *L2Switch) setFlowRule(p flowParam) error {
-	r.log.Debug(fmt.Sprintf("L2Switch: installing a forward flow.. %+v", p))
+	r.log.Debug(fmt.Sprintf("L2Switch: installing a forward flow.. %v", p))
 	// Install forward flow
 	if err := installFlow(p); err != nil {
 		return err
@@ -145,7 +149,7 @@ func (r *L2Switch) setFlowRule(p flowParam) error {
 	p.srcMAC, p.dstMAC = p.dstMAC, p.srcMAC
 
 	// Install backward flow
-	r.log.Debug(fmt.Sprintf("L2Switch: installing a backward flow.. %+v", p))
+	r.log.Debug(fmt.Sprintf("L2Switch: installing a backward flow.. %v", p))
 	return installFlow(p)
 }
 
@@ -240,10 +244,16 @@ func (r *L2Switch) processPacket(finder network.Finder, ingress *network.Port, e
 		return false, err
 	}
 
+	// FIXME: Should we support broadcasting in here?
+	if isBroadcast(eth) {
+		r.log.Debug(fmt.Sprintf("L2Switch: broadcasting.. SrcMAC=%v, DstMAC=%v", eth.SrcMAC, eth.DstMAC))
+		return true, flood(ingress, packet)
+	}
+
 	dstNode := finder.Node(eth.DstMAC)
 	// Unknown node or broadcast request?
-	if dstNode == nil || isBroadcast(eth) {
-		r.log.Debug(fmt.Sprintf("L2Switch: broadcasting.. SrcMAC=%v, DstMAC=%v", eth.SrcMAC, eth.DstMAC))
+	if dstNode == nil {
+		r.log.Debug(fmt.Sprintf("L2Switch: unknown host location! flooding.. SrcMAC=%v, DstMAC=%v", eth.SrcMAC, eth.DstMAC))
 		return true, flood(ingress, packet)
 	}
 
@@ -375,4 +385,8 @@ func (r *L2Switch) removeFlow(d *network.Device, match openflow.Match) error {
 	flowmod.SetFlowMatch(match)
 
 	return d.SendMessage(flowmod)
+}
+
+func (r *L2Switch) String() string {
+	return fmt.Sprintf("%v", r.Name())
 }

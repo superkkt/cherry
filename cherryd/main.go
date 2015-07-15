@@ -158,8 +158,10 @@ func main() {
 				time.Sleep(5 * time.Second)
 				os.Exit(0)
 			} else if s == syscall.SIGHUP {
-				fmt.Println("* Current status:")
+				fmt.Println("* Controller status:")
 				fmt.Println(controller.String())
+				fmt.Printf("\n* Manager status:\n")
+				fmt.Println(manager.String())
 			}
 		}
 	}()

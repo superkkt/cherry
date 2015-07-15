@@ -22,6 +22,7 @@
 package app
 
 import (
+	"fmt"
 	"github.com/superkkt/cherry/cherryd/network"
 	"github.com/superkkt/cherry/cherryd/openflow"
 	"github.com/superkkt/cherry/cherryd/protocol"
@@ -35,6 +36,7 @@ type Processor interface {
 	Name() string
 	Next() (next Processor, ok bool)
 	SetNext(Processor)
+	fmt.Stringer
 }
 
 type BaseProcessor struct {
@@ -56,6 +58,15 @@ func (r *BaseProcessor) OnPacketIn(finder network.Finder, ingress *network.Port,
 		return nil
 	}
 	return next.OnPacketIn(finder, ingress, eth)
+}
+
+func (r *BaseProcessor) OnFlowRemoved(finder network.Finder, flow openflow.FlowRemoved) error {
+	// Do nothging and execute the next processor if it exists
+	next, ok := r.Next()
+	if !ok {
+		return nil
+	}
+	return next.OnFlowRemoved(finder, flow)
 }
 
 func (r *BaseProcessor) OnDeviceUp(finder network.Finder, device *network.Device) error {

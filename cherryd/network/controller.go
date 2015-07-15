@@ -23,6 +23,7 @@ package network
 
 import (
 	"github.com/superkkt/cherry/cherryd/log"
+	"github.com/superkkt/cherry/cherryd/openflow"
 	"github.com/superkkt/cherry/cherryd/protocol"
 	"golang.org/x/net/context"
 	"net"
@@ -35,6 +36,7 @@ type EventListener interface {
 
 type ControllerEventListener interface {
 	OnPacketIn(Finder, *Port, *protocol.Ethernet) error
+	OnFlowRemoved(Finder, openflow.FlowRemoved) error
 	OnPortUp(Finder, *Port) error
 	OnPortDown(Finder, *Port) error
 	OnDeviceUp(Finder, *Device) error

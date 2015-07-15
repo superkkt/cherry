@@ -109,6 +109,8 @@ func (r *Router) OnPacketIn(finder network.Finder, ingress *network.Port, eth *p
 		return nil
 	}
 
+	// TODO: Do not route private addressses to outside, and always route them to internal network when the addresses are trusted
+
 	ok, err := r.db.IsRouter(ipv4.DstIP)
 	if err != nil {
 		return fmt.Errorf("checking router IP: %v", err)
@@ -118,6 +120,7 @@ func (r *Router) OnPacketIn(finder network.Finder, ingress *network.Port, eth *p
 		if ipv4.Protocol == 0x01 {
 			return r.sendICMPReply(p)
 		}
+		// Drop all other packets heading to a router except ICMP request
 		return nil
 	}
 
@@ -291,12 +294,12 @@ func (r *Router) sendPacket(p packet, egress *network.Port, mac net.HardwareAddr
 		return err
 	}
 	// Install a flow rule that replaces the destination MAC address
-	r.log.Debug(fmt.Sprintf("Router: installing a flow.. %+v", param))
+	r.log.Debug(fmt.Sprintf("Router: installing a flow.. %v", param))
 	if err := installFlow(param); err != nil {
 		return err
 	}
 
-	r.log.Debug(fmt.Sprintf("Router: sending a packet to egress port %v..", egress.ID()))
+	r.log.Debug(fmt.Sprintf("Router: sending a packet (SrcIP=%v, DstIP=%v) to egress port %v..", p.ipv4.SrcIP, p.ipv4.DstIP, egress.ID()))
 	return r.PacketOut(egress, packet)
 }
 
@@ -320,6 +323,10 @@ type flowParam struct {
 	dstMAC    net.HardwareAddr
 	targetMAC net.HardwareAddr
 	dstIP     *net.IPNet
+}
+
+func (r flowParam) String() string {
+	return fmt.Sprintf("Device=%v, EtherType=%v, InPort=%v, OutPort=%v, SrcMAC=%v, DstMAC=%v, TargetMAC=%v, DstIP=%v", r.device.ID(), r.etherType, r.inPort, r.outPort, r.srcMAC, r.dstMAC, r.targetMAC, r.dstIP)
 }
 
 func installFlow(p flowParam) error {
@@ -363,4 +370,8 @@ func installFlow(p flowParam) error {
 	flow.SetFlowInstruction(inst)
 
 	return p.device.SendMessage(flow)
+}
+
+func (r *Router) String() string {
+	return fmt.Sprintf("%v", r.Name())
 }

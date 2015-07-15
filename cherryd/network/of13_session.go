@@ -218,10 +218,10 @@ func (r *of13Session) OnPortDescReply(f openflow.Factory, w trans.Writer, v open
 		if !p.IsPortDown() && !p.IsLinkDown() && r.device.isValid() {
 			// Send LLDP to update network topology
 			if err := sendLLDP(r.device.ID(), f, w, p); err != nil {
-				r.log.Err(fmt.Sprintf("failed to send LLDP: %v", err))
+				r.log.Err(fmt.Sprintf("OF13Session: failed to send LLDP: %v", err))
 			}
 		}
-		r.log.Debug(fmt.Sprintf("Port: num=%v, AdminUp=%v, LinkUp=%v", p.Number(), !p.IsPortDown(), !p.IsLinkDown()))
+		r.log.Debug(fmt.Sprintf("OF13Session: PortNum=%v, AdminUp=%v, LinkUp=%v", p.Number(), !p.IsPortDown(), !p.IsLinkDown()))
 	}
 
 	return nil

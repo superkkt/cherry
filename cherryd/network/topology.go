@@ -98,7 +98,7 @@ func (r *topology) sendEvent() {
 	}
 
 	if err := r.listener.OnTopologyChange(r); err != nil {
-		r.log.Err(fmt.Sprintf("topology: executing OnTopologyChange: %v", err))
+		r.log.Err(fmt.Sprintf("Topology: executing OnTopologyChange: %v", err))
 		return
 	}
 }
@@ -174,7 +174,7 @@ func (r *topology) DeviceRemoved(d *Device) {
 func (r *topology) DeviceLinked(ports [2]*Port) {
 	link := newLink(ports)
 	if err := r.graph.AddEdge(link); err != nil {
-		r.log.Err(fmt.Sprintf("topology: %v", err))
+		r.log.Err(fmt.Sprintf("Topology: adding new graph edge: %v", err))
 		return
 	}
 	r.sendEvent()

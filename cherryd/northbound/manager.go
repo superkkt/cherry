@@ -22,6 +22,7 @@
 package northbound
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/dlintw/goconf"
 	"github.com/superkkt/cherry/cherryd/database"
@@ -34,6 +35,7 @@ import (
 	"github.com/superkkt/cherry/cherryd/northbound/app/proxyarp"
 	"github.com/superkkt/cherry/cherryd/northbound/app/router"
 	"strings"
+	"sync"
 )
 
 type EventSender interface {
@@ -41,6 +43,7 @@ type EventSender interface {
 }
 
 type Manager struct {
+	mutex      sync.Mutex
 	log        log.Logger
 	conf       *goconf.ConfigFile
 	apps       map[string]app.Processor // Registered applications
@@ -82,6 +85,9 @@ func (r *Manager) register(app app.Processor) {
 }
 
 func (r *Manager) Enable(appName string) error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
 	r.log.Debug(fmt.Sprintf("Enabling %v application..", appName))
 
 	app, ok := r.apps[strings.ToUpper(appName)]
@@ -104,8 +110,29 @@ func (r *Manager) Enable(appName string) error {
 }
 
 func (r *Manager) AddEventSender(sender EventSender) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
 	if r.head == nil {
 		return
 	}
 	sender.SetEventListener(r.head)
+}
+
+func (r *Manager) String() string {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	var buf bytes.Buffer
+	app := r.head
+	for app != nil {
+		buf.WriteString(fmt.Sprintf("%v\n", app))
+		next, ok := app.Next()
+		if !ok {
+			break
+		}
+		app = next
+	}
+
+	return buf.String()
 }
