@@ -103,6 +103,12 @@ func (r *Router) OnPacketIn(finder network.Finder, ingress *network.Port, eth *p
 		ipv4:     ipv4,
 	}
 
+	if ipv4.DstIP.IsLinkLocalUnicast() {
+		r.log.Debug(fmt.Sprintf("Router: drop an incoming packet heading to link-local address %v from %v", ipv4.DstIP, ipv4.SrcIP))
+		// Drop link-local address
+		return nil
+	}
+
 	ok, err := r.db.IsRouter(ipv4.DstIP)
 	if err != nil {
 		return fmt.Errorf("checking router IP: %v", err)
