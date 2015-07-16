@@ -1,7 +1,7 @@
 /*
  * Cherry - An OpenFlow Controller
  *
- * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved. 
+ * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved.
  * Kitae Kim <superkkt@sds.co.kr>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -42,28 +42,23 @@ type Action interface {
 
 type BaseAction struct {
 	err    error
-	output map[OutPort]interface{}
+	output []OutPort
 	srcMAC *net.HardwareAddr
 	dstMAC *net.HardwareAddr
 }
 
 func NewBaseAction() *BaseAction {
 	return &BaseAction{
-		output: make(map[OutPort]interface{}),
+		output: make([]OutPort, 0),
 	}
 }
 
 func (r *BaseAction) SetOutPort(port OutPort) {
-	r.output[port] = nil
+	r.output = append(r.output, port)
 }
 
 func (r *BaseAction) OutPort() []OutPort {
-	ports := make([]OutPort, 0)
-	for v, _ := range r.output {
-		ports = append(ports, v)
-	}
-
-	return ports
+	return r.output
 }
 
 func (r *BaseAction) SetSrcMAC(mac net.HardwareAddr) {
