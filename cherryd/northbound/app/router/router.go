@@ -133,8 +133,6 @@ func (r *Router) OnPacketIn(finder network.Finder, ingress *network.Port, eth *p
 		return nil
 	}
 
-	// TODO: Multicast. What should I do in here? Just send it to L2Switch with FF:FF:FF:FF:FF:FF MAC address?
-
 	ok, err := r.db.IsRouter(ipv4.DstIP)
 	if err != nil {
 		return fmt.Errorf("checking router IP: %v", err)
