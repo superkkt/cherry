@@ -30,13 +30,14 @@ import (
 
 // Processor should prepare to be executed by multiple goroutines simultaneously.
 type Processor interface {
-	network.EventListener
+	Dependencies() []string
+	fmt.Stringer
 	Init() error
 	// Name returns the application name that is globally unique
 	Name() string
+	network.EventListener
 	Next() (next Processor, ok bool)
 	SetNext(Processor)
-	fmt.Stringer
 }
 
 type BaseProcessor struct {
@@ -49,6 +50,10 @@ func (r *BaseProcessor) Init() error {
 
 func (r *BaseProcessor) Name() string {
 	return "BaseProcessor"
+}
+
+func (r *BaseProcessor) Dependencies() []string {
+	return []string{}
 }
 
 func (r *BaseProcessor) OnPacketIn(finder network.Finder, ingress *network.Port, eth *protocol.Ethernet) error {

@@ -52,3 +52,7 @@ func (r *LoadBalancer) Name() string {
 func (r *LoadBalancer) String() string {
 	return fmt.Sprintf("%v", r.Name())
 }
+
+func (r *LoadBalancer) Dependencies() []string {
+	return []string{"ProxyARP"}
+}

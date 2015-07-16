@@ -42,11 +42,16 @@ type EventSender interface {
 	SetEventListener(network.EventListener)
 }
 
+type application struct {
+	instance app.Processor
+	enabled  bool
+}
+
 type Manager struct {
 	mutex      sync.Mutex
 	log        log.Logger
 	conf       *goconf.ConfigFile
-	apps       map[string]app.Processor // Registered applications
+	apps       map[string]*application // Registered applications
 	head, tail app.Processor
 	db         *database.MySQL
 }
@@ -67,7 +72,7 @@ func NewManager(conf *goconf.ConfigFile, log log.Logger) (*Manager, error) {
 	v := &Manager{
 		log:  log,
 		conf: conf,
-		apps: make(map[string]app.Processor),
+		apps: make(map[string]*application),
 		db:   db,
 	}
 	// Registering north-bound applications
@@ -81,7 +86,28 @@ func NewManager(conf *goconf.ConfigFile, log log.Logger) (*Manager, error) {
 }
 
 func (r *Manager) register(app app.Processor) {
-	r.apps[strings.ToUpper(app.Name())] = app
+	r.apps[strings.ToUpper(app.Name())] = &application{
+		instance: app,
+		enabled:  false,
+	}
+}
+
+// XXX: Caller should lock the mutex before they call this function
+func (r *Manager) checkDependencies(appNames []string) error {
+	if appNames == nil || len(appNames) == 0 {
+		// No dependency
+		return nil
+	}
+
+	for _, name := range appNames {
+		app, ok := r.apps[strings.ToUpper(name)]
+		r.log.Debug(fmt.Sprintf("app: %+v, ok: %v", app, ok))
+		if !ok || !app.enabled {
+			return fmt.Errorf("%v application is not loaded", name)
+		}
+	}
+
+	return nil
 }
 
 func (r *Manager) Enable(appName string) error {
@@ -89,14 +115,20 @@ func (r *Manager) Enable(appName string) error {
 	defer r.mutex.Unlock()
 
 	r.log.Debug(fmt.Sprintf("Enabling %v application..", appName))
-
-	app, ok := r.apps[strings.ToUpper(appName)]
+	v, ok := r.apps[strings.ToUpper(appName)]
 	if !ok {
 		return fmt.Errorf("unknown application: %v", appName)
 	}
+	app := v.instance
+
 	if err := app.Init(); err != nil {
-		return err
+		return fmt.Errorf("initializing application: %v", err)
 	}
+	if err := r.checkDependencies(app.Dependencies()); err != nil {
+		return fmt.Errorf("checking dependencies: %v", err)
+	}
+	v.enabled = true
+	r.log.Debug(fmt.Sprintf("Enabled %v application..", appName))
 
 	if r.head == nil {
 		r.head = app

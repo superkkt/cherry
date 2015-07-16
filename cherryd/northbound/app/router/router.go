@@ -397,3 +397,7 @@ func installFlow(p flowParam) error {
 func (r *Router) String() string {
 	return fmt.Sprintf("%v", r.Name())
 }
+
+func (r *Router) Dependencies() []string {
+	return []string{"ProxyARP"}
+}

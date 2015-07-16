@@ -109,7 +109,7 @@ func createAppManager(config *Config, log *log.Syslog) (*northbound.Manager, err
 
 	for _, v := range config.Apps {
 		if err := manager.Enable(v); err != nil {
-			return nil, fmt.Errorf("%v: %v", v, err)
+			return nil, fmt.Errorf("enabling %v: %v", v, err)
 		}
 	}
 
