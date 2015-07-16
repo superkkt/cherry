@@ -11,9 +11,9 @@ COPY ./docker_entrypoint.sh /entrypoint.sh
 
 ENV DEBIAN_FRONTEND="noninteractive"
 
-RUN sed -i 's/httpredir.debian.org/ftp.daum.net/g' /etc/apt/sources.list \
- && apt-get update \ 
- && apt-get install -y rsyslog
+RUN sed -i 's/httpredir.debian.org/ftp.daum.net/g' /etc/apt/sources.list && \
+    apt-get update && \ 
+    apt-get install -y rsyslog
  
 # Build cherryd inside the container.
 RUN go get github.com/superkkt/cherry/cherryd \
