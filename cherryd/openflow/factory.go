@@ -1,7 +1,7 @@
 /*
  * Cherry - An OpenFlow Controller
  *
- * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved. 
+ * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved.
  * Kitae Kim <superkkt@sds.co.kr>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -64,6 +64,7 @@ type Factory interface {
 	NewPortDescRequest() (PortDescRequest, error)
 	NewPortDescReply() (PortDescReply, error)
 	NewPortStatus() (PortStatus, error)
+	NewQueueGetConfigRequest() (QueueGetConfigRequest, error)
 	NewSetConfig() (SetConfig, error)
 	NewTableFeaturesRequest() (TableFeaturesRequest, error)
 	// TODO: NewTableFeaturesReply() (TableFeaturesReply, error)

@@ -85,6 +85,10 @@ func (r *of10Session) OnFeaturesReply(f openflow.Factory, w trans.Writer, v open
 			}
 		}
 		r.log.Debug(fmt.Sprintf("OF10Session: PortNum=%v, AdminUp=%v, LinkUp=%v", p.Number(), !p.IsPortDown(), !p.IsLinkDown()))
+
+		if err := sendQueueConfigRequest(f, w, p.Number()); err != nil {
+			r.log.Err(fmt.Sprintf("OF10Session: sending queue config request: %v", err))
+		}
 	}
 
 	return nil

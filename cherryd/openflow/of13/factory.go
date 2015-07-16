@@ -1,7 +1,7 @@
 /*
  * Cherry - An OpenFlow Controller
  *
- * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved. 
+ * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved.
  * Kitae Kim <superkkt@sds.co.kr>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -159,4 +159,8 @@ func (r *Factory) NewError() (openflow.Error, error) {
 
 func (r *Factory) NewInstruction() (openflow.Instruction, error) {
 	return new(Instruction), nil
+}
+
+func (r *Factory) NewQueueGetConfigRequest() (openflow.QueueGetConfigRequest, error) {
+	return NewQueueGetConfigRequest(r.getTransactionID()), nil
 }

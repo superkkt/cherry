@@ -572,3 +572,15 @@ func sendRemovingAllFlows(f openflow.Factory, w trans.Writer) error {
 
 	return w.Write(msg)
 }
+
+func sendQueueConfigRequest(f openflow.Factory, w trans.Writer, port uint32) error {
+	msg, err := f.NewQueueGetConfigRequest()
+	if err != nil {
+		return err
+	}
+	p := openflow.NewOutPort()
+	p.SetValue(port)
+	msg.SetPort(p)
+
+	return w.Write(msg)
+}
