@@ -78,6 +78,25 @@ func (r *Router) Init() error {
 	return nil
 }
 
+func isPrivateAddress(ip net.IP) bool {
+	ip4 := ip.To4()
+	if ip4 == nil {
+		// We don't support IPv6 yet
+		panic("ip is not an IPv4 address!")
+	}
+
+	switch {
+	case ip4[0] == 10:
+		return true
+	case ip4[0] == 172 && ip4[1]&0xF0 == 16:
+		return true
+	case ip4[0] == 192 && ip4[1] == 168:
+		return true
+	default:
+		return false
+	}
+}
+
 func (r *Router) OnPacketIn(finder network.Finder, ingress *network.Port, eth *protocol.Ethernet) error {
 	r.log.Debug(fmt.Sprintf("Router: PACKET_IN.. Ingress=%v, SrcMAC=%v, DstMAC=%v", ingress.ID(), eth.SrcMAC, eth.DstMAC))
 
@@ -108,8 +127,13 @@ func (r *Router) OnPacketIn(finder network.Finder, ingress *network.Port, eth *p
 		// Drop link-local address
 		return nil
 	}
+	if isPrivateAddress(ipv4.DstIP) {
+		r.log.Debug(fmt.Sprintf("Router: drop an incoming packet heading to a private address %v from %v", ipv4.DstIP, ipv4.SrcIP))
+		// Drop private address
+		return nil
+	}
 
-	// TODO: Do not route private addressses to outside, and always route them to internal network when the addresses are trusted
+	// TODO: Multicast. What should I do in here? Just send it to L2Switch with FF:FF:FF:FF:FF:FF MAC address?
 
 	ok, err := r.db.IsRouter(ipv4.DstIP)
 	if err != nil {
