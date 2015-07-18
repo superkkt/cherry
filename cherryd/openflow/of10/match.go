@@ -103,6 +103,8 @@ func (r *Wildcard) MarshalBinary() ([]byte, error) {
 	if r.VLANPriority {
 		v = v | OFPFW_DL_VLAN_PCP
 	}
+	// ToS is always wildcarded
+	v = v | OFPFW_NW_TOS
 
 	data := make([]byte, 4)
 	binary.BigEndian.PutUint32(data[0:4], v)
