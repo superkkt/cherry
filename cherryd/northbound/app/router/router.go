@@ -374,6 +374,8 @@ func installFlow(p flowParam) error {
 	}
 	action.SetDstMAC(p.targetMAC)
 	action.SetOutPort(outPort)
+	// FIXME: Set the queue number based on the switch queue configuration and desired line rate
+	//action.SetQueue(0)
 	inst, err := f.NewInstruction()
 	if err != nil {
 		return err

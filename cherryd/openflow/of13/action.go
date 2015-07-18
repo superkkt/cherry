@@ -1,7 +1,7 @@
 /*
  * Cherry - An OpenFlow Controller
  *
- * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved. 
+ * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved.
  * Kitae Kim <superkkt@sds.co.kr>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -89,6 +89,7 @@ func marshalMAC(t uint8, mac net.HardwareAddr) ([]byte, error) {
 	return v, nil
 }
 
+// TODO: Marshal Enqueue
 func (r *Action) MarshalBinary() ([]byte, error) {
 	if err := r.Error(); err != nil {
 		return nil, err
@@ -109,14 +110,12 @@ func (r *Action) MarshalBinary() ([]byte, error) {
 		}
 		result = append(result, v...)
 	}
-	ports := r.OutPort()
-	for _, v := range ports {
-		v, err := marshalOutput(v)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, v...)
+
+	v, err := marshalOutput(r.OutPort())
+	if err != nil {
+		return nil, err
 	}
+	result = append(result, v...)
 
 	return result, nil
 }

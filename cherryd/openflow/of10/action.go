@@ -1,7 +1,7 @@
 /*
  * Cherry - An OpenFlow Controller
  *
- * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved. 
+ * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved.
  * Kitae Kim <superkkt@sds.co.kr>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -23,6 +23,7 @@ package of10
 
 import (
 	"encoding/binary"
+	"fmt"
 	"github.com/superkkt/cherry/cherryd/openflow"
 	"net"
 )
@@ -61,6 +62,39 @@ func marshalOutPort(p openflow.OutPort) ([]byte, error) {
 	// We don't support buffer ID and partial PACKET_IN
 	binary.BigEndian.PutUint16(v[6:8], 0xFFFF)
 
+	// XXX: debugging
+	fmt.Printf("marshalOutPort: num=%v\n", port)
+
+	return v, nil
+}
+
+func marshalQueue(p openflow.OutPort, queue int) ([]byte, error) {
+	v := make([]byte, 16)
+	binary.BigEndian.PutUint16(v[0:2], uint16(OFPAT_ENQUEUE))
+	binary.BigEndian.PutUint16(v[2:4], 16)
+
+	var port uint16
+	switch {
+	case p.IsTable():
+		port = OFPP_TABLE
+	case p.IsFlood():
+		port = OFPP_FLOOD
+	case p.IsAll():
+		port = OFPP_ALL
+	case p.IsController():
+		port = OFPP_CONTROLLER
+	case p.IsNone():
+		port = OFPP_NONE
+	default:
+		port = uint16(p.Value())
+	}
+	binary.BigEndian.PutUint16(v[4:6], port)
+	// v[6:12] is padding
+	binary.BigEndian.PutUint32(v[12:16], uint32(queue))
+
+	// XXX: debugging
+	fmt.Printf("marshalQueue: num=%v\n", port)
+
 	return v, nil
 }
 
@@ -97,14 +131,19 @@ func (r *Action) MarshalBinary() ([]byte, error) {
 		}
 		result = append(result, v...)
 	}
-	ports := r.OutPort()
-	for _, v := range ports {
-		v, err := marshalOutPort(v)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, v...)
+
+	var buf []byte
+	var err error
+	// Need QoS?
+	if r.Queue() != -1 {
+		buf, err = marshalQueue(r.OutPort(), r.Queue())
+	} else {
+		buf, err = marshalOutPort(r.OutPort())
 	}
+	if err != nil {
+		return nil, err
+	}
+	result = append(result, buf...)
 
 	return result, nil
 }

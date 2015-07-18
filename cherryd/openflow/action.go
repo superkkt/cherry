@@ -31,10 +31,12 @@ type Action interface {
 	DstMAC() (ok bool, mac net.HardwareAddr)
 	encoding.BinaryMarshaler
 	encoding.BinaryUnmarshaler
+	Queue() int
 	// Error() returns last error message
 	Error() error
-	OutPort() []OutPort
+	OutPort() OutPort
 	SetDstMAC(mac net.HardwareAddr)
+	SetQueue(queue int)
 	SetOutPort(port OutPort)
 	SetSrcMAC(mac net.HardwareAddr)
 	SrcMAC() (ok bool, mac net.HardwareAddr)
@@ -42,22 +44,31 @@ type Action interface {
 
 type BaseAction struct {
 	err    error
-	output []OutPort
+	output OutPort
 	srcMAC *net.HardwareAddr
 	dstMAC *net.HardwareAddr
+	queue  int
 }
 
 func NewBaseAction() *BaseAction {
 	return &BaseAction{
-		output: make([]OutPort, 0),
+		queue: -1,
 	}
 }
 
-func (r *BaseAction) SetOutPort(port OutPort) {
-	r.output = append(r.output, port)
+func (r *BaseAction) Queue() int {
+	return r.queue
 }
 
-func (r *BaseAction) OutPort() []OutPort {
+func (r *BaseAction) SetQueue(queue int) {
+	r.queue = queue
+}
+
+func (r *BaseAction) SetOutPort(port OutPort) {
+	r.output = port
+}
+
+func (r *BaseAction) OutPort() OutPort {
 	return r.output
 }
 
