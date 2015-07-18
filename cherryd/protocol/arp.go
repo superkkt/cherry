@@ -1,7 +1,7 @@
 /*
  * Cherry - An OpenFlow Controller
  *
- * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved. 
+ * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved.
  * Kitae Kim <superkkt@sds.co.kr>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -48,6 +48,7 @@ func NewARPRequest(sha net.HardwareAddr, spa, tpa net.IP) *ARP {
 		Operation:   1,      // ARP request
 		SHA:         sha,
 		SPA:         spa,
+		THA:         net.HardwareAddr([]byte{0, 0, 0, 0, 0, 0}),
 		TPA:         tpa,
 	}
 }
@@ -78,9 +79,17 @@ func (r ARP) MarshalBinary() ([]byte, error) {
 	v[5] = r.ProtoLength
 	binary.BigEndian.PutUint16(v[6:8], r.Operation)
 	copy(v[8:14], r.SHA)
-	copy(v[14:18], r.SPA)
+	spa := r.SPA.To4()
+	if spa == nil {
+		return nil, errors.New("source protocol address is not an IPv4 address")
+	}
+	copy(v[14:18], spa)
 	copy(v[18:24], r.THA)
-	copy(v[24:28], r.TPA)
+	tpa := r.TPA.To4()
+	if tpa == nil {
+		return nil, errors.New("target protocol address is not an IPv4 address")
+	}
+	copy(v[24:28], tpa)
 
 	return v, nil
 }

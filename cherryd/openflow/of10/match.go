@@ -1,7 +1,7 @@
 /*
  * Cherry - An OpenFlow Controller
  *
- * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved. 
+ * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved.
  * Kitae Kim <superkkt@sds.co.kr>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -450,8 +450,16 @@ func (r *Match) MarshalBinary() ([]byte, error) {
 	binary.BigEndian.PutUint16(data[22:24], r.etherType)
 	data[25] = r.protocol
 	// data[26:28] = padding
-	copy(data[28:32], []byte(r.srcIP.To4()))
-	copy(data[32:36], []byte(r.dstIP.To4()))
+	srcIP := r.srcIP.To4()
+	if srcIP == nil {
+		return nil, errors.New("source IP address is not an IPv4 address")
+	}
+	copy(data[28:32], srcIP)
+	dstIP := r.dstIP.To4()
+	if dstIP == nil {
+		return nil, errors.New("destination IP address is not an IPv4 address")
+	}
+	copy(data[32:36], dstIP)
 	binary.BigEndian.PutUint16(data[36:38], r.srcPort)
 	binary.BigEndian.PutUint16(data[38:40], r.dstPort)
 

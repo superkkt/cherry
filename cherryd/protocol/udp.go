@@ -1,7 +1,7 @@
 /*
  * Cherry - An OpenFlow Controller
  *
- * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved. 
+ * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved.
  * Kitae Kim <superkkt@sds.co.kr>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -62,8 +62,16 @@ func (r UDP) MarshalBinary() ([]byte, error) {
 		return nil, errors.New("nil pseudo IP addresses")
 	}
 	pseudo := make([]byte, 12)
-	copy(pseudo[0:4], r.srcIP)
-	copy(pseudo[4:8], r.dstIP)
+	srcIP := r.srcIP.To4()
+	if srcIP == nil {
+		return nil, errors.New("source IP address is not an IPv4 address")
+	}
+	copy(pseudo[0:4], srcIP)
+	dstIP := r.dstIP.To4()
+	if dstIP == nil {
+		return nil, errors.New("destination IP address is not an IPv4 address")
+	}
+	copy(pseudo[4:8], dstIP)
 	pseudo[9] = 17 // UDP
 	binary.BigEndian.PutUint16(pseudo[10:12], uint16(length))
 

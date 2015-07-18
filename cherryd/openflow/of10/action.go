@@ -23,7 +23,6 @@ package of10
 
 import (
 	"encoding/binary"
-	"fmt"
 	"github.com/superkkt/cherry/cherryd/openflow"
 	"net"
 )
@@ -62,9 +61,6 @@ func marshalOutPort(p openflow.OutPort) ([]byte, error) {
 	// We don't support buffer ID and partial PACKET_IN
 	binary.BigEndian.PutUint16(v[6:8], 0xFFFF)
 
-	// XXX: debugging
-	fmt.Printf("marshalOutPort: num=%v\n", port)
-
 	return v, nil
 }
 
@@ -91,9 +87,6 @@ func marshalQueue(p openflow.OutPort, queue int) ([]byte, error) {
 	binary.BigEndian.PutUint16(v[4:6], port)
 	// v[6:12] is padding
 	binary.BigEndian.PutUint32(v[12:16], uint32(queue))
-
-	// XXX: debugging
-	fmt.Printf("marshalQueue: num=%v\n", port)
 
 	return v, nil
 }
