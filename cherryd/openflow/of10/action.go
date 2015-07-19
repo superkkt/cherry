@@ -52,6 +52,8 @@ func marshalOutPort(p openflow.OutPort) ([]byte, error) {
 		port = OFPP_ALL
 	case p.IsController():
 		port = OFPP_CONTROLLER
+	case p.IsInPort():
+		port = OFPP_IN_PORT
 	case p.IsNone():
 		port = OFPP_NONE
 	default:

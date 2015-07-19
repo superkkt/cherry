@@ -1,7 +1,7 @@
 /*
  * Cherry - An OpenFlow Controller
  *
- * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved. 
+ * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved.
  * Kitae Kim <superkkt@sds.co.kr>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -31,6 +31,7 @@ const (
 	flood
 	all
 	controller
+	inport
 	none
 )
 
@@ -76,6 +77,14 @@ func (r *OutPort) SetController() {
 
 func (r *OutPort) IsController() bool {
 	return r.logical&(0x1<<controller) != 0
+}
+
+func (r *OutPort) SetInPort() {
+	r.logical = 0x1 << inport
+}
+
+func (r *OutPort) IsInPort() bool {
+	return r.logical&(0x1<<inport) != 0
 }
 
 func (r *OutPort) SetNone() {

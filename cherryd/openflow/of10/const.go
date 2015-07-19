@@ -1,7 +1,7 @@
 /*
  * Cherry - An OpenFlow Controller
  *
- * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved. 
+ * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved.
  * Kitae Kim <superkkt@sds.co.kr>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -64,6 +64,7 @@ const (
 
 const (
 	OFPP_MAX        = 0xff00
+	OFPP_IN_PORT    = 0xfff8
 	OFPP_TABLE      = 0xfff9
 	OFPP_FLOOD      = 0xfffb
 	OFPP_ALL        = 0xfffc
