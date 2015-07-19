@@ -106,9 +106,7 @@ func installFlow(p flowParam) error {
 	if err != nil {
 		return err
 	}
-	match.SetInPort(inPort)
-	match.SetEtherType(p.etherType)
-	match.SetSrcMAC(p.srcMAC)
+	// TODO: Set VLAN ID in here
 	match.SetDstMAC(p.dstMAC)
 
 	outPort := openflow.NewOutPort()
@@ -137,22 +135,6 @@ func installFlow(p flowParam) error {
 	return p.device.SendMessage(flow)
 }
 
-func (r *L2Switch) setFlowRule(p flowParam) error {
-	r.log.Debug(fmt.Sprintf("L2Switch: installing a forward flow.. %v", p))
-	// Install forward flow
-	if err := installFlow(p); err != nil {
-		return err
-	}
-
-	// Reverse
-	p.inPort, p.outPort = p.outPort, p.inPort
-	p.srcMAC, p.dstMAC = p.dstMAC, p.srcMAC
-
-	// Install backward flow
-	r.log.Debug(fmt.Sprintf("L2Switch: installing a backward flow.. %v", p))
-	return installFlow(p)
-}
-
 type switchParam struct {
 	finder    network.Finder
 	ethernet  *protocol.Ethernet
@@ -162,54 +144,6 @@ type switchParam struct {
 }
 
 func (r *L2Switch) switching(p switchParam) error {
-	// Find path between the ingress device and the other one that has that destination node
-	path := p.finder.Path(p.ingress.Device().ID(), p.egress.Device().ID())
-	if path == nil || len(path) == 0 {
-		r.log.Debug(fmt.Sprintf("L2Switch: not found a path from %v to %v", p.ethernet.SrcMAC, p.ethernet.DstMAC))
-		return nil
-	}
-	// Drop this packet if it goes back to the ingress port to avoid duplicated packet routing
-	if p.ingress.Number() == path[0][0].Number() {
-		r.log.Debug(fmt.Sprintf("L2Switch: ignore routing path that goes back to the ingress port (SrcMAC=%v, DstMAC=%v)", p.ethernet.SrcMAC, p.ethernet.DstMAC))
-		return nil
-	}
-
-	inPort := p.ingress.Number()
-	// Install bi-directional flow rules into all devices on the path
-	for _, v := range path {
-		param := flowParam{
-			device:    v[0].Device(),
-			etherType: p.ethernet.Type,
-			inPort:    inPort,
-			outPort:   v[0].Number(),
-			srcMAC:    p.ethernet.SrcMAC,
-			dstMAC:    p.ethernet.DstMAC,
-		}
-		if err := r.setFlowRule(param); err != nil {
-			return err
-		}
-		inPort = v[1].Number()
-	}
-
-	// Set final flow rule on the destination device
-	param := flowParam{
-		device:    p.egress.Device(),
-		etherType: p.ethernet.Type,
-		inPort:    inPort,
-		outPort:   p.egress.Number(),
-		srcMAC:    p.ethernet.SrcMAC,
-		dstMAC:    p.ethernet.DstMAC,
-	}
-	if err := r.setFlowRule(param); err != nil {
-		return err
-	}
-
-	// Send this ethernet packet directly to the destination node
-	r.log.Debug(fmt.Sprintf("L2Switch: sending a packet (Src=%v, Dst=%v) to egress port %v..", p.ethernet.SrcMAC, p.ethernet.DstMAC, p.egress.ID()))
-	return r.PacketOut(p.egress, p.rawPacket)
-}
-
-func (r *L2Switch) localSwitching(p switchParam) error {
 	param := flowParam{
 		device:    p.ingress.Device(),
 		etherType: p.ethernet.Type,
@@ -218,9 +152,10 @@ func (r *L2Switch) localSwitching(p switchParam) error {
 		srcMAC:    p.ethernet.SrcMAC,
 		dstMAC:    p.ethernet.DstMAC,
 	}
-	if err := r.setFlowRule(param); err != nil {
+	if err := installFlow(param); err != nil {
 		return err
 	}
+	r.log.Debug(fmt.Sprintf("L2Switch: installed a flow rule.. %v", param))
 
 	// Send this ethernet packet directly to the destination node
 	r.log.Debug(fmt.Sprintf("L2Switch: sending a packet (Src=%v, Dst=%v) to egress port %v..", p.ethernet.SrcMAC, p.ethernet.DstMAC, p.egress.ID()))
@@ -250,11 +185,16 @@ func (r *L2Switch) processPacket(finder network.Finder, ingress *network.Port, e
 		return true, flood(ingress, packet)
 	}
 
-	dstNode := finder.Node(eth.DstMAC)
-	// Unknown node or broadcast request?
+	dstNode := finder.Node(ingress.Device(), eth.DstMAC)
+	// Unknown node?
 	if dstNode == nil {
-		r.log.Debug(fmt.Sprintf("L2Switch: unknown host location! flooding.. SrcMAC=%v, DstMAC=%v", eth.SrcMAC, eth.DstMAC))
+		r.log.Debug(fmt.Sprintf("L2Switch: unknown node! flooding.. SrcMAC=%v, DstMAC=%v", eth.SrcMAC, eth.DstMAC))
 		return true, flood(ingress, packet)
+	}
+	// Drop this packet if it goes back to the ingress port to avoid duplicated packet routing
+	if ingress.Number() == dstNode.Port().Number() {
+		r.log.Debug(fmt.Sprintf("L2Switch: ignore routing path that goes back to the ingress port (SrcMAC=%v, DstMAC=%v)", eth.SrcMAC, eth.DstMAC))
+		return true, nil
 	}
 
 	param := switchParam{
@@ -264,13 +204,7 @@ func (r *L2Switch) processPacket(finder network.Finder, ingress *network.Port, e
 		egress:    dstNode.Port(),
 		rawPacket: packet,
 	}
-	// Two nodes on a same switch device?
-	if ingress.Device().ID() == dstNode.Port().Device().ID() {
-		r.log.Debug("L2Switch: two nodes are connected to a same switch..")
-		err = r.localSwitching(param)
-	} else {
-		err = r.switching(param)
-	}
+	err = r.switching(param)
 	if err != nil {
 		return false, fmt.Errorf("failed to switch a packet: %v", err)
 	}

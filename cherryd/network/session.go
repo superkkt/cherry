@@ -428,7 +428,7 @@ func (r *session) handleLLDP(inPort *Port, ethernet *protocol.Ethernet) error {
 }
 
 func (r *session) addNewNode(inPort *Port, mac net.HardwareAddr) {
-	r.log.Debug(fmt.Sprintf("Session: adding a new node %v on %v..", mac, inPort.ID()))
+	r.log.Debug(fmt.Sprintf("Session: MAC learning! Adding a new node %v on %v..", mac, inPort.ID()))
 	node := inPort.addNode(mac)
 	r.watcher.NodeAdded(node)
 }
@@ -457,12 +457,6 @@ func (r *session) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.Pack
 	if isLLDP(ethernet) {
 		return r.handleLLDP(inPort, ethernet)
 	}
-	// Do we know packet sender?
-	if r.finder.Node(ethernet.SrcMAC) == nil {
-		r.log.Debug(fmt.Sprintf("Session: MAC learning... %v", ethernet.SrcMAC))
-		// MAC learning
-		r.addNewNode(inPort, ethernet.SrcMAC)
-	}
 	// Do nothing if the ingress port is in inactive state
 	if !r.isActivatedPort(inPort) {
 		r.log.Debug(fmt.Sprintf("Session: ignoring PACKET_IN from %v:%v because the ingress port is not in active state yet", r.device.ID(), v.InPort()))
@@ -473,11 +467,18 @@ func (r *session) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.Pack
 		r.log.Debug(fmt.Sprintf("Session: ignoring PACKET_IN from %v:%v by STP", r.device.ID(), v.InPort()))
 		return nil
 	}
-	if err := r.listener.OnPacketIn(r.finder, inPort, ethernet); err != nil {
+	// New node or location updated?
+	node := r.finder.Node(r.device, ethernet.SrcMAC)
+	if node == nil || node.Port().ID() != inPort.ID() {
+		// MAC learning
+		r.addNewNode(inPort, ethernet.SrcMAC)
+	}
+	// Call specific version handler
+	if err := r.handler.OnPacketIn(f, w, v); err != nil {
 		return err
 	}
 
-	return r.handler.OnPacketIn(f, w, v)
+	return r.listener.OnPacketIn(r.finder, inPort, ethernet)
 }
 
 func (r *session) Run(ctx context.Context) {

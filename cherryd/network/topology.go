@@ -45,16 +45,32 @@ type Finder interface {
 	IsEnabledBySTP(p *Port) bool
 	// IsEdge returns whether p is an edge among two switches
 	IsEdge(p *Port) bool
-	Node(mac net.HardwareAddr) *Node
+	Node(device *Device, mac net.HardwareAddr) *Node
 	Path(srcDeviceID, dstDeviceID string) [][2]*Port
+}
+
+type device struct {
+	value *Device
+	// Key is MAC address of a node
+	nodes map[string]*Node
+}
+
+func (r device) String() string {
+	var buf bytes.Buffer
+
+	buf.WriteString(fmt.Sprintf("Device: %v (# of nodes = %v)\n", r.value, len(r.nodes)))
+	for _, v := range r.nodes {
+		buf.WriteString(fmt.Sprintf("Node: %v\n", v))
+	}
+	buf.WriteString("\n")
+
+	return buf.String()
 }
 
 type topology struct {
 	mutex sync.RWMutex
 	// Key is the device ID
-	devices map[string]*Device
-	// Key is MAC address of a node
-	nodes    map[string]*Node
+	devices  map[string]*device
 	log      log.Logger
 	graph    *graph.Graph
 	listener TopologyEventListener
@@ -62,8 +78,7 @@ type topology struct {
 
 func newTopology(log log.Logger) *topology {
 	return &topology{
-		devices: make(map[string]*Device),
-		nodes:   make(map[string]*Node),
+		devices: make(map[string]*device),
 		log:     log,
 		graph:   graph.New(),
 	}
@@ -76,9 +91,6 @@ func (r *topology) String() string {
 
 	var buf bytes.Buffer
 	for _, v := range r.devices {
-		buf.WriteString(fmt.Sprintf("%v\n", v))
-	}
-	for _, v := range r.nodes {
 		buf.WriteString(fmt.Sprintf("%v\n", v))
 	}
 	buf.WriteString(fmt.Sprintf("%v\n", r.graph))
@@ -110,7 +122,7 @@ func (r *topology) Devices() []*Device {
 
 	v := make([]*Device, 0)
 	for _, d := range r.devices {
-		v = append(v, d)
+		v = append(v, d.value)
 	}
 
 	return v
@@ -122,13 +134,21 @@ func (r *topology) Device(id string) *Device {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 
-	return r.devices[id]
+	d, ok := r.devices[id]
+	if !ok {
+		return nil
+	}
+
+	return d.value
 }
 
 func (r *topology) DeviceAdded(d *Device) {
 	// Write lock
 	r.mutex.Lock()
-	r.devices[d.ID()] = d
+	r.devices[d.ID()] = &device{
+		value: d,
+		nodes: make(map[string]*Node),
+	}
 	// Unlock
 	r.mutex.Unlock()
 
@@ -137,24 +157,22 @@ func (r *topology) DeviceAdded(d *Device) {
 }
 
 func (r *topology) removeDevice(d *Device) {
-	id := d.ID()
 	// Device exists?
-	d, ok := r.devices[id]
+	_, ok := r.devices[d.ID()]
 	if !ok {
 		return
 	}
 	// Remove all nodes connected to this device
 	r.removeAllNodes(d)
 	// Remove from the device database
-	delete(r.devices, id)
+	delete(r.devices, d.ID())
 }
 
 func (r *topology) removeAllNodes(d *Device) {
 	ports := d.Ports()
 	for _, p := range ports {
 		for _, n := range p.Nodes() {
-			delete(r.nodes, n.MAC().String())
-			p.removeNode(n.MAC())
+			r.removeNode(n.MAC())
 		}
 	}
 }
@@ -189,24 +207,46 @@ func (r *topology) NodeAdded(n *Node) {
 		panic("node is nil")
 	}
 
-	node, ok := r.nodes[n.MAC().String()]
+	device, ok := r.devices[n.Port().Device().ID()]
+	if !ok {
+		panic("A node is added, but there is a no device related with the node!")
+	}
+
+	node, ok := device.nodes[n.MAC().String()]
 	// Do we already have a port that has this node?
 	if ok {
 		// Remove this node from the port
 		port := node.Port()
 		port.removeNode(node.MAC())
 	}
-	// Add new node
-	r.nodes[n.MAC().String()] = n
+	// Add (update) new node
+	device.nodes[n.MAC().String()] = n
 }
 
 // Node may return nil if a node whose MAC is mac does not exist
-func (r *topology) Node(mac net.HardwareAddr) *Node {
+func (r *topology) Node(d *Device, mac net.HardwareAddr) *Node {
 	// Read lock
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 
-	return r.nodes[mac.String()]
+	device, ok := r.devices[d.ID()]
+	if !ok {
+		panic(fmt.Sprintf("Unknown device ID: %v", d.ID()))
+	}
+
+	return device.nodes[mac.String()]
+}
+
+// XXX: Caller should lock the mutex
+func (r *topology) removeNode(mac net.HardwareAddr) {
+	for _, v := range r.devices {
+		n := v.nodes[mac.String()]
+		if n == nil {
+			continue
+		}
+		n.Port().removeNode(mac)
+		delete(v.nodes, mac.String())
+	}
 }
 
 func (r *topology) PortRemoved(p *Port) {
@@ -214,7 +254,7 @@ func (r *topology) PortRemoved(p *Port) {
 	r.mutex.Lock()
 	// Remove hosts connected to the port from the host database
 	for _, v := range p.Nodes() {
-		delete(r.nodes, v.MAC().String())
+		r.removeNode(v.MAC())
 		p.removeNode(v.MAC())
 	}
 	// Unlock
@@ -241,7 +281,7 @@ func (r *topology) Path(srcDeviceID, dstDeviceID string) [][2]*Port {
 		return v
 	}
 
-	path := r.graph.FindPath(src, dst)
+	path := r.graph.FindPath(src.value, dst.value)
 	for _, p := range path {
 		device := p.V.(*Device)
 		link := p.E.(*link)
