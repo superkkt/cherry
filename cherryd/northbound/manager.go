@@ -33,7 +33,6 @@ import (
 	"github.com/superkkt/cherry/cherryd/northbound/app/l2switch"
 	"github.com/superkkt/cherry/cherryd/northbound/app/lb"
 	"github.com/superkkt/cherry/cherryd/northbound/app/proxyarp"
-	"github.com/superkkt/cherry/cherryd/northbound/app/router"
 	"strings"
 	"sync"
 )
@@ -79,7 +78,6 @@ func NewManager(conf *goconf.ConfigFile, log log.Logger) (*Manager, error) {
 	v.register(l2switch.New(conf, log))
 	v.register(proxyarp.New(conf, log, db))
 	v.register(lb.New(conf, log, db))
-	v.register(router.New(conf, log, db))
 	v.register(firewall.New(conf, log, db))
 
 	return v, nil
