@@ -182,3 +182,56 @@ func makeARPReply(request *protocol.ARP, mac net.HardwareAddr) ([]byte, error) {
 func (r *ProxyARP) String() string {
 	return fmt.Sprintf("%v", r.Name())
 }
+
+func makeARPAnnouncement(ip net.IP, mac net.HardwareAddr) ([]byte, error) {
+	v := protocol.NewARPRequest(mac, ip, ip)
+	anon, err := v.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	eth := protocol.Ethernet{
+		SrcMAC:  mac,
+		DstMAC:  net.HardwareAddr([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}),
+		Type:    0x0806,
+		Payload: anon,
+	}
+
+	return eth.MarshalBinary()
+}
+
+func (r *ProxyARP) OnDeviceUp(finder network.Finder, device *network.Device) error {
+	// FIXME: Remove this fixed IP and MAC addresses and read them from the database
+	anon, err := makeARPAnnouncement(net.IPv4(223, 130, 122, 1), net.HardwareAddr([]byte{0x00, 0x01, 0xe8, 0x8b, 0x64, 0x42}))
+	if err != nil {
+		return fmt.Errorf("making ARP announcement: %v", err)
+	}
+	if err := sendARPAnnouncement(device, anon); err != nil {
+		return fmt.Errorf("sending ARP announcement: %v", err)
+	}
+
+	return r.BaseProcessor.OnDeviceUp(finder, device)
+}
+
+func sendARPAnnouncement(device *network.Device, packet []byte) error {
+	f := device.Factory()
+
+	inPort := openflow.NewInPort()
+	inPort.SetController()
+
+	action, err := f.NewAction()
+	if err != nil {
+		return err
+	}
+	// Flood
+	action.SetOutPort(openflow.NewOutPort())
+
+	out, err := f.NewPacketOut()
+	if err != nil {
+		return err
+	}
+	out.SetInPort(inPort)
+	out.SetAction(action)
+	out.SetData(packet)
+
+	return device.SendMessage(out)
+}

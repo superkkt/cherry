@@ -147,3 +147,74 @@ func (r *MySQL) GetNetworks() ([]*net.IPNet, error) {
 
 	return result, nil
 }
+
+func (r *MySQL) IsRouter(ip net.IP) (bool, error) {
+	if ip == nil {
+		panic("IP address is nil")
+	}
+
+	qry := `SELECT A.id 
+		FROM router A 
+		JOIN ip B 
+		ON A.ip_id = B.id 
+		WHERE B.address = INET_ATON(?)`
+	row, err := r.db.Query(qry, ip.String())
+	if err != nil {
+		return false, err
+	}
+	defer row.Close()
+
+	if !row.Next() {
+		return false, nil
+	}
+
+	return true, nil
+}
+
+func (r *MySQL) IsGateway(mac net.HardwareAddr) (bool, error) {
+	if mac == nil {
+		panic("MAC address is nil")
+	}
+
+	qry := `SELECT id 
+		FROM gateway 
+		WHERE mac = ?`
+	row, err := r.db.Query(qry, []byte(mac))
+	if err != nil {
+		return false, err
+	}
+	defer row.Close()
+
+	if !row.Next() {
+		return false, nil
+	}
+
+	return true, nil
+}
+
+func (r *MySQL) GetGateways() ([]net.HardwareAddr, error) {
+	qry := `SELECT mac 
+		FROM gateway`
+	row, err := r.db.Query(qry)
+	if err != nil {
+		return nil, err
+	}
+	defer row.Close()
+
+	result := make([]net.HardwareAddr, 0)
+	for row.Next() {
+		var v []byte
+		if err := row.Scan(&v); err != nil {
+			return nil, err
+		}
+		if v == nil || len(v) != 6 {
+			panic("Invalid MAC address")
+		}
+		result = append(result, net.HardwareAddr(v))
+	}
+	if err := row.Err(); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
