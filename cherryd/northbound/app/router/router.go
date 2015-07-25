@@ -42,7 +42,8 @@ type Router struct {
 	log  log.Logger
 	db   database
 	// Virtual MAC address
-	mac net.HardwareAddr
+	mac    net.HardwareAddr
+	vlanID uint16
 }
 
 type database interface {
@@ -75,6 +76,12 @@ func (r *Router) Init() error {
 	if err != nil {
 		return err
 	}
+
+	vlanID, err := r.conf.GetInt("default", "vlan_id")
+	if err != nil || vlanID < 0 || vlanID > 4095 {
+		return errors.New("invalid default VLAN ID in the config file")
+	}
+	r.vlanID = uint16(vlanID)
 
 	return nil
 }
@@ -301,7 +308,7 @@ func (r *Router) sendPacket(p packet, egress *network.Port, mac net.HardwareAddr
 	}
 	// Install a flow rule that replaces the destination MAC address
 	r.log.Debug(fmt.Sprintf("Router: installing a flow.. %v", param))
-	if err := installFlow(param); err != nil {
+	if err := r.installFlow(param); err != nil {
 		return err
 	}
 
@@ -338,11 +345,11 @@ type flowParam struct {
 	dstIP     *net.IPNet
 }
 
-func (r flowParam) String() string {
+func (r *flowParam) String() string {
 	return fmt.Sprintf("Device=%v, EtherType=%v, InPort=%v, OutPort=%v, SrcMAC=%v, DstMAC=%v, TargetMAC=%v, DstIP=%v", r.device.ID(), r.etherType, r.inPort, r.outPort, r.srcMAC, r.dstMAC, r.targetMAC, r.dstIP)
 }
 
-func installFlow(p flowParam) error {
+func (r *Router) installFlow(p flowParam) error {
 	f := p.device.Factory()
 
 	inPort := openflow.NewInPort()
@@ -364,6 +371,7 @@ func installFlow(p flowParam) error {
 	action.SetSrcMAC(p.dstMAC)
 	action.SetDstMAC(p.targetMAC)
 	action.SetOutPort(outPort)
+	action.SetVLANID(r.vlanID)
 	// FIXME: Set the queue number based on the switch queue configuration and desired line rate
 	//action.SetQueue(0)
 	inst, err := f.NewInstruction()
@@ -378,6 +386,7 @@ func installFlow(p flowParam) error {
 	}
 	flow.SetTableID(p.device.FlowTableID())
 	flow.SetIdleTimeout(30)
+	flow.SetHardTimeout(60)
 	// This priority should be higher than L2 switch module's one
 	flow.SetPriority(30)
 	flow.SetFlowMatch(match)

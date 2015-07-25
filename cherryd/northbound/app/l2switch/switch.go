@@ -23,6 +23,7 @@ package l2switch
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"github.com/dlintw/goconf"
 	"github.com/superkkt/cherry/cherryd/log"
@@ -35,8 +36,9 @@ import (
 
 type L2Switch struct {
 	app.BaseProcessor
-	conf *goconf.ConfigFile
-	log  log.Logger
+	conf   *goconf.ConfigFile
+	log    log.Logger
+	vlanID uint16
 }
 
 func New(conf *goconf.ConfigFile, log log.Logger) *L2Switch {
@@ -47,6 +49,12 @@ func New(conf *goconf.ConfigFile, log log.Logger) *L2Switch {
 }
 
 func (r *L2Switch) Init() error {
+	vlanID, err := r.conf.GetInt("default", "vlan_id")
+	if err != nil || vlanID < 0 || vlanID > 4095 {
+		return errors.New("invalid default VLAN ID in the config file")
+	}
+	r.vlanID = uint16(vlanID)
+
 	return nil
 }
 
@@ -93,11 +101,11 @@ type flowParam struct {
 	dstMAC    net.HardwareAddr
 }
 
-func (r flowParam) String() string {
+func (r *flowParam) String() string {
 	return fmt.Sprintf("Device=%v, EtherType=%v, InPort=%v, OutPort=%v, SrcMAC=%v, DstMAC=%v", r.device.ID(), r.etherType, r.inPort, r.outPort, r.srcMAC, r.dstMAC)
 }
 
-func installFlow(p flowParam) error {
+func (r *L2Switch) installFlow(p flowParam) error {
 	f := p.device.Factory()
 
 	inPort := openflow.NewInPort()
@@ -106,7 +114,7 @@ func installFlow(p flowParam) error {
 	if err != nil {
 		return err
 	}
-	// TODO: Set VLAN ID in here
+	match.SetVLANID(r.vlanID)
 	match.SetDstMAC(p.dstMAC)
 
 	outPort := openflow.NewOutPort()
@@ -128,6 +136,7 @@ func installFlow(p flowParam) error {
 	}
 	flow.SetTableID(p.device.FlowTableID())
 	flow.SetIdleTimeout(30)
+	flow.SetHardTimeout(60)
 	flow.SetPriority(10)
 	flow.SetFlowMatch(match)
 	flow.SetFlowInstruction(inst)
@@ -152,7 +161,7 @@ func (r *L2Switch) switching(p switchParam) error {
 		srcMAC:    p.ethernet.SrcMAC,
 		dstMAC:    p.ethernet.DstMAC,
 	}
-	if err := installFlow(param); err != nil {
+	if err := r.installFlow(param); err != nil {
 		return err
 	}
 	r.log.Debug(fmt.Sprintf("L2Switch: installed a flow rule.. %v", param))

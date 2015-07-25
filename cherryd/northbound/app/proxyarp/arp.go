@@ -66,7 +66,7 @@ func (r *ProxyARP) OnPacketIn(finder network.Finder, ingress *network.Port, eth 
 		return r.BaseProcessor.OnPacketIn(finder, ingress, eth)
 	}
 
-	r.log.Debug("ProxyARP: received ARP packet..")
+	r.log.Debug(fmt.Sprintf("ProxyARP: received ARP packet.. ingress=%v", ingress.ID()))
 
 	arp := new(protocol.ARP)
 	if err := arp.UnmarshalBinary(eth.Payload); err != nil {
@@ -74,13 +74,13 @@ func (r *ProxyARP) OnPacketIn(finder network.Finder, ingress *network.Port, eth 
 	}
 	// ARP request?
 	if arp.Operation != 1 {
-		r.log.Debug("ProxyARP: drop ARP packet whose type is not a request")
+		r.log.Debug(fmt.Sprintf("ProxyARP: drop ARP packet whose type is not a requesat.. ingress=%v, type=%v", ingress.ID(), arp.Operation))
 		// Drop all ARP packets if their type is not a reqeust.
 		return nil
 	}
 	// Pass ARP announcements packets if it has valid source IP & MAC addresses
 	if isARPAnnouncement(arp) {
-		r.log.Debug("ProxyARP: received ARP announcements..")
+		r.log.Debug(fmt.Sprintf("ProxyARP: received ARP announcements.. ingress=%v", ingress.ID()))
 		valid, err := r.isValidARPAnnouncement(arp)
 		if err != nil {
 			return err
@@ -109,7 +109,7 @@ func (r *ProxyARP) OnPacketIn(finder network.Finder, ingress *network.Port, eth 
 	if err != nil {
 		return err
 	}
-	r.log.Debug("ProxyARP: sending ARP reply..")
+	r.log.Debug(fmt.Sprintf("ProxyARP: sending ARP reply to %v..", ingress.ID()))
 	return sendARPReply(ingress, reply)
 }
 

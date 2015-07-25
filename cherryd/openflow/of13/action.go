@@ -92,6 +92,9 @@ func marshalMAC(t uint8, mac net.HardwareAddr) ([]byte, error) {
 }
 
 // TODO: Marshal Enqueue
+
+// TODO: Marshal SetVLANVID
+
 func (r *Action) MarshalBinary() ([]byte, error) {
 	if err := r.Error(); err != nil {
 		return nil, err
@@ -121,6 +124,10 @@ func (r *Action) MarshalBinary() ([]byte, error) {
 
 	return result, nil
 }
+
+// TODO: Unmarshal Enqueue
+
+// TODO: Unmarshal SetVLANVID
 
 func (r *Action) UnmarshalBinary(data []byte) error {
 	buf := data

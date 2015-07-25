@@ -31,15 +31,17 @@ type Action interface {
 	DstMAC() (ok bool, mac net.HardwareAddr)
 	encoding.BinaryMarshaler
 	encoding.BinaryUnmarshaler
-	Queue() int
+	Queue() (ok bool, queue uint32)
 	// Error() returns last error message
 	Error() error
 	OutPort() OutPort
 	SetDstMAC(mac net.HardwareAddr)
-	SetQueue(queue int)
+	SetQueue(queue uint32)
 	SetOutPort(port OutPort)
 	SetSrcMAC(mac net.HardwareAddr)
+	SetVLANID(vid uint16)
 	SrcMAC() (ok bool, mac net.HardwareAddr)
+	VLANID() (ok bool, vid uint16)
 }
 
 type BaseAction struct {
@@ -47,21 +49,39 @@ type BaseAction struct {
 	output OutPort
 	srcMAC *net.HardwareAddr
 	dstMAC *net.HardwareAddr
-	queue  int
+	queue  int64
+	vlanID int32
 }
 
 func NewBaseAction() *BaseAction {
 	return &BaseAction{
-		queue: -1,
+		queue:  -1,
+		vlanID: -1,
 	}
 }
 
-func (r *BaseAction) Queue() int {
-	return r.queue
+func (r *BaseAction) VLANID() (ok bool, vid uint16) {
+	if r.vlanID == -1 {
+		return false, 0
+	}
+
+	return true, uint16(r.vlanID)
 }
 
-func (r *BaseAction) SetQueue(queue int) {
-	r.queue = queue
+func (r *BaseAction) SetVLANID(vid uint16) {
+	r.vlanID = int32(vid)
+}
+
+func (r *BaseAction) Queue() (ok bool, queue uint32) {
+	if r.queue == -1 {
+		return false, 0
+	}
+
+	return true, uint32(r.queue)
+}
+
+func (r *BaseAction) SetQueue(queue uint32) {
+	r.queue = int64(queue)
 }
 
 func (r *BaseAction) SetOutPort(port OutPort) {

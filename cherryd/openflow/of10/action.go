@@ -66,7 +66,7 @@ func marshalOutPort(p openflow.OutPort) ([]byte, error) {
 	return v, nil
 }
 
-func marshalQueue(p openflow.OutPort, queue int) ([]byte, error) {
+func marshalQueue(p openflow.OutPort, queue uint32) ([]byte, error) {
 	v := make([]byte, 16)
 	binary.BigEndian.PutUint16(v[0:2], uint16(OFPAT_ENQUEUE))
 	binary.BigEndian.PutUint16(v[2:4], 16)
@@ -88,7 +88,7 @@ func marshalQueue(p openflow.OutPort, queue int) ([]byte, error) {
 	}
 	binary.BigEndian.PutUint16(v[4:6], port)
 	// v[6:12] is padding
-	binary.BigEndian.PutUint32(v[12:16], uint32(queue))
+	binary.BigEndian.PutUint32(v[12:16], queue)
 
 	return v, nil
 }
@@ -102,6 +102,16 @@ func marshalMAC(t uint16, mac net.HardwareAddr) ([]byte, error) {
 	binary.BigEndian.PutUint16(v[0:2], t)
 	binary.BigEndian.PutUint16(v[2:4], 16)
 	copy(v[4:10], mac)
+
+	return v, nil
+}
+
+func marshalVLANID(vid uint16) ([]byte, error) {
+	v := make([]byte, 8)
+	binary.BigEndian.PutUint16(v[0:2], uint16(OFPAT_SET_VLAN_VID))
+	binary.BigEndian.PutUint16(v[2:4], 8)
+	binary.BigEndian.PutUint16(v[4:6], vid)
+	// v[6:8] is padding
 
 	return v, nil
 }
@@ -127,11 +137,22 @@ func (r *Action) MarshalBinary() ([]byte, error) {
 		result = append(result, v...)
 	}
 
+	ok, vlanID := r.VLANID()
+	if ok {
+		v, err := marshalVLANID(vlanID)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, v...)
+	}
+
+	// XXX: Output action should be specified as a last element of this action command.
 	var buf []byte
 	var err error
 	// Need QoS?
-	if r.Queue() != -1 {
-		buf, err = marshalQueue(r.OutPort(), r.Queue())
+	ok, queueID := r.Queue()
+	if ok {
+		buf, err = marshalQueue(r.OutPort(), queueID)
 	} else {
 		buf, err = marshalOutPort(r.OutPort())
 	}
@@ -176,6 +197,25 @@ func (r *Action) UnmarshalBinary(data []byte) error {
 				return openflow.ErrInvalidPacketLength
 			}
 			r.SetDstMAC(buf[4:10])
+			if err := r.Error(); err != nil {
+				return err
+			}
+		case OFPAT_ENQUEUE:
+			if len(buf) < 16 {
+				return openflow.ErrInvalidPacketLength
+			}
+			outPort := openflow.NewOutPort()
+			outPort.SetValue(uint32(binary.BigEndian.Uint16(buf[4:6])))
+			r.SetOutPort(outPort)
+			r.SetQueue(binary.BigEndian.Uint32(buf[12:16]))
+			if err := r.Error(); err != nil {
+				return err
+			}
+		case OFPAT_SET_VLAN_VID:
+			if len(buf) < 8 {
+				return openflow.ErrInvalidPacketLength
+			}
+			r.SetVLANID(binary.BigEndian.Uint16(buf[4:6]))
 			if err := r.Error(); err != nil {
 				return err
 			}
