@@ -32,14 +32,8 @@ func (r *MySQL) createTables() error {
 	if err := r.createIPTable(); err != nil {
 		return fmt.Errorf("creating ip DB table: %v", err)
 	}
-	if err := r.createGatewayTable(); err != nil {
-		return fmt.Errorf("creating gateway DB table: %v", err)
-	}
 	if err := r.createHostTable(); err != nil {
 		return fmt.Errorf("creating host DB table: %v", err)
-	}
-	if err := r.createRouterTable(); err != nil {
-		return fmt.Errorf("creating router DB table: %v", err)
 	}
 	if err := r.createACLTable(); err != nil {
 		return fmt.Errorf("creating acl DB table: %v", err)
@@ -114,30 +108,6 @@ func (r *MySQL) createVIPTable() error {
 	qry += " FOREIGN KEY (`ip_id`) REFERENCES `ip`(`id`) ON UPDATE CASCADE ON DELETE RESTRICT,"
 	qry += " FOREIGN KEY (`host_id`) REFERENCES `host`(`id`) ON UPDATE CASCADE ON DELETE RESTRICT,"
 	qry += " UNIQUE KEY `vip` (`ip_id`, `host_id`)"
-	qry += ") ENGINE=InnoDB DEFAULT CHARSET=utf8;"
-
-	_, err := r.db.Exec(qry)
-	return err
-}
-
-func (r *MySQL) createRouterTable() error {
-	qry := "CREATE TABLE IF NOT EXISTS `router` ("
-	qry += " `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,"
-	qry += " `ip_id` bigint(20) unsigned NOT NULL,"
-	qry += " PRIMARY KEY (`id`),"
-	qry += " FOREIGN KEY (`ip_id`) REFERENCES `ip`(`id`) ON UPDATE CASCADE ON DELETE RESTRICT"
-	qry += ") ENGINE=InnoDB DEFAULT CHARSET=utf8;"
-
-	_, err := r.db.Exec(qry)
-	return err
-}
-
-func (r *MySQL) createGatewayTable() error {
-	qry := "CREATE TABLE IF NOT EXISTS `gateway` ("
-	qry += " `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,"
-	qry += " `mac` binary(6) NOT NULL,"
-	qry += " PRIMARY KEY (`id`),"
-	qry += " UNIQUE KEY `mac` (`mac`)"
 	qry += ") ENGINE=InnoDB DEFAULT CHARSET=utf8;"
 
 	_, err := r.db.Exec(qry)

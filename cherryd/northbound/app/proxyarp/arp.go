@@ -200,8 +200,16 @@ func makeARPAnnouncement(ip net.IP, mac net.HardwareAddr) ([]byte, error) {
 }
 
 func (r *ProxyARP) OnDeviceUp(finder network.Finder, device *network.Device) error {
-	// FIXME: Remove this fixed IP and MAC addresses and read them from the database
-	anon, err := makeARPAnnouncement(net.IPv4(223, 130, 122, 1), net.HardwareAddr([]byte{0x00, 0x01, 0xe8, 0x8b, 0x64, 0x42}))
+	// FIXME: Remove this temporary ARP announcements
+	anon, err := makeARPAnnouncement(net.IPv4(223, 130, 122, 1), net.HardwareAddr([]byte{0x00, 0x1e, 0x4a, 0x5c, 0x59, 0xc4}))
+	if err != nil {
+		return fmt.Errorf("making ARP announcement: %v", err)
+	}
+	if err := sendARPAnnouncement(device, anon); err != nil {
+		return fmt.Errorf("sending ARP announcement: %v", err)
+	}
+
+	anon, err = makeARPAnnouncement(net.IPv4(223, 130, 124, 1), net.HardwareAddr([]byte{0x00, 0x1e, 0x4a, 0x5c, 0x59, 0xc4}))
 	if err != nil {
 		return fmt.Errorf("making ARP announcement: %v", err)
 	}
