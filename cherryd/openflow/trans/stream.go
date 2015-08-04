@@ -1,7 +1,7 @@
 /*
  * Cherry - An OpenFlow Controller
  *
- * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved. 
+ * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved.
  * Kitae Kim <superkkt@sds.co.kr>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -36,8 +36,8 @@ type Stream struct {
 }
 
 type Deadline interface {
-	SetReadDeadline(time.Time)
-	SetWriteDeadline(time.Time)
+	SetReadDeadline(time.Time) error
+	SetWriteDeadline(time.Time) error
 }
 
 // NewStream returns a new buffered I/O channel. channel is an underlying I/O channel that implements io.ReadWriteCloser.
