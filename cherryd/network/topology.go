@@ -143,58 +143,68 @@ func (r *topology) Device(id string) *Device {
 }
 
 func (r *topology) DeviceAdded(d *Device) {
-	// Write lock
-	r.mutex.Lock()
-	r.devices[d.ID()] = &device{
-		value: d,
-		nodes: make(map[string]*Node),
-	}
-	// Unlock
-	r.mutex.Unlock()
+	func() {
+		// Write lock
+		r.mutex.Lock()
+		defer r.mutex.Unlock()
 
-	r.graph.AddVertex(d)
+		// Clear all nodes from all devices because STP will be updated
+		r.clearNodes()
+		r.devices[d.ID()] = &device{
+			value: d,
+			nodes: make(map[string]*Node),
+		}
+		r.graph.AddVertex(d)
+	}()
 	r.sendEvent()
 }
 
+// XXX: Caller should lock the mutex
 func (r *topology) removeDevice(d *Device) {
 	// Device exists?
 	_, ok := r.devices[d.ID()]
 	if !ok {
 		return
 	}
-	// Remove all nodes connected to this device
-	r.removeAllNodes(d)
 	// Remove from the device database
 	delete(r.devices, d.ID())
 }
 
-func (r *topology) removeAllNodes(d *Device) {
-	ports := d.Ports()
-	for _, p := range ports {
-		for _, n := range p.Nodes() {
-			r.removeNode(n.MAC())
-		}
+// XXX: Caller should lock the mutex
+func (r *topology) clearNodes() {
+	for _, v := range r.devices {
+		v.nodes = make(map[string]*Node)
 	}
 }
 
 func (r *topology) DeviceRemoved(d *Device) {
-	// Write lock
-	r.mutex.Lock()
-	r.removeDevice(d)
-	// Unlock
-	r.mutex.Unlock()
+	func() {
+		// Write lock
+		r.mutex.Lock()
+		defer r.mutex.Unlock()
 
-	// Remove from the network topology
-	r.graph.RemoveVertex(d)
+		// Clear all nodes from all devices because STP will be updated
+		r.clearNodes()
+		r.removeDevice(d)
+		r.graph.RemoveVertex(d)
+	}()
 	r.sendEvent()
 }
 
 func (r *topology) DeviceLinked(ports [2]*Port) {
-	link := newLink(ports)
-	if err := r.graph.AddEdge(link); err != nil {
-		r.log.Err(fmt.Sprintf("Topology: adding new graph edge: %v", err))
-		return
-	}
+	func() {
+		// Write lock
+		r.mutex.Lock()
+		defer r.mutex.Unlock()
+
+		// Clear all nodes from all devices because STP will be updated
+		r.clearNodes()
+		link := newLink(ports)
+		if err := r.graph.AddEdge(link); err != nil {
+			r.log.Err(fmt.Sprintf("Topology: adding new graph edge: %v", err))
+			return
+		}
+	}()
 	r.sendEvent()
 }
 
@@ -250,19 +260,29 @@ func (r *topology) removeNode(mac net.HardwareAddr) {
 }
 
 func (r *topology) PortRemoved(p *Port) {
-	// Write lock
-	r.mutex.Lock()
-	// Remove hosts connected to the port from the host database
-	for _, v := range p.Nodes() {
-		r.removeNode(v.MAC())
-		p.removeNode(v.MAC())
-	}
-	// Unlock
-	r.mutex.Unlock()
+	edge := false
 
-	if r.graph.IsEdge(p) {
-		// Remove an edge from the graph if this port is an edge connected to another switch
-		r.graph.RemoveEdge(p)
+	func() {
+		// Write lock
+		r.mutex.Lock()
+		defer r.mutex.Unlock()
+
+		// Remove hosts connected to the port from the host database
+		for _, v := range p.Nodes() {
+			r.removeNode(v.MAC())
+			p.removeNode(v.MAC())
+		}
+
+		if edge = r.graph.IsEdge(p); edge == true {
+			// Clear all nodes from all devices because STP will be updated
+			r.clearNodes()
+			// Remove an edge from the graph if this port is an edge connected to another switch
+			r.graph.RemoveEdge(p)
+		}
+	}()
+
+	if edge {
+		// XXX: Make sure the mutex is unlocked before calling sendEvent()
 		r.sendEvent()
 	}
 }
