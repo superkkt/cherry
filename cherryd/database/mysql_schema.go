@@ -26,6 +26,12 @@ import (
 )
 
 func (r *MySQL) createTables() error {
+	if err := r.createSwitchTable(); err != nil {
+		return fmt.Errorf("creating network DB table: %v", err)
+	}
+	if err := r.createPortTable(); err != nil {
+		return fmt.Errorf("creating network DB table: %v", err)
+	}
 	if err := r.createNetworkTable(); err != nil {
 		return fmt.Errorf("creating network DB table: %v", err)
 	}
@@ -43,6 +49,35 @@ func (r *MySQL) createTables() error {
 	}
 
 	return nil
+}
+
+func (r *MySQL) createSwitchTable() error {
+	qry := "CREATE TABLE IF NOT EXISTS `switch` ("
+	qry += " `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,"
+	qry += " `dpid` bigint(20) unsigned NOT NULL,"
+	qry += " `n_ports` tinyint(3) unsigned NOT NULL,"
+	qry += " `description` varchar(255) DEFAULT NULL,"
+	qry += " PRIMARY KEY (`id`),"
+	qry += " UNIQUE KEY `dpid` (`dpid`)"
+	qry += ") ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+
+	_, err := r.db.Exec(qry)
+	return err
+}
+
+func (r *MySQL) createPortTable() error {
+	qry := "CREATE TABLE IF NOT EXISTS `port` ("
+	qry += " `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,"
+	qry += " `switch_id` bigint(20) unsigned NOT NULL,"
+	qry += " `number` tinyint(3) unsigned NOT NULL,"
+	qry += " `enabled` tinyint(1) NOT NULL DEFAULT '1',"
+	qry += " PRIMARY KEY (`id`),"
+	qry += " UNIQUE KEY `number` (`switch_id`,`number`),"
+	qry += " FOREIGN KEY (`switch_id`) REFERENCES `switch` (`id`) ON UPDATE CASCADE ON DELETE RESTRICT"
+	qry += ") ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+
+	_, err := r.db.Exec(qry)
+	return err
 }
 
 func (r *MySQL) createNetworkTable() error {
@@ -76,10 +111,12 @@ func (r *MySQL) createHostTable() error {
 	qry := "CREATE TABLE IF NOT EXISTS `host` ("
 	qry += " `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,"
 	qry += " `ip_id` bigint(20) unsigned DEFAULT NULL,"
+	qry += " `port_id` bigint(20) unsigned DEFAULT NULL,"
 	qry += " `mac` binary(6) NOT NULL,"
 	qry += " PRIMARY KEY (`id`),"
 	qry += " FOREIGN KEY (`ip_id`) REFERENCES `ip`(`id`) ON UPDATE CASCADE ON DELETE RESTRICT,"
-	qry += " UNIQUE KEY `ip-mac` (`ip_id`, `mac`)"
+	qry += " FOREIGN KEY (`port_id`) REFERENCES `port` (`id`) ON UPDATE CASCADE ON DELETE RESTRICT,"
+	qry += " UNIQUE KEY `ip-port-mac` (`ip_id`, `port_id`, `mac`)"
 	qry += ") ENGINE=InnoDB DEFAULT CHARSET=utf8;"
 
 	_, err := r.db.Exec(qry)

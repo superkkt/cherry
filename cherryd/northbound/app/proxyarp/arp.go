@@ -41,7 +41,7 @@ type ProxyARP struct {
 }
 
 type database interface {
-	FindMAC(ip net.IP) (mac net.HardwareAddr, ok bool, err error)
+	MAC(ip net.IP) (mac net.HardwareAddr, ok bool, err error)
 }
 
 func New(conf *goconf.ConfigFile, log log.Logger, db database) *ProxyARP {
@@ -94,7 +94,7 @@ func (r *ProxyARP) OnPacketIn(finder network.Finder, ingress *network.Port, eth 
 		// Pass valid ARP announcements to the network
 		return r.BaseProcessor.OnPacketIn(finder, ingress, eth)
 	}
-	mac, ok, err := r.db.FindMAC(arp.TPA)
+	mac, ok, err := r.db.MAC(arp.TPA)
 	if err != nil {
 		return err
 	}
@@ -151,7 +151,7 @@ func isARPAnnouncement(request *protocol.ARP) bool {
 
 func (r *ProxyARP) isValidARPAnnouncement(request *protocol.ARP) (bool, error) {
 	// Trusted MAC address?
-	mac, ok, err := r.db.FindMAC(request.SPA)
+	mac, ok, err := r.db.MAC(request.SPA)
 	if err != nil {
 		return false, err
 	}

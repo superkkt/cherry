@@ -136,7 +136,7 @@ func (r *L2Switch) installFlow(p flowParam) error {
 	}
 	flow.SetTableID(p.device.FlowTableID())
 	flow.SetIdleTimeout(30)
-	flow.SetHardTimeout(60)
+	flow.SetHardTimeout(600)
 	flow.SetPriority(10)
 	flow.SetFlowMatch(match)
 	flow.SetFlowInstruction(inst)
@@ -188,46 +188,55 @@ func (r *L2Switch) processPacket(finder network.Finder, ingress *network.Port, e
 		return false, err
 	}
 
-	// FIXME: Should we support broadcasting in here?
+	// FIXME: Should we allow broadcasting in here?
 	if isBroadcast(eth) {
 		r.log.Debug(fmt.Sprintf("L2Switch: broadcasting.. SrcMAC=%v, DstMAC=%v", eth.SrcMAC, eth.DstMAC))
 		return true, flood(ingress, packet)
 	}
 
-	dstNode := finder.Node(ingress.Device(), eth.DstMAC)
+	dstNode, err := finder.Node(eth.DstMAC)
+	if err != nil {
+		return true, fmt.Errorf("locating a node (MAC=%v): %v", eth.DstMAC, err)
+	}
 	// Unknown node?
 	if dstNode == nil {
-		r.log.Debug(fmt.Sprintf("L2Switch: unknown node! flooding.. SrcMAC=%v, DstMAC=%v", eth.SrcMAC, eth.DstMAC))
-		return true, flood(ingress, packet)
-	}
-	// Drop this packet if it goes back to the ingress port to avoid duplicated packet routing
-	if ingress.Number() == dstNode.Port().Number() {
-		r.log.Debug(fmt.Sprintf("L2Switch: ignore routing path that goes back to the ingress port (SrcMAC=%v, DstMAC=%v)", eth.SrcMAC, eth.DstMAC))
+		r.log.Debug(fmt.Sprintf("L2Switch: unknown node! dropping.. SrcMAC=%v, DstMAC=%v", eth.SrcMAC, eth.DstMAC))
 		return true, nil
 	}
 
-	param := switchParam{
-		finder:    finder,
-		ethernet:  eth,
-		ingress:   ingress,
-		egress:    dstNode.Port(),
-		rawPacket: packet,
-	}
-	err = r.switching(param)
-	if err != nil {
-		return false, fmt.Errorf("failed to switch a packet: %v", err)
+	param := switchParam{}
+	// Check whether src and dst nodes reside on a same switch device
+	if ingress.Device().ID() == dstNode.Port().Device().ID() {
+		param = switchParam{
+			finder:    finder,
+			ethernet:  eth,
+			ingress:   ingress,
+			egress:    dstNode.Port(),
+			rawPacket: packet,
+		}
+	} else {
+		path := finder.Path(ingress.Device().ID(), dstNode.Port().Device().ID())
+		if len(path) == 0 {
+			r.log.Debug(fmt.Sprintf("L2Switch: empty path.. dropping SrcMAC=%v, DstMAC=%v", eth.SrcMAC, eth.DstMAC))
+			return true, nil
+		}
+		egress := path[0][0]
+		// Drop this packet if it goes back to the ingress port to avoid duplicated packet routing
+		if ingress.Number() == egress.Number() {
+			r.log.Debug(fmt.Sprintf("L2Switch: ignore routing path that goes back to the ingress port (SrcMAC=%v, DstMAC=%v)", eth.SrcMAC, eth.DstMAC))
+			return true, nil
+		}
+
+		param = switchParam{
+			finder:    finder,
+			ethernet:  eth,
+			ingress:   ingress,
+			egress:    egress,
+			rawPacket: packet,
+		}
 	}
 
-	return true, nil
-}
-
-func (r *L2Switch) OnPortDown(finder network.Finder, port *network.Port) error {
-	// Remove flow rules related with this downed port
-	if err := r.cleanup(finder, port); err != nil {
-		return err
-	}
-
-	return r.BaseProcessor.OnPortDown(finder, port)
+	return true, r.switching(param)
 }
 
 func (r *L2Switch) OnTopologyChange(finder network.Finder) error {
@@ -240,23 +249,6 @@ func (r *L2Switch) OnTopologyChange(finder network.Finder) error {
 	}
 
 	return r.BaseProcessor.OnTopologyChange(finder)
-}
-
-func (r *L2Switch) cleanup(finder network.Finder, port *network.Port) error {
-	r.log.Debug(fmt.Sprintf("Cleaning up for %v..", port.ID()))
-
-	nodes := port.Nodes()
-	// Remove all flows related with the nodes that are connected to this port
-	for _, n := range nodes {
-		r.log.Debug(fmt.Sprintf("Removing all flows related with a node %v..", n.MAC()))
-
-		if err := r.removeFlowRules(finder, n.MAC()); err != nil {
-			r.log.Err(fmt.Sprintf("Failed to remove flows related with %v: %v", n.MAC(), err))
-			continue
-		}
-	}
-
-	return nil
 }
 
 func (r *L2Switch) removeAllFlows(devices []*network.Device) error {
@@ -275,39 +267,6 @@ func (r *L2Switch) removeAllFlows(devices []*network.Device) error {
 		if err := r.removeFlow(d, match); err != nil {
 			r.log.Err(fmt.Sprintf("Failed to remove flows on %v: %v", d.ID(), err))
 			continue
-		}
-	}
-
-	return nil
-}
-
-func (r *L2Switch) removeFlowRules(finder network.Finder, mac net.HardwareAddr) error {
-	devices := finder.Devices()
-	for _, d := range devices {
-		r.log.Debug(fmt.Sprintf("L2Switch: removing all flows related with a node %v on device %v..", mac, d.ID()))
-
-		if d.IsClosed() {
-			continue
-		}
-		factory := d.Factory()
-		// Remove all flow rules whose source MAC address is mac in its flow match
-		match, err := factory.NewMatch()
-		if err != nil {
-			return err
-		}
-		match.SetSrcMAC(mac)
-		if err := r.removeFlow(d, match); err != nil {
-			return err
-		}
-
-		// Remove all flow rules whose destination MAC address is mac in its flow match
-		match, err = factory.NewMatch()
-		if err != nil {
-			return err
-		}
-		match.SetDstMAC(mac)
-		if err := r.removeFlow(d, match); err != nil {
-			return err
 		}
 	}
 

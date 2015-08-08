@@ -24,6 +24,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/superkkt/cherry/cherryd/database"
 	"github.com/superkkt/cherry/cherryd/log"
 	"github.com/superkkt/cherry/cherryd/network"
 	"github.com/superkkt/cherry/cherryd/northbound"
@@ -101,8 +102,8 @@ func listen(ctx context.Context, log *log.Syslog, port int, controller *network.
 	}
 }
 
-func createAppManager(config *Config, log *log.Syslog) (*northbound.Manager, error) {
-	manager, err := northbound.NewManager(config.RawConfig(), log)
+func createAppManager(config *Config, log *log.Syslog, db *database.MySQL) (*northbound.Manager, error) {
+	manager, err := northbound.NewManager(config.RawConfig(), log, db)
 	if err != nil {
 		return nil, err
 	}
@@ -134,8 +135,14 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	controller := network.NewController(log)
-	manager, err := createAppManager(conf, log)
+	db, err := database.NewMySQL(conf.RawConfig())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to init MySQL database: %v\n", err)
+		os.Exit(1)
+	}
+
+	controller := network.NewController(log, db)
+	manager, err := createAppManager(conf, log, db)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create application manager: %v\n", err)
 		os.Exit(1)

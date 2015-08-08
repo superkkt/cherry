@@ -55,17 +55,12 @@ type Manager struct {
 	db         *database.MySQL
 }
 
-func NewManager(conf *goconf.ConfigFile, log log.Logger) (*Manager, error) {
+func NewManager(conf *goconf.ConfigFile, log log.Logger, db *database.MySQL) (*Manager, error) {
 	if conf == nil {
 		panic("nil config")
 	}
 	if log == nil {
 		panic("nil logger")
-	}
-
-	db, err := database.NewMySQL(conf)
-	if err != nil {
-		return nil, err
 	}
 
 	v := &Manager{

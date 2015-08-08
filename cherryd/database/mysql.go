@@ -39,8 +39,8 @@ func NewMySQL(conf *goconf.ConfigFile) (*MySQL, error) {
 	if err != nil {
 		return nil, err
 	}
-	db.SetMaxOpenConns(64)
-	db.SetMaxIdleConns(8)
+	db.SetMaxOpenConns(32)
+	db.SetMaxIdleConns(4)
 
 	mysql := &MySQL{
 		db: db,
@@ -85,7 +85,7 @@ func newDBConn(conf *goconf.ConfigFile) (*sql.DB, error) {
 	return db, nil
 }
 
-func (r *MySQL) FindMAC(ip net.IP) (mac net.HardwareAddr, ok bool, err error) {
+func (r *MySQL) MAC(ip net.IP) (mac net.HardwareAddr, ok bool, err error) {
 	if ip == nil {
 		panic("IP address is nil")
 	}
@@ -120,30 +120,36 @@ func (r *MySQL) FindMAC(ip net.IP) (mac net.HardwareAddr, ok bool, err error) {
 	return net.HardwareAddr(v), true, nil
 }
 
-func (r *MySQL) GetNetworks() ([]*net.IPNet, error) {
-	qry := `SELECT INET_NTOA(address), mask 
-		FROM network`
-	row, err := r.db.Query(qry)
+func (r *MySQL) Location(mac net.HardwareAddr) (dpid string, port uint32, ok bool, err error) {
+	if mac == nil {
+		panic("MAC address is nil")
+	}
+
+	qry := `SELECT A.dpid, B.number 
+		FROM switch A 
+		JOIN port B 
+		ON B.switch_id = A.id 
+		JOIN host C 
+		ON C.port_id = B.id 
+		WHERE C.mac = ?
+		GROUP BY(A.dpid)`
+	row, err := r.db.Query(qry, []byte(mac))
 	if err != nil {
-		return nil, err
+		return "", 0, false, err
 	}
 	defer row.Close()
 
-	result := make([]*net.IPNet, 0)
-	for row.Next() {
-		var addr, mask string
-		if err := row.Scan(&addr, &mask); err != nil {
-			return nil, err
-		}
-		_, ipnet, err := net.ParseCIDR(fmt.Sprintf("%v/%v", addr, mask))
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, ipnet)
+	// Unknown MAC address?
+	if !row.Next() {
+		return "", 0, false, nil
 	}
 	if err := row.Err(); err != nil {
-		return nil, err
+		return "", 0, false, err
 	}
 
-	return result, nil
+	if err := row.Scan(&dpid, &port); err != nil {
+		return "", 0, false, err
+	}
+
+	return dpid, port, true, nil
 }

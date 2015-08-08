@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"github.com/superkkt/cherry/cherryd/graph"
 	"github.com/superkkt/cherry/cherryd/openflow"
-	"net"
 	"sync"
 	"time"
 )
@@ -35,7 +34,6 @@ type Port struct {
 	device    *Device
 	number    uint32
 	value     openflow.Port
-	nodes     map[string]*Node
 	timestamp time.Time
 }
 
@@ -43,12 +41,11 @@ func NewPort(d *Device, num uint32) *Port {
 	return &Port{
 		device: d,
 		number: num,
-		nodes:  make(map[string]*Node),
 	}
 }
 
 func (r *Port) String() string {
-	return fmt.Sprintf("Port Number=%v, Device_id=%v, # of nodes=%v", r.number, r.device.ID(), len(r.nodes))
+	return fmt.Sprintf("Port Number=%v, Device_id=%v", r.number, r.device.ID())
 }
 
 func (r *Port) ID() string {
@@ -95,36 +92,4 @@ func (r *Port) duration() time.Duration {
 	}
 
 	return time.Now().Sub(r.timestamp)
-}
-
-func (r *Port) Nodes() []*Node {
-	// Read lock
-	r.mutex.RLock()
-	defer r.mutex.RUnlock()
-
-	v := make([]*Node, 0)
-	for _, n := range r.nodes {
-		v = append(v, n)
-	}
-
-	return v
-}
-
-func (r *Port) addNode(mac net.HardwareAddr) *Node {
-	// Write lock
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	node := NewNode(r, mac)
-	r.nodes[mac.String()] = node
-
-	return node
-}
-
-func (r *Port) removeNode(mac net.HardwareAddr) {
-	// Write lock
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	delete(r.nodes, mac.String())
 }

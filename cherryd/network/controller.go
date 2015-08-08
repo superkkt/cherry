@@ -28,6 +28,10 @@ import (
 	"net"
 )
 
+type database interface {
+	Location(mac net.HardwareAddr) (dpid string, port uint32, ok bool, err error)
+}
+
 type EventListener interface {
 	ControllerEventListener
 	TopologyEventListener
@@ -49,16 +53,18 @@ type Controller struct {
 	log      log.Logger
 	topo     *topology
 	listener EventListener
+	db       database
 }
 
-func NewController(log log.Logger) *Controller {
+func NewController(log log.Logger, db database) *Controller {
 	if log == nil {
 		panic("Logger is nil")
 	}
 
 	return &Controller{
 		log:  log,
-		topo: newTopology(log),
+		topo: newTopology(log, db),
+		db:   db,
 	}
 }
 

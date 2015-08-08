@@ -427,12 +427,6 @@ func (r *session) handleLLDP(inPort *Port, ethernet *protocol.Ethernet) error {
 	return nil
 }
 
-func (r *session) addNewNode(inPort *Port, mac net.HardwareAddr) {
-	r.log.Debug(fmt.Sprintf("Session: MAC learning! Adding a new node %v on %v..", mac, inPort.ID()))
-	node := inPort.addNode(mac)
-	r.watcher.NodeAdded(node)
-}
-
 func (r *session) isActivatedPort(p *Port) bool {
 	// We assume that a port is in inactive state during specified time after setting its value to avoid broadcast storm.
 	return p.duration().Seconds() > 1.5
@@ -466,12 +460,6 @@ func (r *session) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.Pack
 	if r.finder.IsEdge(inPort) && !r.finder.IsEnabledBySTP(inPort) {
 		r.log.Debug(fmt.Sprintf("Session: ignoring PACKET_IN from %v:%v by STP", r.device.ID(), v.InPort()))
 		return nil
-	}
-	// New node or location updated?
-	node := r.finder.Node(r.device, ethernet.SrcMAC)
-	if node == nil || node.Port().ID() != inPort.ID() {
-		// MAC learning
-		r.addNewNode(inPort, ethernet.SrcMAC)
 	}
 	// Call specific version handler
 	if err := r.handler.OnPacketIn(f, w, v); err != nil {
