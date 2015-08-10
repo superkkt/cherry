@@ -132,8 +132,6 @@ func (r *MySQL) MAC(ip net.IP) (mac net.HardwareAddr, ok bool, err error) {
 
 		// Unknown IP address?
 		if !row.Next() {
-			mac = nil
-			ok = false
 			return nil
 		}
 		if err := row.Err(); err != nil {
@@ -179,9 +177,6 @@ func (r *MySQL) Location(mac net.HardwareAddr) (dpid string, port uint32, ok boo
 
 		// Unknown MAC address?
 		if !row.Next() {
-			dpid = ""
-			port = 0
-			ok = false
 			return nil
 		}
 		if err := row.Err(); err != nil {
