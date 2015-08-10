@@ -1,7 +1,7 @@
 /*
  * Cherry - An OpenFlow Controller
  *
- * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved. 
+ * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved.
  * Kitae Kim <superkkt@sds.co.kr>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -156,8 +156,12 @@ func (r *FlowMod) MarshalBinary() ([]byte, error) {
 		binary.BigEndian.PutUint32(v[28:32], r.outPort.Value())
 	}
 	binary.BigEndian.PutUint32(v[32:36], OFPP_ANY)
-	// XXX: EdgeCore AS4600-54T switch does not support OFPFF_CHECK_OVERLAP
-	binary.BigEndian.PutUint16(v[36:38], OFPFF_SEND_FLOW_REM)
+	// XXX:
+	// Installed flows are overwritten by consecutive flow installation requests if OFPFF_CHECK_OVERLAP is not specified.
+	// So, the flows will not work properly on very busy workload, and the controller will see repetitive PACKET_IN messages
+	// even if the ingress packet is matched with the installed flows on the switch. This is because the flows are fluctuated
+	// due to the consecutive flow installation requests without OFPFF_CHECK_OVERLAP flag.
+	binary.BigEndian.PutUint16(v[36:38], OFPFF_SEND_FLOW_REM|OFPFF_CHECK_OVERLAP)
 	// v[38:40] is padding
 
 	if r.match == nil {

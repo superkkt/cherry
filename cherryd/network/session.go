@@ -117,8 +117,14 @@ func (r *session) OnHello(f openflow.Factory, w trans.Writer, v openflow.Hello) 
 }
 
 func (r *session) OnError(f openflow.Factory, w trans.Writer, v openflow.Error) error {
-	r.log.Err(fmt.Sprintf("Session: ERROR (class=%v, code=%v, data=%v)", v.Class(), v.Code(), v.Data()))
+	// Is this the CHECK_OVERLAP error?
+	if v.Class() == 3 && v.Code() == 1 {
+		// Ignore this CHECK_OVERLAP error
+		r.log.Debug("Session: FLOW_MOD is overlapped")
+		return nil
+	}
 
+	r.log.Err(fmt.Sprintf("Session: ERROR (class=%v, code=%v, data=%v)", v.Class(), v.Code(), v.Data()))
 	if !r.negotiated {
 		return errNotNegotiated
 	}
