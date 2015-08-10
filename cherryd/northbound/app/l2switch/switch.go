@@ -203,6 +203,12 @@ func (r *L2Switch) processPacket(finder network.Finder, ingress *network.Port, e
 		r.log.Debug(fmt.Sprintf("L2Switch: unknown node! dropping.. SrcMAC=%v, DstMAC=%v", eth.SrcMAC, eth.DstMAC))
 		return true, nil
 	}
+	// Disconnected node?
+	port := dstNode.Port().Value()
+	if port.IsPortDown() || port.IsLinkDown() {
+		r.log.Debug(fmt.Sprintf("L2Switch: disconnected node! dropping.. SrcMAC=%v, DstMAC=%v", eth.SrcMAC, eth.DstMAC))
+		return true, nil
+	}
 
 	param := switchParam{}
 	// Check whether src and dst nodes reside on a same switch device
@@ -258,13 +264,18 @@ func (r *L2Switch) removeAllFlows(devices []*network.Device) error {
 		if d.IsClosed() {
 			continue
 		}
+
 		factory := d.Factory()
 		// Wildcard match
 		match, err := factory.NewMatch()
 		if err != nil {
 			return err
 		}
-		if err := r.removeFlow(d, match); err != nil {
+		// Set output port to OFPP_NONE
+		port := openflow.NewOutPort()
+		port.SetNone()
+
+		if err := r.removeFlow(d, match, port); err != nil {
 			r.log.Err(fmt.Sprintf("Failed to remove flows on %v: %v", d.ID(), err))
 			continue
 		}
@@ -273,7 +284,7 @@ func (r *L2Switch) removeAllFlows(devices []*network.Device) error {
 	return nil
 }
 
-func (r *L2Switch) removeFlow(d *network.Device, match openflow.Match) error {
+func (r *L2Switch) removeFlow(d *network.Device, match openflow.Match, port openflow.OutPort) error {
 	r.log.Debug(fmt.Sprintf("L2Switch: removing flows on device %v..", d.ID()))
 
 	f := d.Factory()
@@ -285,10 +296,31 @@ func (r *L2Switch) removeFlow(d *network.Device, match openflow.Match) error {
 	flowmod.SetCookieMask(0x1 << 63)
 	flowmod.SetTableID(0xFF) // ALL
 	flowmod.SetFlowMatch(match)
+	flowmod.SetOutPort(port)
 
 	return d.SendMessage(flowmod)
 }
 
 func (r *L2Switch) String() string {
 	return fmt.Sprintf("%v", r.Name())
+}
+
+func (r *L2Switch) OnPortDown(finder network.Finder, port *network.Port) error {
+	r.log.Debug(fmt.Sprintf("L2Switch: port down! removing all flows heading to that port (%v)..", port.ID()))
+
+	device := port.Device()
+	factory := device.Factory()
+	// Wildcard match
+	match, err := factory.NewMatch()
+	if err != nil {
+		return err
+	}
+	outPort := openflow.NewOutPort()
+	outPort.SetValue(port.Number())
+
+	if err := r.removeFlow(device, match, outPort); err != nil {
+		return fmt.Errorf("removing flows heading to port %v: %v", port.ID(), err)
+	}
+
+	return r.BaseProcessor.OnPortDown(finder, port)
 }
