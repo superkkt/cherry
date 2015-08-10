@@ -78,21 +78,12 @@ func (r *ProxyARP) OnPacketIn(finder network.Finder, ingress *network.Port, eth 
 		// Drop all ARP packets if their type is not a reqeust.
 		return nil
 	}
-	// Pass ARP announcements packets if it has valid source IP & MAC addresses
+	// Drop ARP announcement
 	if isARPAnnouncement(arp) {
-		r.log.Debug(fmt.Sprintf("ProxyARP: received ARP announcements.. ingress=%v", ingress.ID()))
-		valid, err := r.isValidARPAnnouncement(arp)
-		if err != nil {
-			return err
-		}
-		if !valid {
-			// Drop suspicious announcement packet
-			r.log.Info(fmt.Sprintf("ProxyARP: drop suspicious ARP announcement from %v to %v", eth.SrcMAC.String(), eth.DstMAC.String()))
-			return nil
-		}
-		r.log.Debug("ProxyARP: pass valid ARP announcements into the network")
-		// Pass valid ARP announcements to the network
-		return r.BaseProcessor.OnPacketIn(finder, ingress, eth)
+		// We don't allow a host sends ARP announcement to the network. This controller only can send it,
+		// and we will flood the announcement to all switch devices using PACKET_OUT  when we need it.
+		r.log.Debug(fmt.Sprintf("ProxyARP: drop ARP announcements.. ingress=%v (%v)", ingress.ID(), arp))
+		return nil
 	}
 	mac, ok, err := r.db.MAC(arp.TPA)
 	if err != nil {
@@ -147,20 +138,6 @@ func isARPAnnouncement(request *protocol.ARP) bool {
 	}
 
 	return true
-}
-
-func (r *ProxyARP) isValidARPAnnouncement(request *protocol.ARP) (bool, error) {
-	// Trusted MAC address?
-	mac, ok, err := r.db.MAC(request.SPA)
-	if err != nil {
-		return false, err
-	}
-	if !ok || bytes.Compare(mac, request.SHA) != 0 {
-		// Suspicious announcemens
-		return false, nil
-	}
-
-	return true, nil
 }
 
 func makeARPReply(request *protocol.ARP, mac net.HardwareAddr) ([]byte, error) {
