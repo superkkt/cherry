@@ -74,7 +74,7 @@ func (r *ProxyARP) OnPacketIn(finder network.Finder, ingress *network.Port, eth 
 	}
 	// ARP request?
 	if arp.Operation != 1 {
-		r.log.Debug(fmt.Sprintf("ProxyARP: drop ARP packet whose type is not a requesat.. ingress=%v, type=%v", ingress.ID(), arp.Operation))
+		r.log.Info(fmt.Sprintf("ProxyARP: drop ARP packet whose type is not a requesat.. ingress=%v (%v)", ingress.ID(), arp))
 		// Drop all ARP packets if their type is not a reqeust.
 		return nil
 	}

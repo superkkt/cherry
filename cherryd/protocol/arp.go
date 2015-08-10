@@ -24,6 +24,7 @@ package protocol
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"net"
 )
 
@@ -65,6 +66,10 @@ func NewARPReply(sha, tha net.HardwareAddr, spa, tpa net.IP) *ARP {
 		THA:         tha,
 		TPA:         tpa,
 	}
+}
+
+func (r ARP) String() string {
+	return fmt.Sprintf("HWType=%v, ProtoType=%v, HWLength=%v, ProtoLength=%v, Operation=%v, SHA=%v, SPA=%v, THA=%v, TPA=%v", r.HWType, r.ProtoType, r.HWLength, r.ProtoLength, r.Operation, r.SHA, r.SPA, r.THA, r.TPA)
 }
 
 func (r ARP) MarshalBinary() ([]byte, error) {
