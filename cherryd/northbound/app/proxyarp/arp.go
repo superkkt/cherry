@@ -72,17 +72,17 @@ func (r *ProxyARP) OnPacketIn(finder network.Finder, ingress *network.Port, eth 
 	if err := arp.UnmarshalBinary(eth.Payload); err != nil {
 		return err
 	}
-	// ARP request?
-	if arp.Operation != 1 {
-		r.log.Info(fmt.Sprintf("ProxyARP: drop ARP packet whose type is not a request.. ingress=%v (%v)", ingress.ID(), arp))
-		// Drop all ARP packets if their type is not a reqeust.
-		return nil
-	}
 	// Drop ARP announcement
 	if isARPAnnouncement(arp) {
 		// We don't allow a host sends ARP announcement to the network. This controller only can send it,
 		// and we will flood the announcement to all switch devices using PACKET_OUT  when we need it.
-		r.log.Debug(fmt.Sprintf("ProxyARP: drop ARP announcements.. ingress=%v (%v)", ingress.ID(), arp))
+		r.log.Info(fmt.Sprintf("ProxyARP: drop ARP announcements.. ingress=%v (%v)", ingress.ID(), arp))
+		return nil
+	}
+	// ARP request?
+	if arp.Operation != 1 {
+		// Drop all ARP packets whose type is not a reqeust.
+		r.log.Info(fmt.Sprintf("ProxyARP: drop ARP packet whose type is not a request.. ingress=%v (%v)", ingress.ID(), arp))
 		return nil
 	}
 	mac, ok, err := r.db.MAC(arp.TPA)
