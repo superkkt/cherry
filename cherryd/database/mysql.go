@@ -26,8 +26,13 @@ import (
 	"errors"
 	"fmt"
 	"github.com/dlintw/goconf"
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/go-sql-driver/mysql"
 	"net"
+)
+
+const (
+	deadlockErrCode  uint16 = 1213
+	maxDeadlockRetry        = 5
 )
 
 type MySQL struct {
@@ -85,39 +90,71 @@ func newDBConn(conf *goconf.ConfigFile) (*sql.DB, error) {
 	return db, nil
 }
 
+func isDeadlock(err error) bool {
+	e, ok := err.(*mysql.MySQLError)
+	if !ok {
+		return false
+	}
+
+	return e.Number == deadlockErrCode
+}
+
+func query(f func() error) error {
+	deadlockRetry := 0
+	for {
+		err := f()
+		if err == nil {
+			return nil
+		}
+		if !isDeadlock(err) || deadlockRetry >= maxDeadlockRetry {
+			return err
+		}
+		deadlockRetry++
+	}
+}
+
 func (r *MySQL) MAC(ip net.IP) (mac net.HardwareAddr, ok bool, err error) {
 	if ip == nil {
 		panic("IP address is nil")
 	}
 
-	qry := `SELECT mac 
-		FROM host A 
-		JOIN ip B 
-		ON A.ip_id = B.id 
-		WHERE B.address = INET_ATON(?)`
-	row, err := r.db.Query(qry, ip.String())
-	if err != nil {
-		return nil, false, err
-	}
-	defer row.Close()
+	f := func() error {
+		qry := `SELECT mac 
+			FROM host A 
+			JOIN ip B 
+			ON A.ip_id = B.id 
+			WHERE B.address = INET_ATON(?)`
+		row, err := r.db.Query(qry, ip.String())
+		if err != nil {
+			return err
+		}
+		defer row.Close()
 
-	// Unknown IP address?
-	if !row.Next() {
-		return nil, false, nil
-	}
-	if err := row.Err(); err != nil {
-		return nil, false, err
-	}
+		// Unknown IP address?
+		if !row.Next() {
+			mac = nil
+			ok = false
+			return nil
+		}
+		if err := row.Err(); err != nil {
+			return err
+		}
 
-	var v []byte
-	if err := row.Scan(&v); err != nil {
-		return nil, false, err
-	}
-	if v == nil || len(v) != 6 {
-		panic("Invalid MAC address")
-	}
+		var v []byte
+		if err := row.Scan(&v); err != nil {
+			return err
+		}
+		if v == nil || len(v) != 6 {
+			panic("Invalid MAC address")
+		}
+		mac = net.HardwareAddr(v)
+		ok = true
 
-	return net.HardwareAddr(v), true, nil
+		return nil
+	}
+	err = query(f)
+
+	return mac, ok, err
 }
 
 func (r *MySQL) Location(mac net.HardwareAddr) (dpid string, port uint32, ok bool, err error) {
@@ -125,31 +162,40 @@ func (r *MySQL) Location(mac net.HardwareAddr) (dpid string, port uint32, ok boo
 		panic("MAC address is nil")
 	}
 
-	qry := `SELECT A.dpid, B.number 
-		FROM switch A 
-		JOIN port B 
-		ON B.switch_id = A.id 
-		JOIN host C 
-		ON C.port_id = B.id 
-		WHERE C.mac = ?
-		GROUP BY(A.dpid)`
-	row, err := r.db.Query(qry, []byte(mac))
-	if err != nil {
-		return "", 0, false, err
-	}
-	defer row.Close()
+	f := func() error {
+		qry := `SELECT A.dpid, B.number 
+			FROM switch A 
+			JOIN port B 
+			ON B.switch_id = A.id 
+			JOIN host C 
+			ON C.port_id = B.id 
+			WHERE C.mac = ?
+			GROUP BY(A.dpid)`
+		row, err := r.db.Query(qry, []byte(mac))
+		if err != nil {
+			return err
+		}
+		defer row.Close()
 
-	// Unknown MAC address?
-	if !row.Next() {
-		return "", 0, false, nil
-	}
-	if err := row.Err(); err != nil {
-		return "", 0, false, err
-	}
+		// Unknown MAC address?
+		if !row.Next() {
+			dpid = ""
+			port = 0
+			ok = false
+			return nil
+		}
+		if err := row.Err(); err != nil {
+			return err
+		}
 
-	if err := row.Scan(&dpid, &port); err != nil {
-		return "", 0, false, err
-	}
+		if err := row.Scan(&dpid, &port); err != nil {
+			return err
+		}
+		ok = true
 
-	return dpid, port, true, nil
+		return nil
+	}
+	err = query(f)
+
+	return dpid, port, ok, err
 }
