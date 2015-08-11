@@ -188,7 +188,7 @@ func (r *L2Switch) processPacket(finder network.Finder, ingress *network.Port, e
 		return false, err
 	}
 
-	// FIXME: Should we allow broadcasting in here?
+	// Broadcast?
 	if isBroadcast(eth) {
 		r.log.Debug(fmt.Sprintf("L2Switch: broadcasting.. SrcMAC=%v, DstMAC=%v", eth.SrcMAC, eth.DstMAC))
 		return true, flood(ingress, packet)

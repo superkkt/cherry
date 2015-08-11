@@ -22,36 +22,37 @@
 package database
 
 import (
+	"database/sql"
 	"fmt"
 )
 
-func (r *MySQL) createTables() error {
-	if err := r.createSwitchTable(); err != nil {
+func createTables(db *sql.DB) error {
+	if err := createSwitchTable(db); err != nil {
 		return fmt.Errorf("creating network DB table: %v", err)
 	}
-	if err := r.createPortTable(); err != nil {
+	if err := createPortTable(db); err != nil {
 		return fmt.Errorf("creating network DB table: %v", err)
 	}
-	if err := r.createNetworkTable(); err != nil {
+	if err := createNetworkTable(db); err != nil {
 		return fmt.Errorf("creating network DB table: %v", err)
 	}
-	if err := r.createIPTable(); err != nil {
+	if err := createIPTable(db); err != nil {
 		return fmt.Errorf("creating ip DB table: %v", err)
 	}
-	if err := r.createHostTable(); err != nil {
+	if err := createHostTable(db); err != nil {
 		return fmt.Errorf("creating host DB table: %v", err)
 	}
-	if err := r.createACLTable(); err != nil {
+	if err := createACLTable(db); err != nil {
 		return fmt.Errorf("creating acl DB table: %v", err)
 	}
-	if err := r.createVIPTable(); err != nil {
+	if err := createVIPTable(db); err != nil {
 		return fmt.Errorf("creating vip DB table: %v", err)
 	}
 
 	return nil
 }
 
-func (r *MySQL) createSwitchTable() error {
+func createSwitchTable(db *sql.DB) error {
 	qry := "CREATE TABLE IF NOT EXISTS `switch` ("
 	qry += " `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,"
 	qry += " `dpid` bigint(20) unsigned NOT NULL,"
@@ -61,11 +62,11 @@ func (r *MySQL) createSwitchTable() error {
 	qry += " UNIQUE KEY `dpid` (`dpid`)"
 	qry += ") ENGINE=InnoDB DEFAULT CHARSET=utf8;"
 
-	_, err := r.db.Exec(qry)
+	_, err := db.Exec(qry)
 	return err
 }
 
-func (r *MySQL) createPortTable() error {
+func createPortTable(db *sql.DB) error {
 	qry := "CREATE TABLE IF NOT EXISTS `port` ("
 	qry += " `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,"
 	qry += " `switch_id` bigint(20) unsigned NOT NULL,"
@@ -76,11 +77,11 @@ func (r *MySQL) createPortTable() error {
 	qry += " FOREIGN KEY (`switch_id`) REFERENCES `switch` (`id`) ON UPDATE CASCADE ON DELETE RESTRICT"
 	qry += ") ENGINE=InnoDB DEFAULT CHARSET=utf8;"
 
-	_, err := r.db.Exec(qry)
+	_, err := db.Exec(qry)
 	return err
 }
 
-func (r *MySQL) createNetworkTable() error {
+func createNetworkTable(db *sql.DB) error {
 	qry := "CREATE TABLE IF NOT EXISTS `network` ("
 	qry += " `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,"
 	qry += " `address` int unsigned NOT NULL,"
@@ -89,11 +90,11 @@ func (r *MySQL) createNetworkTable() error {
 	qry += " UNIQUE KEY `address` (`address`, `mask`)"
 	qry += ") ENGINE=InnoDB DEFAULT CHARSET=utf8;"
 
-	_, err := r.db.Exec(qry)
+	_, err := db.Exec(qry)
 	return err
 }
 
-func (r *MySQL) createIPTable() error {
+func createIPTable(db *sql.DB) error {
 	qry := "CREATE TABLE IF NOT EXISTS `ip` ("
 	qry += " `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,"
 	qry += " `network_id` bigint(20) unsigned NOT NULL,"
@@ -103,11 +104,11 @@ func (r *MySQL) createIPTable() error {
 	qry += " UNIQUE KEY `address` (`address`)"
 	qry += ") ENGINE=InnoDB DEFAULT CHARSET=utf8;"
 
-	_, err := r.db.Exec(qry)
+	_, err := db.Exec(qry)
 	return err
 }
 
-func (r *MySQL) createHostTable() error {
+func createHostTable(db *sql.DB) error {
 	qry := "CREATE TABLE IF NOT EXISTS `host` ("
 	qry += " `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,"
 	qry += " `ip_id` bigint(20) unsigned NOT NULL,"
@@ -119,11 +120,11 @@ func (r *MySQL) createHostTable() error {
 	qry += " UNIQUE KEY `ip-port-mac` (`ip_id`, `port_id`, `mac`)"
 	qry += ") ENGINE=InnoDB DEFAULT CHARSET=utf8;"
 
-	_, err := r.db.Exec(qry)
+	_, err := db.Exec(qry)
 	return err
 }
 
-func (r *MySQL) createACLTable() error {
+func createACLTable(db *sql.DB) error {
 	qry := "CREATE TABLE IF NOT EXISTS `acl` ("
 	qry += " `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,"
 	qry += " `network` int unsigned NOT NULL,"
@@ -132,11 +133,11 @@ func (r *MySQL) createACLTable() error {
 	qry += " UNIQUE KEY `acl` (`network`, `mask`)"
 	qry += ") ENGINE=InnoDB DEFAULT CHARSET=utf8;"
 
-	_, err := r.db.Exec(qry)
+	_, err := db.Exec(qry)
 	return err
 }
 
-func (r *MySQL) createVIPTable() error {
+func createVIPTable(db *sql.DB) error {
 	qry := "CREATE TABLE IF NOT EXISTS `vip` ("
 	qry += " `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,"
 	qry += " `ip_id` bigint(20) unsigned NOT NULL,"
@@ -147,6 +148,6 @@ func (r *MySQL) createVIPTable() error {
 	qry += " UNIQUE KEY `vip` (`ip_id`, `host_id`)"
 	qry += ") ENGINE=InnoDB DEFAULT CHARSET=utf8;"
 
-	_, err := r.db.Exec(qry)
+	_, err := db.Exec(qry)
 	return err
 }

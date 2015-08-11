@@ -28,6 +28,7 @@ import (
 	"github.com/dlintw/goconf"
 	"github.com/go-sql-driver/mysql"
 	"net"
+	"strings"
 )
 
 const (
@@ -36,28 +37,18 @@ const (
 )
 
 type MySQL struct {
-	db *sql.DB
+	db []*sql.DB
 }
 
-func NewMySQL(conf *goconf.ConfigFile) (*MySQL, error) {
-	db, err := newDBConn(conf)
-	if err != nil {
-		return nil, err
-	}
-	db.SetMaxOpenConns(32)
-	db.SetMaxIdleConns(4)
-
-	mysql := &MySQL{
-		db: db,
-	}
-	if err := mysql.createTables(); err != nil {
-		return nil, err
-	}
-
-	return mysql, nil
+type config struct {
+	hosts    []string
+	port     uint16
+	username string
+	password string
+	dbName   string
 }
 
-func newDBConn(conf *goconf.ConfigFile) (*sql.DB, error) {
+func parseConfig(conf *goconf.ConfigFile) (*config, error) {
 	host, err := conf.GetString("database", "host")
 	if err != nil || len(host) == 0 {
 		return nil, errors.New("empty database host in the config file")
@@ -79,7 +70,44 @@ func newDBConn(conf *goconf.ConfigFile) (*sql.DB, error) {
 		return nil, errors.New("empty database name in the config file")
 	}
 
-	db, err := sql.Open("mysql", fmt.Sprintf("%v:%v@tcp(%v:%v)/%v?timeout=5s", user, password, host, port, dbname))
+	v := &config{
+		hosts:    strings.Split(strings.Replace(host, " ", "", -1), ","),
+		port:     uint16(port),
+		username: user,
+		password: password,
+		dbName:   dbname,
+	}
+	return v, nil
+}
+
+func NewMySQL(conf *goconf.ConfigFile) (*MySQL, error) {
+	c, err := parseConfig(conf)
+	if err != nil {
+		return nil, err
+	}
+
+	db := make([]*sql.DB, 0)
+	for _, host := range c.hosts {
+		v, err := newDBConn(host, c.username, c.password, c.dbName, c.port)
+		if err != nil {
+			return nil, err
+		}
+		v.SetMaxOpenConns(32)
+		v.SetMaxIdleConns(4)
+		if err := createTables(v); err != nil {
+			return nil, err
+		}
+		db = append(db, v)
+	}
+	mysql := &MySQL{
+		db: db,
+	}
+
+	return mysql, nil
+}
+
+func newDBConn(host, username, password, dbname string, port uint16) (*sql.DB, error) {
+	db, err := sql.Open("mysql", fmt.Sprintf("%v:%v@tcp(%v:%v)/%v?timeout=5s", username, password, host, port, dbname))
 	if err != nil {
 		return nil, err
 	}
@@ -99,18 +127,40 @@ func isDeadlock(err error) bool {
 	return e.Number == deadlockErrCode
 }
 
-func query(f func() error) error {
-	deadlockRetry := 0
-	for {
-		err := f()
+func isConnectionError(err error) bool {
+	e, ok := err.(*mysql.MySQLError)
+	// Assume all errors except MySQLError are connection failure
+	if !ok || e.Number >= 2000 {
+		return true
+	}
+
+	return false
+}
+
+func (r *MySQL) query(f func(*sql.DB) error) error {
+	var err error
+
+	for _, db := range r.db {
+		deadlockRetry := 0
+
+	retry:
+		err = f(db)
 		if err == nil {
 			return nil
 		}
+		if isConnectionError(err) {
+			// Use other DB server if we got connection failure
+			continue
+		}
+
 		if !isDeadlock(err) || deadlockRetry >= maxDeadlockRetry {
 			return err
 		}
 		deadlockRetry++
+		goto retry
 	}
+
+	return err
 }
 
 func (r *MySQL) MAC(ip net.IP) (mac net.HardwareAddr, ok bool, err error) {
@@ -118,13 +168,13 @@ func (r *MySQL) MAC(ip net.IP) (mac net.HardwareAddr, ok bool, err error) {
 		panic("IP address is nil")
 	}
 
-	f := func() error {
+	f := func(db *sql.DB) error {
 		qry := `SELECT mac 
 			FROM host A 
 			JOIN ip B 
 			ON A.ip_id = B.id 
 			WHERE B.address = INET_ATON(?)`
-		row, err := r.db.Query(qry, ip.String())
+		row, err := db.Query(qry, ip.String())
 		if err != nil {
 			return err
 		}
@@ -150,7 +200,7 @@ func (r *MySQL) MAC(ip net.IP) (mac net.HardwareAddr, ok bool, err error) {
 
 		return nil
 	}
-	err = query(f)
+	err = r.query(f)
 
 	return mac, ok, err
 }
@@ -160,7 +210,7 @@ func (r *MySQL) Location(mac net.HardwareAddr) (dpid string, port uint32, ok boo
 		panic("MAC address is nil")
 	}
 
-	f := func() error {
+	f := func(db *sql.DB) error {
 		qry := `SELECT A.dpid, B.number 
 			FROM switch A 
 			JOIN port B 
@@ -169,7 +219,7 @@ func (r *MySQL) Location(mac net.HardwareAddr) (dpid string, port uint32, ok boo
 			ON C.port_id = B.id 
 			WHERE C.mac = ?
 			GROUP BY(A.dpid)`
-		row, err := r.db.Query(qry, []byte(mac))
+		row, err := db.Query(qry, []byte(mac))
 		if err != nil {
 			return err
 		}
@@ -190,7 +240,7 @@ func (r *MySQL) Location(mac net.HardwareAddr) (dpid string, port uint32, ok boo
 
 		return nil
 	}
-	err = query(f)
+	err = r.query(f)
 
 	return dpid, port, ok, err
 }
