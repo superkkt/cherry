@@ -74,7 +74,7 @@ func createPortTable(db *sql.DB) error {
 	qry += " `enabled` tinyint(1) NOT NULL DEFAULT '1',"
 	qry += " PRIMARY KEY (`id`),"
 	qry += " UNIQUE KEY `number` (`switch_id`,`number`),"
-	qry += " FOREIGN KEY (`switch_id`) REFERENCES `switch` (`id`) ON UPDATE CASCADE ON DELETE RESTRICT"
+	qry += " FOREIGN KEY (`switch_id`) REFERENCES `switch` (`id`) ON UPDATE CASCADE ON DELETE CASCADE"
 	qry += ") ENGINE=InnoDB DEFAULT CHARSET=utf8;"
 
 	_, err := db.Exec(qry)
@@ -100,7 +100,7 @@ func createIPTable(db *sql.DB) error {
 	qry += " `network_id` bigint(20) unsigned NOT NULL,"
 	qry += " `address` int unsigned NOT NULL,"
 	qry += " PRIMARY KEY (`id`),"
-	qry += " FOREIGN KEY (`network_id`) REFERENCES `network`(`id`) ON UPDATE CASCADE ON DELETE RESTRICT,"
+	qry += " FOREIGN KEY (`network_id`) REFERENCES `network`(`id`) ON UPDATE CASCADE ON DELETE CASCADE,"
 	qry += " UNIQUE KEY `address` (`address`)"
 	qry += ") ENGINE=InnoDB DEFAULT CHARSET=utf8;"
 
@@ -116,8 +116,8 @@ func createHostTable(db *sql.DB) error {
 	qry += " `mac` binary(6) NOT NULL,"
 	qry += " `description` varchar(255) DEFAULT NULL,"
 	qry += " PRIMARY KEY (`id`),"
-	qry += " FOREIGN KEY (`ip_id`) REFERENCES `ip`(`id`) ON UPDATE CASCADE ON DELETE RESTRICT,"
-	qry += " FOREIGN KEY (`port_id`) REFERENCES `port` (`id`) ON UPDATE CASCADE ON DELETE RESTRICT,"
+	qry += " FOREIGN KEY (`ip_id`) REFERENCES `ip`(`id`) ON UPDATE CASCADE ON DELETE CASCADE,"
+	qry += " FOREIGN KEY (`port_id`) REFERENCES `port` (`id`) ON UPDATE CASCADE ON DELETE CASCADE,"
 	qry += " UNIQUE KEY `ip-port-mac` (`ip_id`, `port_id`, `mac`)"
 	qry += ") ENGINE=InnoDB DEFAULT CHARSET=utf8;"
 
@@ -144,8 +144,8 @@ func createVIPTable(db *sql.DB) error {
 	qry += " `ip_id` bigint(20) unsigned NOT NULL,"
 	qry += " `host_id` bigint(20) unsigned NOT NULL,"
 	qry += " PRIMARY KEY (`id`),"
-	qry += " FOREIGN KEY (`ip_id`) REFERENCES `ip`(`id`) ON UPDATE CASCADE ON DELETE RESTRICT,"
-	qry += " FOREIGN KEY (`host_id`) REFERENCES `host`(`id`) ON UPDATE CASCADE ON DELETE RESTRICT,"
+	qry += " FOREIGN KEY (`ip_id`) REFERENCES `ip`(`id`) ON UPDATE CASCADE ON DELETE CASCADE,"
+	qry += " FOREIGN KEY (`host_id`) REFERENCES `host`(`id`) ON UPDATE CASCADE ON DELETE CASCADE,"
 	qry += " UNIQUE KEY `vip` (`ip_id`, `host_id`)"
 	qry += ") ENGINE=InnoDB DEFAULT CHARSET=utf8;"
 
