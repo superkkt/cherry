@@ -99,9 +99,11 @@ func createIPTable(db *sql.DB) error {
 	qry += " `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,"
 	qry += " `network_id` bigint(20) unsigned NOT NULL,"
 	qry += " `address` int unsigned NOT NULL,"
+	qry += " `used` tinyint(1) NOT NULL DEFAULT '0',"
 	qry += " PRIMARY KEY (`id`),"
-	qry += " FOREIGN KEY (`network_id`) REFERENCES `network`(`id`) ON UPDATE CASCADE ON DELETE CASCADE,"
-	qry += " UNIQUE KEY `address` (`address`)"
+	qry += " UNIQUE KEY `address` (`address`),"
+	qry += " KEY `network-used` (`network_id`, `used`),"
+	qry += " FOREIGN KEY (`network_id`) REFERENCES `network`(`id`) ON UPDATE CASCADE ON DELETE CASCADE"
 	qry += ") ENGINE=InnoDB DEFAULT CHARSET=utf8;"
 
 	_, err := db.Exec(qry)
@@ -116,10 +118,10 @@ func createHostTable(db *sql.DB) error {
 	qry += " `mac` binary(6) NOT NULL,"
 	qry += " `description` varchar(255) DEFAULT NULL,"
 	qry += " PRIMARY KEY (`id`),"
+	// IP address should be unique where MAC address can be duplicated as multiple IP addresses can be binded to one MAC address
+	qry += " UNIQUE KEY `ip` (`ip_id`),"
 	qry += " FOREIGN KEY (`ip_id`) REFERENCES `ip`(`id`) ON UPDATE CASCADE ON DELETE CASCADE,"
-	qry += " FOREIGN KEY (`port_id`) REFERENCES `port` (`id`) ON UPDATE CASCADE ON DELETE CASCADE,"
-	qry += " UNIQUE KEY `ip-port` (`ip_id`, `port_id`),"
-	qry += " UNIQUE KEY `mac` (`mac`)"
+	qry += " FOREIGN KEY (`port_id`) REFERENCES `port` (`id`) ON UPDATE CASCADE ON DELETE CASCADE"
 	qry += ") ENGINE=InnoDB DEFAULT CHARSET=utf8;"
 
 	_, err := db.Exec(qry)
@@ -139,15 +141,16 @@ func createACLTable(db *sql.DB) error {
 	return err
 }
 
+// All hosts should have its own unique IP address, and they can also have extra IP address that is VIP.
 func createVIPTable(db *sql.DB) error {
 	qry := "CREATE TABLE IF NOT EXISTS `vip` ("
 	qry += " `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,"
 	qry += " `ip_id` bigint(20) unsigned NOT NULL,"
 	qry += " `host_id` bigint(20) unsigned NOT NULL,"
 	qry += " PRIMARY KEY (`id`),"
+	qry += " UNIQUE KEY `vip` (`ip_id`, `host_id`),"
 	qry += " FOREIGN KEY (`ip_id`) REFERENCES `ip`(`id`) ON UPDATE CASCADE ON DELETE CASCADE,"
-	qry += " FOREIGN KEY (`host_id`) REFERENCES `host`(`id`) ON UPDATE CASCADE ON DELETE CASCADE,"
-	qry += " UNIQUE KEY `vip` (`ip_id`, `host_id`)"
+	qry += " FOREIGN KEY (`host_id`) REFERENCES `host`(`id`) ON UPDATE CASCADE ON DELETE CASCADE"
 	qry += ") ENGINE=InnoDB DEFAULT CHARSET=utf8;"
 
 	_, err := db.Exec(qry)
