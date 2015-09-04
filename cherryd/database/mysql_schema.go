@@ -114,6 +114,7 @@ func createHostTable(db *sql.DB) error {
 	qry += " `ip_id` bigint(20) unsigned NOT NULL,"
 	qry += " `port_id` bigint(20) unsigned NOT NULL,"
 	qry += " `mac` binary(6) NOT NULL,"
+	qry += " `description` varchar(255) DEFAULT NULL,"
 	qry += " PRIMARY KEY (`id`),"
 	qry += " FOREIGN KEY (`ip_id`) REFERENCES `ip`(`id`) ON UPDATE CASCADE ON DELETE RESTRICT,"
 	qry += " FOREIGN KEY (`port_id`) REFERENCES `port` (`id`) ON UPDATE CASCADE ON DELETE RESTRICT,"
