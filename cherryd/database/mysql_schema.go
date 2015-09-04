@@ -118,7 +118,8 @@ func createHostTable(db *sql.DB) error {
 	qry += " PRIMARY KEY (`id`),"
 	qry += " FOREIGN KEY (`ip_id`) REFERENCES `ip`(`id`) ON UPDATE CASCADE ON DELETE CASCADE,"
 	qry += " FOREIGN KEY (`port_id`) REFERENCES `port` (`id`) ON UPDATE CASCADE ON DELETE CASCADE,"
-	qry += " UNIQUE KEY `ip-port-mac` (`ip_id`, `port_id`, `mac`)"
+	qry += " UNIQUE KEY `ip-port` (`ip_id`, `port_id`),"
+	qry += " UNIQUE KEY `mac` (`mac`)"
 	qry += ") ENGINE=InnoDB DEFAULT CHARSET=utf8;"
 
 	_, err := db.Exec(qry)
