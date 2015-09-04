@@ -102,7 +102,7 @@ func createIPTable(db *sql.DB) error {
 	qry += " `used` tinyint(1) NOT NULL DEFAULT '0',"
 	qry += " PRIMARY KEY (`id`),"
 	qry += " UNIQUE KEY `address` (`address`),"
-	qry += " KEY `network-used` (`network_id`, `used`),"
+	qry += " KEY `used` (`used`),"
 	qry += " FOREIGN KEY (`network_id`) REFERENCES `network`(`id`) ON UPDATE CASCADE ON DELETE CASCADE"
 	qry += ") ENGINE=InnoDB DEFAULT CHARSET=utf8;"
 
