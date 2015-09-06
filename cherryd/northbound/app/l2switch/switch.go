@@ -279,9 +279,50 @@ func (r *L2Switch) removeAllFlows(devices []*network.Device) error {
 			r.log.Err(fmt.Sprintf("Failed to remove flows on %v: %v", d.ID(), err))
 			continue
 		}
+
+		// Reset ARP sender flow
+		if err := r.setARPSender(d); err != nil {
+			return err	
+		}
 	}
 
 	return nil
+}
+
+func (r *L2Switch) setARPSender(d *network.Device) error {
+	f := d.Factory()
+        match, err := f.NewMatch()
+        if err != nil {
+                return err
+        }
+        match.SetEtherType(0x0806) // ARP
+
+        outPort := openflow.NewOutPort()
+        outPort.SetController()
+
+        action, err := f.NewAction()
+        if err != nil {
+                return err
+        }
+        action.SetOutPort(outPort)
+        inst, err := f.NewInstruction()
+        if err != nil {
+                return err
+        }
+        inst.ApplyAction(action)
+
+        flow, err := f.NewFlowMod(openflow.FlowAdd)
+        if err != nil {
+                return err
+        }
+        // Permanent flow
+        flow.SetIdleTimeout(0)
+        flow.SetHardTimeout(0)
+        flow.SetPriority(30)
+        flow.SetFlowMatch(match)
+        flow.SetFlowInstruction(inst)
+
+	return d.SendMessage(flow)
 }
 
 func (r *L2Switch) removeFlow(d *network.Device, match openflow.Match, port openflow.OutPort) error {

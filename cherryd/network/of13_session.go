@@ -62,6 +62,10 @@ func (r *of13Session) OnHello(f openflow.Factory, w trans.Writer, v openflow.Hel
 	if err := sendBarrierRequest(f, w); err != nil {
 		return fmt.Errorf("failed to send BARRIER_REQUEST: %v", err)
 	}
+	r.log.Debug("OF13Session: calling setARPSender()..")
+        if err := setARPSender(f, w); err != nil {
+                return fmt.Errorf("failed to set ARP sender flow: %v", err)
+        }
 	if err := sendDescriptionRequest(f, w); err != nil {
 		return fmt.Errorf("failed to send DESCRIPTION_REQUEST: %v", err)
 	}

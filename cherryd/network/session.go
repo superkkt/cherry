@@ -551,6 +551,41 @@ func sendPortDescriptionRequest(f openflow.Factory, w trans.Writer) error {
 	return w.Write(msg)
 }
 
+func setARPSender(f openflow.Factory, w trans.Writer) error {
+        match, err := f.NewMatch()
+        if err != nil {
+                return err
+        }
+	match.SetEtherType(0x0806) // ARP
+
+        outPort := openflow.NewOutPort()
+	outPort.SetController()
+
+        action, err := f.NewAction()
+        if err != nil {
+                return err
+        }
+        action.SetOutPort(outPort)
+        inst, err := f.NewInstruction()
+        if err != nil {
+                return err
+        }
+        inst.ApplyAction(action)
+
+        flow, err := f.NewFlowMod(openflow.FlowAdd)
+        if err != nil {
+                return err
+        }
+	// Permanent flow
+        flow.SetIdleTimeout(0)
+        flow.SetHardTimeout(0)
+        flow.SetPriority(30)
+        flow.SetFlowMatch(match)
+        flow.SetFlowInstruction(inst)
+
+        return w.Write(flow)
+}
+
 func sendRemovingAllFlows(f openflow.Factory, w trans.Writer) error {
 	match, err := f.NewMatch() // Wildcard
 	if err != nil {
