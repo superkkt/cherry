@@ -87,17 +87,23 @@ func NewMySQL(conf *goconf.ConfigFile) (*MySQL, error) {
 	}
 
 	db := make([]*sql.DB, 0)
+	var lastErr error
 	for _, host := range c.hosts {
 		v, err := newDBConn(host, c.username, c.password, c.dbName, c.port)
 		if err != nil {
-			return nil, err
+			lastErr = err
+			continue
 		}
 		v.SetMaxOpenConns(32)
 		v.SetMaxIdleConns(4)
 		if err := createTables(v); err != nil {
-			return nil, err
+			lastErr = err
+			continue
 		}
 		db = append(db, v)
+	}
+	if len(db) == 0 {
+		return nil, fmt.Errorf("no avaliable database server: %v", lastErr)
 	}
 	mysql := &MySQL{
 		db: db,
