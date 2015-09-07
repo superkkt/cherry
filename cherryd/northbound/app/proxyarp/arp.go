@@ -60,24 +60,13 @@ func (r *ProxyARP) Name() string {
 	return "ProxyARP"
 }
 
-func isBroadcast(addr net.HardwareAddr) bool {
-	if bytes.Compare(addr, []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}) == 0 {
-		return true
-	}
-
-	return false
-}
-
 func (r *ProxyARP) OnPacketIn(finder network.Finder, ingress *network.Port, eth *protocol.Ethernet) error {
 	// ARP?
 	if eth.Type != 0x0806 {
 		return r.BaseProcessor.OnPacketIn(finder, ingress, eth)
 	}
 
-	r.log.Debug(fmt.Sprintf("ProxyARP: received ARP packet.. ingress=%v", ingress.ID()))
-	if !isBroadcast(eth.DstMAC) {
-		r.log.Info(fmt.Sprintf("ProxyARP: malicious ARP packet whose ethernet destination MAC is not the broadcast address: %v (Ingress: %v, Payload: %v)", eth.DstMAC, ingress.ID(), eth.Payload))
-	}
+	r.log.Debug(fmt.Sprintf("ProxyARP: received ARP packet.. ingress=%v, srcEthMAC=%v, dstEthMAC=%v", ingress.ID(), eth.SrcMAC, eth.DstMAC))
 
 	arp := new(protocol.ARP)
 	if err := arp.UnmarshalBinary(eth.Payload); err != nil {
