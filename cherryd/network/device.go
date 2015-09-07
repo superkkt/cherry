@@ -246,6 +246,14 @@ func (r *Device) IsClosed() bool {
 	return r.closed
 }
 
+func (r *Device) SetDefaultFlows() error {
+	// Write lock
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	return setARPSender(r.factory, r.session.trans)
+}
+
 func (r *Device) Close() {
 	// Write lock
 	r.mutex.Lock()

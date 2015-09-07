@@ -579,7 +579,7 @@ func setARPSender(f openflow.Factory, w trans.Writer) error {
 	// Permanent flow
         flow.SetIdleTimeout(0)
         flow.SetHardTimeout(0)
-        flow.SetPriority(30)
+        flow.SetPriority(100)
         flow.SetFlowMatch(match)
         flow.SetFlowInstruction(inst)
 
