@@ -142,13 +142,15 @@ func sendARPReply(ingress *network.Port, packet []byte) error {
 }
 
 func isARPAnnouncement(request *protocol.ARP) bool {
-	sameAddr := request.SPA.Equal(request.TPA)
+	sameProtoAddr := request.SPA.Equal(request.TPA)
+	sameHWAddr := bytes.Compare(request.SHA, request.THA) == 0
 	zeroTarget := bytes.Compare(request.THA, []byte{0, 0, 0, 0, 0, 0}) == 0
-	if !sameAddr || !zeroTarget {
-		return false
+	broadcastTarget := bytes.Compare(request.THA, []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}) == 0
+	if sameProtoAddr && (zeroTarget || broadcastTarget || sameHWAddr) {
+		return true
 	}
 
-	return true
+	return false
 }
 
 func makeARPReply(request *protocol.ARP, mac net.HardwareAddr) ([]byte, error) {
