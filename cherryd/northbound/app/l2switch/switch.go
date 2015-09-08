@@ -282,7 +282,7 @@ func (r *L2Switch) removeAllFlows(devices []*network.Device) error {
 
 		// Reset default flows
 		if err := d.SetDefaultFlows(); err != nil {
-			return err	
+			return err
 		}
 	}
 
