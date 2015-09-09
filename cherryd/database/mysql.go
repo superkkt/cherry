@@ -25,10 +25,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/dlintw/goconf"
-	"github.com/go-sql-driver/mysql"
 	"net"
 	"strings"
+
+	"github.com/dlintw/goconf"
+	"github.com/go-sql-driver/mysql"
+	"github.com/superkkt/cherry/cherryd/network"
 )
 
 const (
@@ -96,10 +98,6 @@ func NewMySQL(conf *goconf.ConfigFile) (*MySQL, error) {
 		}
 		v.SetMaxOpenConns(32)
 		v.SetMaxIdleConns(4)
-		if err := createTables(v); err != nil {
-			lastErr = err
-			continue
-		}
 		db = append(db, v)
 	}
 	if len(db) == 0 {
@@ -249,4 +247,133 @@ func (r *MySQL) Location(mac net.HardwareAddr) (dpid string, port uint32, ok boo
 	err = r.query(f)
 
 	return dpid, port, ok, err
+}
+
+func (r *MySQL) Switches() (sw []network.RegisteredSwitch, err error) {
+	f := func(db *sql.DB) error {
+		rows, err := db.Query("SELECT id, dpid, n_ports, first_port, description FROM switch ORDER BY id DESC")
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			v := network.RegisteredSwitch{}
+			if err := rows.Scan(&v.ID, &v.DPID, &v.NumPorts, &v.FirstPort, &v.Description); err != nil {
+				return err
+			}
+			sw = append(sw, v)
+		}
+
+		return rows.Err()
+	}
+	if err = r.query(f); err != nil {
+		return nil, err
+	}
+
+	return sw, nil
+}
+
+func (r *MySQL) AddSwitch(sw network.Switch) error {
+	f := func(db *sql.DB) error {
+		tx, err := db.Begin()
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+
+		swID, err := r.addSwitch(tx, sw)
+		if err != nil {
+			return err
+		}
+		if err := r.addPorts(tx, swID, sw.FirstPort, sw.NumPorts); err != nil {
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	return r.query(f)
+}
+
+func (r *MySQL) addSwitch(tx *sql.Tx, sw network.Switch) (swID uint64, err error) {
+	qry := "INSERT INTO switch (dpid, n_ports, first_port, description) VALUES (?, ?, ?, ?)"
+	result, err := tx.Exec(qry, sw.DPID, sw.NumPorts, sw.FirstPort, sw.Description)
+	if err != nil {
+		return 0, err
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+
+	return uint64(id), nil
+}
+
+func (r *MySQL) addPorts(tx *sql.Tx, swID uint64, firstPort, n_ports uint16) error {
+	stmt, err := tx.Prepare("INSERT INTO port (switch_id, number) VALUES (?, ?)")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for i := uint16(0); i < n_ports; i++ {
+		if _, err := stmt.Exec(swID, firstPort+i); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (r *MySQL) Switch(dpid uint64) (sw network.RegisteredSwitch, ok bool, err error) {
+	f := func(db *sql.DB) error {
+		row, err := db.Query("SELECT id, dpid, n_ports, first_port, description FROM switch WHERE dpid = ?", dpid)
+		if err != nil {
+			return err
+		}
+		defer row.Close()
+
+		// Emptry row?
+		if !row.Next() {
+			return nil
+		}
+		if err := row.Scan(&sw.ID, &sw.DPID, &sw.NumPorts, &sw.FirstPort, &sw.Description); err != nil {
+			return err
+		}
+		ok = true
+
+		return nil
+	}
+	if err = r.query(f); err != nil {
+		return network.RegisteredSwitch{}, false, err
+	}
+
+	return sw, ok, nil
+}
+
+func (r *MySQL) RemoveSwitch(id uint64) (ok bool, err error) {
+	f := func(db *sql.DB) error {
+		result, err := db.Exec("DELETE FROM switch WHERE id = ?", id)
+		if err != nil {
+			return err
+		}
+		nRows, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if nRows > 0 {
+			ok = true
+		}
+
+		return nil
+	}
+	if err = r.query(f); err != nil {
+		return false, err
+	}
+
+	return ok, nil
 }

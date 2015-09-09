@@ -264,46 +264,12 @@ func (r *L2Switch) removeAllFlows(devices []*network.Device) error {
 		if d.IsClosed() {
 			continue
 		}
-
-		factory := d.Factory()
-		// Wildcard match
-		match, err := factory.NewMatch()
-		if err != nil {
-			return err
-		}
-		// Set output port to OFPP_NONE
-		port := openflow.NewOutPort()
-		port.SetNone()
-
-		if err := r.removeFlow(d, match, port); err != nil {
-			r.log.Err(fmt.Sprintf("Failed to remove flows on %v: %v", d.ID(), err))
-			continue
-		}
-
-		// Reset default flows
-		if err := d.SetDefaultFlows(); err != nil {
+		if err := d.RemoveAllFlows(); err != nil {
 			return err
 		}
 	}
 
 	return nil
-}
-
-func (r *L2Switch) removeFlow(d *network.Device, match openflow.Match, port openflow.OutPort) error {
-	r.log.Debug(fmt.Sprintf("L2Switch: removing flows on device %v..", d.ID()))
-
-	f := d.Factory()
-	flowmod, err := f.NewFlowMod(openflow.FlowDelete)
-	if err != nil {
-		return err
-	}
-	// Remove flows except the table miss flows (Note that MSB of the cookie is a marker)
-	flowmod.SetCookieMask(0x1 << 63)
-	flowmod.SetTableID(0xFF) // ALL
-	flowmod.SetFlowMatch(match)
-	flowmod.SetOutPort(port)
-
-	return d.SendMessage(flowmod)
 }
 
 func (r *L2Switch) String() string {
@@ -323,7 +289,7 @@ func (r *L2Switch) OnPortDown(finder network.Finder, port *network.Port) error {
 	outPort := openflow.NewOutPort()
 	outPort.SetValue(port.Number())
 
-	if err := r.removeFlow(device, match, outPort); err != nil {
+	if err := device.RemoveFlow(match, outPort); err != nil {
 		return fmt.Errorf("removing flows heading to port %v: %v", port.ID(), err)
 	}
 

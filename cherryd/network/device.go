@@ -57,6 +57,10 @@ type Device struct {
 	closed       bool
 }
 
+var (
+	ErrClosedDevice = errors.New("already closed device")
+)
+
 func newDevice(log log.Logger, s *session) *Device {
 	if log == nil {
 		panic("Logger is nil")
@@ -232,7 +236,7 @@ func (r *Device) SendMessage(msg encoding.BinaryMarshaler) error {
 		panic("Message is nil")
 	}
 	if r.closed {
-		return errors.New("send message request on an already closed device")
+		return ErrClosedDevice
 	}
 
 	return r.session.Write(msg)
@@ -246,12 +250,60 @@ func (r *Device) IsClosed() bool {
 	return r.closed
 }
 
-func (r *Device) SetDefaultFlows() error {
+func (r *Device) RemoveAllFlows() error {
 	// Write lock
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
+	if r.closed {
+		return ErrClosedDevice
+	}
+
+	// Wildcard match
+	match, err := r.factory.NewMatch()
+	if err != nil {
+		return err
+	}
+	// Set output port to OFPP_NONE
+	port := openflow.NewOutPort()
+	port.SetNone()
+
+	flowmod, err := r.factory.NewFlowMod(openflow.FlowDelete)
+	if err != nil {
+		return err
+	}
+	// Remove flows except the table miss flows (Note that MSB of the cookie is a marker)
+	flowmod.SetCookieMask(0x1 << 63)
+	flowmod.SetTableID(0xFF) // ALL
+	flowmod.SetFlowMatch(match)
+	flowmod.SetOutPort(port)
+	if err := r.session.Write(flowmod); err != nil {
+		return err
+	}
+
 	return setARPSender(r.factory, r.session.trans)
+}
+
+func (r *Device) RemoveFlow(match openflow.Match, port openflow.OutPort) error {
+	// Write lock
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	if r.closed {
+		return ErrClosedDevice
+	}
+
+	flowmod, err := r.factory.NewFlowMod(openflow.FlowDelete)
+	if err != nil {
+		return err
+	}
+	// Remove flows except the table miss flows (Note that MSB of the cookie is a marker)
+	flowmod.SetCookieMask(0x1 << 63)
+	flowmod.SetTableID(0xFF) // ALL
+	flowmod.SetFlowMatch(match)
+	flowmod.SetOutPort(port)
+
+	return r.session.Write(flowmod)
 }
 
 func (r *Device) Close() {

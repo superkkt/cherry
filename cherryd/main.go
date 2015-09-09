@@ -141,7 +141,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	controller := network.NewController(log, db)
+	controller := network.NewController(log, db, conf.RawConfig())
 	manager, err := createAppManager(conf, log, db)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create application manager: %v\n", err)
