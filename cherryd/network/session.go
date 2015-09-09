@@ -403,7 +403,7 @@ func extractDeviceInfo(p *protocol.LLDP) (deviceID string, portNum uint32, err e
 func (r *session) findNeighborPort(deviceID string, portNum uint32) (*Port, error) {
 	device := r.finder.Device(deviceID)
 	if device == nil {
-		return nil, fmt.Errorf("failed to find a neighbor device: id=%v", deviceID)
+		return nil, fmt.Errorf("failed to find a neighbor device: deviceID=%v", deviceID)
 	}
 	port := device.Port(portNum)
 	if port == nil {
@@ -426,7 +426,9 @@ func (r *session) handleLLDP(inPort *Port, ethernet *protocol.Ethernet) error {
 	}
 	port, err := r.findNeighborPort(deviceID, portNum)
 	if err != nil {
-		return err
+		// Do nothing if we cannot find neighbor device and its port
+		r.log.Warning(fmt.Sprintf("Session: ignoring a LLDP packet: %v", err))
+		return nil
 	}
 	r.watcher.DeviceLinked([2]*Port{inPort, port})
 
