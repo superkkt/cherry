@@ -25,6 +25,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"strings"
 
@@ -274,7 +275,7 @@ func (r *MySQL) Switches() (sw []network.RegisteredSwitch, err error) {
 	return sw, nil
 }
 
-func (r *MySQL) AddSwitch(sw network.Switch) error {
+func (r *MySQL) AddSwitch(sw network.Switch) (swID uint64, err error) {
 	f := func(db *sql.DB) error {
 		tx, err := db.Begin()
 		if err != nil {
@@ -282,7 +283,7 @@ func (r *MySQL) AddSwitch(sw network.Switch) error {
 		}
 		defer tx.Rollback()
 
-		swID, err := r.addSwitch(tx, sw)
+		swID, err = r.addSwitch(tx, sw)
 		if err != nil {
 			return err
 		}
@@ -295,8 +296,11 @@ func (r *MySQL) AddSwitch(sw network.Switch) error {
 
 		return nil
 	}
+	if err = r.query(f); err != nil {
+		return 0, err
+	}
 
-	return r.query(f)
+	return swID, nil
 }
 
 func (r *MySQL) addSwitch(tx *sql.Tx, sw network.Switch) (swID uint64, err error) {
@@ -376,4 +380,209 @@ func (r *MySQL) RemoveSwitch(id uint64) (ok bool, err error) {
 	}
 
 	return ok, nil
+}
+
+func (r *MySQL) SwitchPorts(swID uint64) (ports []network.SwitchPort, err error) {
+	f := func(db *sql.DB) error {
+		qry := `SELECT A.id, A.number, B.first_port
+			FROM port A
+			JOIN switch B ON A.switch_id = B.id
+			WHERE A.switch_id = ?
+			ORDER BY id ASC`
+		rows, err := db.Query(qry, swID)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var firstPort uint
+			v := network.SwitchPort{}
+			if err := rows.Scan(&v.ID, &v.Number, &firstPort); err != nil {
+				return err
+			}
+			v.Number = v.Number - firstPort + 1
+			ports = append(ports, v)
+		}
+
+		return rows.Err()
+	}
+	if err = r.query(f); err != nil {
+		return nil, err
+	}
+
+	return ports, nil
+}
+
+func (r *MySQL) Networks() (networks []network.RegisteredNetwork, err error) {
+	f := func(db *sql.DB) error {
+		qry := `SELECT id, INET_NTOA(address) AS address, mask
+			FROM network
+			ORDER BY id DESC`
+		rows, err := db.Query(qry)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			v := network.RegisteredNetwork{}
+			if err := rows.Scan(&v.ID, &v.Address, &v.Mask); err != nil {
+				return err
+			}
+			networks = append(networks, v)
+		}
+
+		return rows.Err()
+	}
+	if err = r.query(f); err != nil {
+		return nil, err
+	}
+
+	return networks, nil
+}
+
+func (r *MySQL) AddNetwork(addr net.IP, mask net.IPMask) (netID uint64, err error) {
+	f := func(db *sql.DB) error {
+		tx, err := db.Begin()
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+
+		netID, err = r.addNetwork(tx, addr, mask)
+		if err != nil {
+			return err
+		}
+		if err := r.addIPAddrs(tx, netID, addr, mask); err != nil {
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+
+		return nil
+	}
+	if err = r.query(f); err != nil {
+		return 0, err
+	}
+
+	return netID, nil
+}
+
+func (r *MySQL) addNetwork(tx *sql.Tx, addr net.IP, mask net.IPMask) (netID uint64, err error) {
+	qry := "INSERT INTO network (address, mask) VALUES (INET_ATON(?), ?)"
+	ones, _ := mask.Size()
+	result, err := tx.Exec(qry, addr.String(), ones)
+	if err != nil {
+		return 0, err
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+
+	return uint64(id), nil
+}
+
+func (r *MySQL) addIPAddrs(tx *sql.Tx, netID uint64, addr net.IP, mask net.IPMask) error {
+	stmt, err := tx.Prepare("INSERT INTO ip (network_id, address) VALUES (?, INET_ATON(?) + ?)")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	ones, bits := mask.Size()
+	n_addrs := int(math.Pow(2, float64(bits-ones))) - 2 // Minus two due to network and broadcast addresses
+	for i := 0; i < n_addrs; i++ {
+		if _, err := stmt.Exec(netID, addr.String(), i+1); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (r *MySQL) Network(addr net.IP) (n network.RegisteredNetwork, ok bool, err error) {
+	f := func(db *sql.DB) error {
+		row, err := db.Query("SELECT id, INET_NTOA(address), mask FROM network WHERE address = INET_ATON(?)", addr.String())
+		if err != nil {
+			return err
+		}
+		defer row.Close()
+
+		// Emptry row?
+		if !row.Next() {
+			return nil
+		}
+		if err := row.Scan(&n.ID, &n.Address, &n.Mask); err != nil {
+			return err
+		}
+		ok = true
+
+		return nil
+	}
+	if err = r.query(f); err != nil {
+		return network.RegisteredNetwork{}, false, err
+	}
+
+	return n, ok, nil
+}
+
+func (r *MySQL) RemoveNetwork(id uint64) (ok bool, err error) {
+	f := func(db *sql.DB) error {
+		result, err := db.Exec("DELETE FROM network WHERE id = ?", id)
+		if err != nil {
+			return err
+		}
+		nRows, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if nRows > 0 {
+			ok = true
+		}
+
+		return nil
+	}
+	if err = r.query(f); err != nil {
+		return false, err
+	}
+
+	return ok, nil
+}
+
+func (r *MySQL) IPAddrs(networkID uint64) (addresses []network.IP, err error) {
+	f := func(db *sql.DB) error {
+		qry := `SELECT A.id, INET_NTOA(A.address) AS address, A.used, C.description AS host, CONCAT(E.description, '/', D.number) AS port 
+			FROM ip A 
+			JOIN network B ON A.network_id = B.id 
+			LEFT JOIN host C ON C.ip_id = A.id 
+			LEFT JOIN port D ON D.id = C.port_id 
+			LEFT JOIN switch E ON E.id = D.switch_id 
+			WHERE A.network_id = ?`
+		rows, err := db.Query(qry, networkID)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var host, port sql.NullString
+			v := network.IP{}
+			if err := rows.Scan(&v.ID, &v.Address, &v.Used, &host, &port); err != nil {
+				return err
+			}
+			v.Host = host.String
+			v.Port = port.String
+			addresses = append(addresses, v)
+		}
+
+		return rows.Err()
+	}
+	if err = r.query(f); err != nil {
+		return nil, err
+	}
+
+	return addresses, nil
 }

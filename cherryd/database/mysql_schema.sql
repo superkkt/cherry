@@ -143,7 +143,6 @@ CREATE TABLE IF NOT EXISTS `port` (
   `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   `switch_id` bigint(20) unsigned NOT NULL,
   `number` smallint(5) unsigned NOT NULL,
-  `enabled` tinyint(1) NOT NULL DEFAULT '1',
   PRIMARY KEY (`id`),
   UNIQUE KEY `number` (`switch_id`,`number`),
   CONSTRAINT `port_ibfk_1` FOREIGN KEY (`switch_id`) REFERENCES `switch` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
