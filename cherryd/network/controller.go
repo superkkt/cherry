@@ -22,6 +22,7 @@
 package network
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -509,6 +510,15 @@ func (r *Controller) sendARPAnnouncement(host RegisteredHost) error {
 	return nil
 }
 
+func decodeMAC(s string) (net.HardwareAddr, error) {
+	v, err := hex.DecodeString(s)
+	if err != nil {
+		return nil, err
+	}
+
+	return net.HardwareAddr(v), nil
+}
+
 func (r *Controller) removeHost(w rest.ResponseWriter, req *rest.Request) {
 	id, err := strconv.ParseUint(req.PathParam("id"), 10, 64)
 	if err != nil {
@@ -525,7 +535,7 @@ func (r *Controller) removeHost(w rest.ResponseWriter, req *rest.Request) {
 		writeError(w, http.StatusNotFound, errors.New("unknown host ID"))
 		return
 	}
-	mac, err := net.ParseMAC(host.MAC)
+	mac, err := decodeMAC(host.MAC)
 	if err != nil {
 		panic("host.MAC should be valid")
 	}

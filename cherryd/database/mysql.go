@@ -627,7 +627,7 @@ func (r *MySQL) Host(id uint64) (host network.RegisteredHost, ok bool, err error
 			JOIN port C ON A.port_id = C.id 
 			JOIN switch D ON C.switch_id = D.id 
 			JOIN network E ON B.network_id = E.id 
-			WHERE id = ?`
+			WHERE A.id = ?`
 		row, err := db.Query(qry, id)
 		if err != nil {
 			return err
