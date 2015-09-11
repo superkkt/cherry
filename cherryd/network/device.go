@@ -25,9 +25,12 @@ import (
 	"encoding"
 	"errors"
 	"fmt"
+	"net"
+	"sync"
+
 	"github.com/superkkt/cherry/cherryd/log"
 	"github.com/superkkt/cherry/cherryd/openflow"
-	"sync"
+	"github.com/superkkt/cherry/cherryd/protocol"
 )
 
 type Descriptions struct {
@@ -304,6 +307,57 @@ func (r *Device) RemoveFlow(match openflow.Match, port openflow.OutPort) error {
 	flowmod.SetOutPort(port)
 
 	return r.session.Write(flowmod)
+}
+
+func makeARPAnnouncement(ip net.IP, mac net.HardwareAddr) ([]byte, error) {
+	v := protocol.NewARPRequest(mac, ip, ip)
+	anon, err := v.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	eth := protocol.Ethernet{
+		SrcMAC:  mac,
+		DstMAC:  net.HardwareAddr([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}),
+		Type:    0x0806,
+		Payload: anon,
+	}
+
+	return eth.MarshalBinary()
+}
+
+func (r *Device) SendARPAnnouncement(ip net.IP, mac net.HardwareAddr) error {
+	// Write lock
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	if r.closed {
+		return ErrClosedDevice
+	}
+
+	announcement, err := makeARPAnnouncement(ip, mac)
+	if err != nil {
+		return err
+	}
+
+	inPort := openflow.NewInPort()
+	inPort.SetController()
+
+	action, err := r.factory.NewAction()
+	if err != nil {
+		return err
+	}
+	// Flood
+	action.SetOutPort(openflow.NewOutPort())
+
+	out, err := r.factory.NewPacketOut()
+	if err != nil {
+		return err
+	}
+	out.SetInPort(inPort)
+	out.SetAction(action)
+	out.SetData(announcement)
+
+	return r.session.Write(out)
 }
 
 func (r *Device) Close() {

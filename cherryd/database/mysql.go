@@ -586,3 +586,117 @@ func (r *MySQL) IPAddrs(networkID uint64) (addresses []network.IP, err error) {
 
 	return addresses, nil
 }
+
+func (r *MySQL) Hosts() (hosts []network.RegisteredHost, err error) {
+	f := func(db *sql.DB) error {
+		qry := `SELECT A.id, CONCAT(INET_NTOA(B.address), '/', E.mask) AS address, CONCAT(D.description, '/', C.number) AS port, HEX(mac) AS mac, A.description 
+			FROM host A 
+			JOIN ip B ON A.ip_id = B.id 
+			JOIN port C ON A.port_id = C.id 
+			JOIN switch D ON C.switch_id = D.id 
+			JOIN network E ON B.network_id = E.id 
+			ORDER by A.id DESC`
+		rows, err := db.Query(qry)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			v := network.RegisteredHost{}
+			if err := rows.Scan(&v.ID, &v.IP, &v.Port, &v.MAC, &v.Description); err != nil {
+				return err
+			}
+			hosts = append(hosts, v)
+		}
+
+		return rows.Err()
+	}
+	if err = r.query(f); err != nil {
+		return nil, err
+	}
+
+	return hosts, nil
+}
+
+func (r *MySQL) Host(id uint64) (host network.RegisteredHost, ok bool, err error) {
+	f := func(db *sql.DB) error {
+		qry := `SELECT A.id, CONCAT(INET_NTOA(B.address), '/', E.mask) AS address, CONCAT(D.description, '/', C.number) AS port, HEX(mac) AS mac, A.description 
+			FROM host A 
+			JOIN ip B ON A.ip_id = B.id 
+			JOIN port C ON A.port_id = C.id 
+			JOIN switch D ON C.switch_id = D.id 
+			JOIN network E ON B.network_id = E.id 
+			WHERE id = ?`
+		row, err := db.Query(qry, id)
+		if err != nil {
+			return err
+		}
+		defer row.Close()
+
+		if !row.Next() {
+			return nil
+		}
+		if err := row.Scan(&host.ID, &host.IP, &host.Port, &host.MAC, &host.Description); err != nil {
+			return err
+		}
+		ok = true
+
+		return nil
+	}
+	if err = r.query(f); err != nil {
+		return network.RegisteredHost{}, false, err
+	}
+
+	return host, ok, nil
+}
+
+func (r *MySQL) AddHost(host network.Host) (hostID uint64, err error) {
+	f := func(db *sql.DB) error {
+		qry := "INSERT INTO host (ip_id, port_id, mac, description) VALUES (?, ?, UNHEX(?), ?)"
+		result, err := db.Exec(qry, host.IPID, host.PortID, normalizeMAC(host.MAC), host.Description)
+		if err != nil {
+			return err
+		}
+		id, err := result.LastInsertId()
+		if err != nil {
+			return err
+		}
+		hostID = uint64(id)
+
+		return nil
+	}
+	if err = r.query(f); err != nil {
+		return 0, err
+	}
+
+	return hostID, nil
+}
+
+func normalizeMAC(mac string) string {
+	// Remove spaces and colons
+	return strings.Replace(strings.Replace(mac, ":", "", -1), " ", "", -1)
+}
+
+func (r *MySQL) RemoveHost(id uint64) (ok bool, err error) {
+	f := func(db *sql.DB) error {
+		result, err := db.Exec("DELETE FROM host WHERE id = ?", id)
+		if err != nil {
+			return err
+		}
+		nRows, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if nRows > 0 {
+			ok = true
+		}
+
+		return nil
+	}
+	if err = r.query(f); err != nil {
+		return false, err
+	}
+
+	return ok, nil
+}

@@ -31,17 +31,22 @@ import (
 	"github.com/ant0ine/go-json-rest/rest"
 	"github.com/dlintw/goconf"
 	"github.com/superkkt/cherry/cherryd/log"
+	"github.com/superkkt/cherry/cherryd/openflow"
 	"github.com/superkkt/cherry/cherryd/protocol"
 	"golang.org/x/net/context"
 )
 
 type database interface {
+	AddHost(Host) (hostID uint64, err error)
 	AddNetwork(net.IP, net.IPMask) (netID uint64, err error)
 	AddSwitch(Switch) (swID uint64, err error)
+	Host(hostID uint64) (host RegisteredHost, ok bool, err error)
+	Hosts() ([]RegisteredHost, error)
 	IPAddrs(networkID uint64) ([]IP, error)
 	Location(mac net.HardwareAddr) (dpid string, port uint32, ok bool, err error)
 	Network(net.IP) (n RegisteredNetwork, ok bool, err error)
 	Networks() ([]RegisteredNetwork, error)
+	RemoveHost(id uint64) (ok bool, err error)
 	RemoveNetwork(id uint64) (ok bool, err error)
 	RemoveSwitch(id uint64) (ok bool, err error)
 	Switch(dpid uint64) (sw RegisteredSwitch, ok bool, err error)
@@ -105,6 +110,9 @@ func (r *Controller) serveREST(conf *goconf.ConfigFile) {
 		rest.Post("/api/v1/network", r.addNetwork),
 		rest.Delete("/api/v1/network/:id", r.removeNetwork),
 		rest.Get("/api/v1/ip/:networkID", r.listIP),
+		rest.Get("/api/v1/host", r.listHost),
+		rest.Post("/api/v1/host", r.addHost),
+		rest.Delete("/api/v1/host/:id", r.removeHost),
 	)
 	if err != nil {
 		r.log.Err(fmt.Sprintf("Controller: making a REST router: %v", err))
@@ -168,12 +176,6 @@ func parseRESTConfig(conf *goconf.ConfigFile) (*restConfig, error) {
 	return c, nil
 }
 
-type response struct {
-	Status int         `json:"status"`
-	Msg    string      `json:"msg"`
-	Data   interface{} `json:"data,omitempty"`
-}
-
 type Switch struct {
 	DPID        uint64 `json:"dpid"`
 	NumPorts    uint16 `json:"n_ports"`
@@ -200,67 +202,59 @@ type RegisteredSwitch struct {
 func (r *Controller) listSwitch(w rest.ResponseWriter, req *rest.Request) {
 	sw, err := r.db.Switches()
 	if err != nil {
-		writeStatus(w, queryFailed, err)
+		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 
-	w.WriteJson(&response{
-		okay,
-		statusMsgs[okay],
-		struct {
-			Switches []RegisteredSwitch `json:"switches"`
-		}{sw},
-	})
+	w.WriteJson(&struct {
+		Switches []RegisteredSwitch `json:"switches"`
+	}{sw})
 }
 
 func (r *Controller) addSwitch(w rest.ResponseWriter, req *rest.Request) {
 	sw := Switch{}
 	if err := req.DecodeJsonPayload(&sw); err != nil {
-		writeStatus(w, decodeFailed, err)
+		writeError(w, http.StatusBadRequest, err)
 		return
 	}
 	if err := sw.validate(); err != nil {
-		writeStatus(w, invalidParam, err)
+		writeError(w, http.StatusBadRequest, err)
 		return
 	}
 	_, ok, err := r.db.Switch(sw.DPID)
 	if err != nil {
-		writeStatus(w, queryFailed, err)
+		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 	if ok {
-		writeStatus(w, duplicatedDPID)
+		writeError(w, http.StatusConflict, errors.New("duplicated switch DPID"))
 		return
 	}
 	swID, err := r.db.AddSwitch(sw)
 	if err != nil {
-		writeStatus(w, queryFailed, err)
+		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 
-	w.WriteJson(&response{
-		okay,
-		statusMsgs[okay],
-		struct {
-			SwitchID uint64 `json:"switch_id"`
-		}{swID},
-	})
+	w.WriteJson(&struct {
+		SwitchID uint64 `json:"switch_id"`
+	}{swID})
 }
 
 func (r *Controller) removeSwitch(w rest.ResponseWriter, req *rest.Request) {
 	id, err := strconv.ParseUint(req.PathParam("id"), 10, 64)
 	if err != nil {
-		writeStatus(w, invalidParam, err)
+		writeError(w, http.StatusBadRequest, err)
 		return
 	}
 
 	ok, err := r.db.RemoveSwitch(id)
 	if err != nil {
-		writeStatus(w, queryFailed, err)
+		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 	if !ok {
-		writeStatus(w, unknownSwitchID)
+		writeError(w, http.StatusNotFound, errors.New("unknown switch ID"))
 		return
 	}
 
@@ -271,7 +265,7 @@ func (r *Controller) removeSwitch(w rest.ResponseWriter, req *rest.Request) {
 		}
 	}
 
-	writeStatus(w, okay)
+	w.WriteHeader(http.StatusOK)
 }
 
 type SwitchPort struct {
@@ -282,23 +276,19 @@ type SwitchPort struct {
 func (r *Controller) listPort(w rest.ResponseWriter, req *rest.Request) {
 	swID, err := strconv.ParseUint(req.PathParam("switchID"), 10, 64)
 	if err != nil {
-		writeStatus(w, invalidParam, err)
+		writeError(w, http.StatusBadRequest, err)
 		return
 	}
 
 	ports, err := r.db.SwitchPorts(swID)
 	if err != nil {
-		writeStatus(w, queryFailed, err)
+		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 
-	w.WriteJson(&response{
-		okay,
-		statusMsgs[okay],
-		struct {
-			Ports []SwitchPort `json:"ports"`
-		}{ports},
-	})
+	w.WriteJson(&struct {
+		Ports []SwitchPort `json:"ports"`
+	}{ports})
 }
 
 type Network struct {
@@ -325,27 +315,23 @@ type RegisteredNetwork struct {
 func (r *Controller) listNetwork(w rest.ResponseWriter, req *rest.Request) {
 	networks, err := r.db.Networks()
 	if err != nil {
-		writeStatus(w, queryFailed, err)
+		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 
-	w.WriteJson(&response{
-		okay,
-		statusMsgs[okay],
-		struct {
-			Networks []RegisteredNetwork `json:"networks"`
-		}{networks},
-	})
+	w.WriteJson(&struct {
+		Networks []RegisteredNetwork `json:"networks"`
+	}{networks})
 }
 
 func (r *Controller) addNetwork(w rest.ResponseWriter, req *rest.Request) {
 	network := Network{}
 	if err := req.DecodeJsonPayload(&network); err != nil {
-		writeStatus(w, decodeFailed, err)
+		writeError(w, http.StatusBadRequest, err)
 		return
 	}
 	if err := network.validate(); err != nil {
-		writeStatus(w, invalidParam, err)
+		writeError(w, http.StatusBadRequest, err)
 		return
 	}
 
@@ -358,43 +344,39 @@ func (r *Controller) addNetwork(w rest.ResponseWriter, req *rest.Request) {
 
 	_, ok, err := r.db.Network(netAddr)
 	if err != nil {
-		writeStatus(w, queryFailed, err)
+		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 	if ok {
-		writeStatus(w, duplicatedNetwork)
+		writeError(w, http.StatusConflict, errors.New("duplicated network address"))
 		return
 	}
 
 	netID, err := r.db.AddNetwork(netAddr, netMask)
 	if err != nil {
-		writeStatus(w, queryFailed, err)
+		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 
-	w.WriteJson(&response{
-		okay,
-		statusMsgs[okay],
-		struct {
-			NetworkID uint64 `json:"network_id"`
-		}{netID},
-	})
+	w.WriteJson(&struct {
+		NetworkID uint64 `json:"network_id"`
+	}{netID})
 }
 
 func (r *Controller) removeNetwork(w rest.ResponseWriter, req *rest.Request) {
 	id, err := strconv.ParseUint(req.PathParam("id"), 10, 64)
 	if err != nil {
-		writeStatus(w, invalidParam, err)
+		writeError(w, http.StatusBadRequest, err)
 		return
 	}
 
 	ok, err := r.db.RemoveNetwork(id)
 	if err != nil {
-		writeStatus(w, queryFailed, err)
+		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 	if !ok {
-		writeStatus(w, unknownNetworkID)
+		writeError(w, http.StatusNotFound, errors.New("unknown network ID"))
 		return
 	}
 
@@ -405,7 +387,7 @@ func (r *Controller) removeNetwork(w rest.ResponseWriter, req *rest.Request) {
 		}
 	}
 
-	writeStatus(w, okay)
+	w.WriteHeader(http.StatusOK)
 }
 
 type IP struct {
@@ -419,63 +401,167 @@ type IP struct {
 func (r *Controller) listIP(w rest.ResponseWriter, req *rest.Request) {
 	networkID, err := strconv.ParseUint(req.PathParam("networkID"), 10, 64)
 	if err != nil {
-		writeStatus(w, invalidParam, err)
+		writeError(w, http.StatusBadRequest, err)
 		return
 	}
 
 	addresses, err := r.db.IPAddrs(networkID)
 	if err != nil {
-		writeStatus(w, queryFailed, err)
+		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 
-	w.WriteJson(&response{
-		okay,
-		statusMsgs[okay],
-		struct {
-			Addresses []IP `json:"addresses"`
-		}{addresses},
-	})
+	w.WriteJson(&struct {
+		Addresses []IP `json:"addresses"`
+	}{addresses})
 }
 
-// TODO: Remove flows whose destination MAC is one we are removing when we remove a host
-
-// TODO: Send ARP announcement to all hosts when we add a new host
-
-const (
-	okay = iota
-	queryFailed
-	decodeFailed
-	invalidParam
-	duplicatedDPID
-	unknownSwitchID
-	internalServerErr
-	duplicatedNetwork
-	unknownNetworkID
-)
-
-var statusMsgs = map[int]string{
-	okay:              "No error",
-	queryFailed:       "Failed to query from database: %v",
-	decodeFailed:      "Failed to decode input parameters: %v",
-	invalidParam:      "Invalid input parameter: %v",
-	duplicatedDPID:    "Duplicated switch DPID",
-	unknownSwitchID:   "Unknown switch ID",
-	internalServerErr: "Internal server error",
-	duplicatedNetwork: "Duplicated network address",
-	unknownNetworkID:  "Unknown network ID",
+type Host struct {
+	IPID        uint64 `json:"ip_id"`
+	PortID      uint64 `json:"port_id"`
+	MAC         string `json:"mac"`
+	Description string `json:"description"`
 }
 
-func writeStatus(w rest.ResponseWriter, status int, args ...interface{}) {
-	format, ok := statusMsgs[status]
-	if !ok {
-		panic(fmt.Sprintf("Unknown status code: %v", status))
+func (r *Host) validate() error {
+	_, err := net.ParseMAC(r.MAC)
+	if err != nil {
+		return err
 	}
 
-	w.WriteJson(&response{
-		Status: status,
-		Msg:    fmt.Sprintf(format, args...),
-	})
+	return nil
+}
+
+type RegisteredHost struct {
+	ID          string `json:"id"`
+	IP          string `json:"ip"`
+	Port        string `json:"port"`
+	MAC         string `json:"mac"`
+	Description string `json:"description"`
+}
+
+func (r *Controller) listHost(w rest.ResponseWriter, req *rest.Request) {
+	hosts, err := r.db.Hosts()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	w.WriteJson(&struct {
+		Hosts []RegisteredHost `json:"hosts"`
+	}{hosts})
+}
+
+func (r *Controller) addHost(w rest.ResponseWriter, req *rest.Request) {
+	host := Host{}
+	if err := req.DecodeJsonPayload(&host); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := host.validate(); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	hostID, err := r.db.AddHost(host)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	w.WriteJson(&struct {
+		HostID uint64 `json:"host_id"`
+	}{hostID})
+
+	regHost, ok, err := r.db.Host(hostID)
+	if err != nil {
+		r.log.Err(fmt.Sprintf("Controller: failed to query a registered host: %v", err))
+		return
+	}
+	if !ok {
+		r.log.Err(fmt.Sprintf("Controller: registered host (ID=%v) is vanished", hostID))
+		return
+	}
+
+	// Sends ARP announcement to all hosts to update their ARP caches
+	if err := r.sendARPAnnouncement(regHost); err != nil {
+		r.log.Err(fmt.Sprintf("Controller: failed to send ARP announcement for newly added host (ID=%v): %v", hostID, err))
+		return
+	}
+}
+
+func (r *Controller) sendARPAnnouncement(host RegisteredHost) error {
+	ip := net.ParseIP(host.IP)
+	if ip == nil {
+		return fmt.Errorf("invalid IP address: %v", host.IP)
+	}
+	mac, err := net.ParseMAC(host.MAC)
+	if err != nil {
+		return err
+	}
+
+	for _, sw := range r.topo.Devices() {
+		if err := sw.SendARPAnnouncement(ip, mac); err != nil {
+			r.log.Err(fmt.Sprintf("Controller: failed to send ARP announcement via %v: %v", sw.ID(), err))
+			continue
+		}
+	}
+
+	return nil
+}
+
+func (r *Controller) removeHost(w rest.ResponseWriter, req *rest.Request) {
+	id, err := strconv.ParseUint(req.PathParam("id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	host, ok, err := r.db.Host(id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	if !ok {
+		writeError(w, http.StatusNotFound, errors.New("unknown host ID"))
+		return
+	}
+	mac, err := net.ParseMAC(host.MAC)
+	if err != nil {
+		panic("host.MAC should be valid")
+	}
+
+	_, err = r.db.RemoveHost(id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	// Remove flows whose destination MAC is one we are removing when we remove a host
+	for _, sw := range r.topo.Devices() {
+		f := sw.Factory()
+		match, err := f.NewMatch()
+		if err != nil {
+			r.log.Err(fmt.Sprintf("Controller: failed to create an OpenFlow match: %v", err))
+			continue
+		}
+		match.SetDstMAC(mac)
+		outPort := openflow.NewOutPort()
+		outPort.SetNone()
+
+		if err := sw.RemoveFlow(match, outPort); err != nil {
+			r.log.Err(fmt.Sprintf("Controller: failed to remove a flow from %v: %v", sw.ID(), err))
+			continue
+		}
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func writeError(w rest.ResponseWriter, status int, err error) {
+	w.WriteHeader(status)
+	w.WriteJson(&struct {
+		Error string `json:"error"`
+	}{err.Error()})
 }
 
 func (r *Controller) AddConnection(ctx context.Context, c net.Conn) {
