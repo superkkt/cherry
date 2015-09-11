@@ -168,6 +168,12 @@ func parseRESTConfig(conf *goconf.ConfigFile) (*restConfig, error) {
 	return c, nil
 }
 
+type response struct {
+	Status int         `json:"status"`
+	Msg    string      `json:"msg"`
+	Data   interface{} `json:"data,omitempty"`
+}
+
 type Switch struct {
 	DPID        uint64 `json:"dpid"`
 	NumPorts    uint16 `json:"n_ports"`
@@ -198,11 +204,13 @@ func (r *Controller) listSwitch(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	w.WriteJson(&struct {
-		Status   int                `json:"status"`
-		Msg      string             `json:"msg"`
-		Switches []RegisteredSwitch `json:"switches"`
-	}{okay, statusMsgs[okay], sw})
+	w.WriteJson(&response{
+		okay,
+		statusMsgs[okay],
+		struct {
+			Switches []RegisteredSwitch `json:"switches"`
+		}{sw},
+	})
 }
 
 func (r *Controller) addSwitch(w rest.ResponseWriter, req *rest.Request) {
@@ -230,11 +238,13 @@ func (r *Controller) addSwitch(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	w.WriteJson(&struct {
-		Status   int    `json:"status"`
-		Msg      string `json:"msg"`
-		SwitchID uint64 `json:"switch_id"`
-	}{okay, statusMsgs[okay], swID})
+	w.WriteJson(&response{
+		okay,
+		statusMsgs[okay],
+		struct {
+			SwitchID uint64 `json:"switch_id"`
+		}{swID},
+	})
 }
 
 func (r *Controller) removeSwitch(w rest.ResponseWriter, req *rest.Request) {
@@ -282,11 +292,13 @@ func (r *Controller) listPort(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	w.WriteJson(&struct {
-		Status int          `json:"status"`
-		Msg    string       `json:"msg"`
-		Ports  []SwitchPort `json:"ports"`
-	}{okay, statusMsgs[okay], ports})
+	w.WriteJson(&response{
+		okay,
+		statusMsgs[okay],
+		struct {
+			Ports []SwitchPort `json:"ports"`
+		}{ports},
+	})
 }
 
 type Network struct {
@@ -317,11 +329,13 @@ func (r *Controller) listNetwork(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	w.WriteJson(&struct {
-		Status   int                 `json:"status"`
-		Msg      string              `json:"msg"`
-		Networks []RegisteredNetwork `json:"networks"`
-	}{okay, statusMsgs[okay], networks})
+	w.WriteJson(&response{
+		okay,
+		statusMsgs[okay],
+		struct {
+			Networks []RegisteredNetwork `json:"networks"`
+		}{networks},
+	})
 }
 
 func (r *Controller) addNetwork(w rest.ResponseWriter, req *rest.Request) {
@@ -358,11 +372,13 @@ func (r *Controller) addNetwork(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	w.WriteJson(&struct {
-		Status    int    `json:"status"`
-		Msg       string `json:"msg"`
-		NetworkID uint64 `json:"network_id"`
-	}{okay, statusMsgs[okay], netID})
+	w.WriteJson(&response{
+		okay,
+		statusMsgs[okay],
+		struct {
+			NetworkID uint64 `json:"network_id"`
+		}{netID},
+	})
 }
 
 func (r *Controller) removeNetwork(w rest.ResponseWriter, req *rest.Request) {
@@ -413,12 +429,18 @@ func (r *Controller) listIP(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	w.WriteJson(&struct {
-		Status    int    `json:"status"`
-		Msg       string `json:"msg"`
-		Addresses []IP   `json:"addresses"`
-	}{okay, statusMsgs[okay], addresses})
+	w.WriteJson(&response{
+		okay,
+		statusMsgs[okay],
+		struct {
+			Addresses []IP `json:"addresses"`
+		}{addresses},
+	})
 }
+
+// TODO: Remove flows whose destination MAC is one we are removing when we remove a host
+
+// TODO: Send ARP announcement to all hosts when we add a new host
 
 const (
 	okay = iota
@@ -450,10 +472,10 @@ func writeStatus(w rest.ResponseWriter, status int, args ...interface{}) {
 		panic(fmt.Sprintf("Unknown status code: %v", status))
 	}
 
-	w.WriteJson(struct {
-		Status int    `json:"status"`
-		Msg    string `json:"msg"`
-	}{status, fmt.Sprintf(format, args...)})
+	w.WriteJson(&response{
+		Status: status,
+		Msg:    fmt.Sprintf(format, args...),
+	})
 }
 
 func (r *Controller) AddConnection(ctx context.Context, c net.Conn) {
