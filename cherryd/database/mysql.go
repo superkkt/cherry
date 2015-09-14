@@ -23,6 +23,7 @@ package database
 
 import (
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
@@ -587,6 +588,18 @@ func (r *MySQL) IPAddrs(networkID uint64) (addresses []network.IP, err error) {
 	return addresses, nil
 }
 
+func decodeMAC(s string) (net.HardwareAddr, error) {
+	v, err := hex.DecodeString(s)
+	if err != nil {
+		return nil, err
+	}
+	if len(v) != 6 {
+		return nil, fmt.Errorf("invalid MAC address: %v", v)
+	}
+
+	return net.HardwareAddr(v), nil
+}
+
 func (r *MySQL) Hosts() (hosts []network.RegisteredHost, err error) {
 	f := func(db *sql.DB) error {
 		qry := `SELECT A.id, CONCAT(INET_NTOA(B.address), '/', E.mask) AS address, CONCAT(D.description, '/', C.number) AS port, HEX(mac) AS mac, A.description 
@@ -607,6 +620,11 @@ func (r *MySQL) Hosts() (hosts []network.RegisteredHost, err error) {
 			if err := rows.Scan(&v.ID, &v.IP, &v.Port, &v.MAC, &v.Description); err != nil {
 				return err
 			}
+			mac, err := decodeMAC(v.MAC)
+			if err != nil {
+				return err
+			}
+			v.MAC = mac.String()
 			hosts = append(hosts, v)
 		}
 
@@ -640,6 +658,11 @@ func (r *MySQL) Host(id uint64) (host network.RegisteredHost, ok bool, err error
 		if err := row.Scan(&host.ID, &host.IP, &host.Port, &host.MAC, &host.Description); err != nil {
 			return err
 		}
+		mac, err := decodeMAC(host.MAC)
+		if err != nil {
+			return err
+		}
+		host.MAC = mac.String()
 		ok = true
 
 		return nil
