@@ -24,13 +24,15 @@ package proxyarp
 import (
 	"bytes"
 	"fmt"
+	"net"
+	"strconv"
+
 	"github.com/dlintw/goconf"
 	"github.com/superkkt/cherry/cherryd/log"
 	"github.com/superkkt/cherry/cherryd/network"
 	"github.com/superkkt/cherry/cherryd/northbound/app"
 	"github.com/superkkt/cherry/cherryd/openflow"
 	"github.com/superkkt/cherry/cherryd/protocol"
-	"net"
 )
 
 type ProxyARP struct {
@@ -42,6 +44,8 @@ type ProxyARP struct {
 
 type database interface {
 	MAC(ip net.IP) (mac net.HardwareAddr, ok bool, err error)
+	ToggleDeviceVIP(swDPID uint64) ([]VIP, error)
+	TogglePortVIP(swDPID uint64, portNum uint16) ([]VIP, error)
 }
 
 func New(conf *goconf.ConfigFile, log log.Logger, db database) *ProxyARP {
@@ -85,6 +89,7 @@ func (r *ProxyARP) OnPacketIn(finder network.Finder, ingress *network.Port, eth 
 		r.log.Info(fmt.Sprintf("ProxyARP: drop ARP packet whose type is not a request.. ingress=%v (%v)", ingress.ID(), arp))
 		return nil
 	}
+
 	mac, ok, err := r.db.MAC(arp.TPA)
 	if err != nil {
 		return err
@@ -101,6 +106,7 @@ func (r *ProxyARP) OnPacketIn(finder network.Finder, ingress *network.Port, eth 
 		return err
 	}
 	r.log.Debug(fmt.Sprintf("ProxyARP: sending ARP reply to %v..", ingress.ID()))
+
 	return sendARPReply(ingress, reply)
 }
 
@@ -160,4 +166,52 @@ func makeARPReply(request *protocol.ARP, mac net.HardwareAddr) ([]byte, error) {
 
 func (r *ProxyARP) String() string {
 	return fmt.Sprintf("%v", r.Name())
+}
+
+type VIP struct {
+	Address net.IP
+	MAC     net.HardwareAddr
+}
+
+func (r *ProxyARP) OnPortDown(finder network.Finder, port *network.Port) error {
+	dpid, err := strconv.ParseUint(port.Device().ID(), 10, 64)
+	if err != nil {
+		r.log.Err(fmt.Sprintf("ProxyARP: invalid switch DPID: %v", port.Device().ID()))
+		return r.BaseProcessor.OnPortDown(finder, port)
+	}
+	vips, err := r.db.TogglePortVIP(dpid, uint16(port.Number()))
+	if err != nil {
+		r.log.Err(fmt.Sprintf("ProxyARP: failed to toggle VIP hosts: %v", err))
+		return r.BaseProcessor.OnPortDown(finder, port)
+	}
+	r.broadcastARPAnnouncement(finder, vips)
+
+	return r.BaseProcessor.OnPortDown(finder, port)
+}
+
+func (r *ProxyARP) OnDeviceDown(finder network.Finder, device *network.Device) error {
+	dpid, err := strconv.ParseUint(device.ID(), 10, 64)
+	if err != nil {
+		r.log.Err(fmt.Sprintf("ProxyARP: invalid switch DPID: %v", device.ID()))
+		return r.BaseProcessor.OnDeviceDown(finder, device)
+	}
+	vips, err := r.db.ToggleDeviceVIP(dpid)
+	if err != nil {
+		r.log.Err(fmt.Sprintf("ProxyARP: failed to toggle VIP hosts: %v", err))
+		return r.BaseProcessor.OnDeviceDown(finder, device)
+	}
+	r.broadcastARPAnnouncement(finder, vips)
+
+	return r.BaseProcessor.OnDeviceDown(finder, device)
+}
+
+func (r *ProxyARP) broadcastARPAnnouncement(finder network.Finder, vips []VIP) {
+	for _, v := range vips {
+		for _, d := range finder.Devices() {
+			if err := d.SendARPAnnouncement(v.Address, v.MAC); err != nil {
+				r.log.Err(fmt.Sprintf("ProxyARP: failed to broadcast ARP announcement: %v", err))
+				continue
+			}
+		}
+	}
 }

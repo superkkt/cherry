@@ -40,6 +40,7 @@ type database interface {
 	AddHost(Host) (hostID uint64, err error)
 	AddNetwork(net.IP, net.IPMask) (netID uint64, err error)
 	AddSwitch(Switch) (swID uint64, err error)
+	AddVIP(VIP) (id uint64, cidr string, err error)
 	Host(hostID uint64) (host RegisteredHost, ok bool, err error)
 	Hosts() ([]RegisteredHost, error)
 	IPAddrs(networkID uint64) ([]IP, error)
@@ -49,9 +50,12 @@ type database interface {
 	RemoveHost(id uint64) (ok bool, err error)
 	RemoveNetwork(id uint64) (ok bool, err error)
 	RemoveSwitch(id uint64) (ok bool, err error)
+	RemoveVIP(id uint64) (ok bool, err error)
 	Switch(dpid uint64) (sw RegisteredSwitch, ok bool, err error)
 	Switches() ([]RegisteredSwitch, error)
 	SwitchPorts(switchID uint64) ([]SwitchPort, error)
+	VIPActiveMAC(id uint64) (mac net.HardwareAddr, ok bool, err error)
+	VIPs() ([]RegisteredVIP, error)
 }
 
 type EventListener interface {
@@ -113,6 +117,9 @@ func (r *Controller) serveREST(conf *goconf.ConfigFile) {
 		rest.Get("/api/v1/host", r.listHost),
 		rest.Post("/api/v1/host", r.addHost),
 		rest.Delete("/api/v1/host/:id", r.removeHost),
+		rest.Get("/api/v1/vip", r.listVIP),
+		rest.Post("/api/v1/vip", r.addVIP),
+		rest.Delete("/api/v1/vip/:id", r.removeVIP),
 	)
 	if err != nil {
 		r.log.Err(fmt.Sprintf("Controller: making a REST router: %v", err))
@@ -510,25 +517,25 @@ func (r *Controller) addHost(w rest.ResponseWriter, req *rest.Request) {
 	}
 
 	// Sends ARP announcement to all hosts to update their ARP caches
-	if err := r.sendARPAnnouncement(regHost); err != nil {
+	if err := r.sendARPAnnouncement(regHost.IP, regHost.MAC); err != nil {
 		r.log.Err(fmt.Sprintf("Controller: REST: failed to send ARP announcement for newly added host (ID=%v): %v", hostID, err))
 		return
 	}
 }
 
-func (r *Controller) sendARPAnnouncement(host RegisteredHost) error {
-	ip, _, err := net.ParseCIDR(host.IP)
+func (r *Controller) sendARPAnnouncement(cidr string, mac string) error {
+	ip, _, err := net.ParseCIDR(cidr)
 	if err != nil {
-		return fmt.Errorf("invalid IP address: %v", host.IP)
+		return fmt.Errorf("invalid IP address: %v", cidr)
 	}
-	mac, err := net.ParseMAC(host.MAC)
+	hwAddr, err := net.ParseMAC(mac)
 	if err != nil {
 		return err
 	}
 
 	for _, sw := range r.topo.Devices() {
-		r.log.Info(fmt.Sprintf("Controller: REST: sending ARP announcement for a host (IP: %v, MAC: %v) via %v", ip, mac, sw.ID()))
-		if err := sw.SendARPAnnouncement(ip, mac); err != nil {
+		r.log.Info(fmt.Sprintf("Controller: REST: sending ARP announcement for a host (IP: %v, MAC: %v) via %v", ip, hwAddr, sw.ID()))
+		if err := sw.SendARPAnnouncement(ip, hwAddr); err != nil {
 			r.log.Err(fmt.Sprintf("Controller: REST: failed to send ARP announcement via %v: %v", sw.ID(), err))
 			continue
 		}
@@ -567,8 +574,110 @@ func (r *Controller) removeHost(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 	r.log.Debug(fmt.Sprintf("Controller: REST: removed the host whose MAC address is %v", mac))
-
 	// Remove flows whose destination MAC is one we are removing when we remove a host
+	r.removeFlows(mac)
+
+	w.WriteHeader(http.StatusOK)
+}
+
+type VIP struct {
+	IPID          uint64 `json:"ip_id"`
+	ActiveHostID  uint64 `json:"active_host_id"`
+	StandbyHostID uint64 `json:"standby_host_id"`
+	Description   string `json:"description"`
+}
+
+type RegisteredVIP struct {
+	ID          uint64         `json:"id"`
+	IP          string         `json:"ip"`
+	ActiveHost  RegisteredHost `json:"active_host"`
+	StandbyHost RegisteredHost `json:"standby_host"`
+	Description string         `json:"description"`
+}
+
+func (r *Controller) listVIP(w rest.ResponseWriter, req *rest.Request) {
+	vip, err := r.db.VIPs()
+	if err != nil {
+		r.log.Info(fmt.Sprintf("Controller: REST: failed to query database: %v", err))
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	w.WriteJson(&struct {
+		VIP []RegisteredVIP `json:"vip"`
+	}{vip})
+}
+
+func (r *Controller) addVIP(w rest.ResponseWriter, req *rest.Request) {
+	vip := VIP{}
+	if err := req.DecodeJsonPayload(&vip); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	r.log.Info(fmt.Sprintf("Controller: REST: adding a new VIP (%+v)", vip))
+	id, cidr, err := r.db.AddVIP(vip)
+	if err != nil {
+		r.log.Info(fmt.Sprintf("Controller: REST: failed to query database: %v", err))
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	r.log.Info(fmt.Sprintf("Controller: REST: added the new VIP (%+v)", vip))
+
+	w.WriteJson(&struct {
+		ID uint64 `json:"vip_id"`
+	}{id})
+
+	active, ok, err := r.db.Host(vip.ActiveHostID)
+	if err != nil {
+		r.log.Err(fmt.Sprintf("Controller: REST: failed to query active VIP host: %v", err))
+		return
+	}
+	if !ok {
+		r.log.Err(fmt.Sprintf("Controller: REST: unknown active VIP host (ID=%v)", vip.ActiveHostID))
+		return
+	}
+
+	// Sends ARP announcement to all hosts to update their ARP caches (IP = VIP, MAC = Active's MAC)
+	if err := r.sendARPAnnouncement(cidr, active.MAC); err != nil {
+		r.log.Err(fmt.Sprintf("Controller: REST: failed to send ARP announcement for newly added VIP (ID=%v): %v", id, err))
+		return
+	}
+}
+
+func (r *Controller) removeVIP(w rest.ResponseWriter, req *rest.Request) {
+	id, err := strconv.ParseUint(req.PathParam("id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	mac, ok, err := r.db.VIPActiveMAC(id)
+	if err != nil {
+		r.log.Info(fmt.Sprintf("Controller: REST: failed to query database: %v", err))
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	if !ok {
+		writeError(w, http.StatusNotFound, errors.New("unknown VIP active host"))
+		return
+	}
+
+	r.log.Debug(fmt.Sprintf("Controller: REST: removing a VIP (ID=%v)", id))
+	_, err = r.db.RemoveVIP(id)
+	if err != nil {
+		r.log.Info(fmt.Sprintf("Controller: REST: failed to query database: %v", err))
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	r.log.Debug(fmt.Sprintf("Controller: REST: removed the VIP (ID=%v)", id))
+	// Remove flows whose destination MAC address is same with the active VIP host's one
+	r.removeFlows(mac)
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (r *Controller) removeFlows(mac net.HardwareAddr) {
 	for _, sw := range r.topo.Devices() {
 		f := sw.Factory()
 		match, err := f.NewMatch()
@@ -586,8 +695,6 @@ func (r *Controller) removeHost(w rest.ResponseWriter, req *rest.Request) {
 			continue
 		}
 	}
-
-	w.WriteHeader(http.StatusOK)
 }
 
 func writeError(w rest.ResponseWriter, status int, err error) {
