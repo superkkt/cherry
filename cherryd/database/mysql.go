@@ -778,6 +778,70 @@ func (r *MySQL) RemoveHost(id uint64) (ok bool, err error) {
 	return ok, nil
 }
 
+func (r *MySQL) ToggleVIP(id uint64) (ip net.IP, mac net.HardwareAddr, err error) {
+	f := func(db *sql.DB) error {
+		tx, err := db.Begin()
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+
+		vip, err := getVIP(tx, id)
+		if err != nil {
+			return err
+		}
+		ip = vip.address
+		if err := swapVIPHosts(tx, *vip); err != nil {
+			return err
+		}
+		// Get standby's MAC address as the standby host will be active soon!
+		mac, err = hostMAC(tx, vip.standby)
+		if err != nil {
+			return err
+		}
+
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+
+		return nil
+	}
+	if err = r.query(f); err != nil {
+		return nil, nil, err
+	}
+
+	return ip, mac, nil
+}
+
+func getVIP(tx *sql.Tx, id uint64) (*vip, error) {
+	qry := `SELECT A.id, INET_NTOA(B.address), A.active_host_id, A.standby_host_id 
+		FROM vip A 
+		JOIN ip B ON A.ip_id = B.id 
+		WHERE A.id = ? 
+		FOR UPDATE`
+	row, err := tx.Query(qry, id)
+	if err != nil {
+		return nil, err
+	}
+	defer row.Close()
+	// Emptry row?
+	if !row.Next() {
+		return nil, fmt.Errorf("unknown VIP (ID=%v)", id)
+	}
+
+	v := &vip{}
+	var address string
+	if err := row.Scan(&v.id, &address, &v.active, &v.standby); err != nil {
+		return nil, err
+	}
+	v.address = net.ParseIP(address)
+	if v.address == nil {
+		return nil, fmt.Errorf("invalid IPv4 address: %v", address)
+	}
+
+	return v, nil
+}
+
 func (r *MySQL) TogglePortVIP(swDPID uint64, portNum uint16) (result []proxyarp.VIP, err error) {
 	f := func(db *sql.DB) error {
 		tx, err := db.Begin()
@@ -795,7 +859,7 @@ func (r *MySQL) TogglePortVIP(swDPID uint64, portNum uint16) (result []proxyarp.
 			return err
 		}
 		for _, v := range vips {
-			if err := updateVIP(tx, v); err != nil {
+			if err := swapVIPHosts(tx, v); err != nil {
 				return err
 			}
 			// Get standby's MAC address as the standby host will be active soon!
@@ -832,7 +896,7 @@ func (r *MySQL) ToggleDeviceVIP(swDPID uint64) (result []proxyarp.VIP, err error
 			return err
 		}
 		for _, v := range vips {
-			if err := updateVIP(tx, v); err != nil {
+			if err := swapVIPHosts(tx, v); err != nil {
 				return err
 			}
 			// Get standby's MAC address as the standby host will be active soon!
@@ -952,7 +1016,7 @@ func getDeviceVIPs(tx *sql.Tx, swDPID uint64) (result []vip, err error) {
 	return result, nil
 }
 
-func updateVIP(tx *sql.Tx, v vip) error {
+func swapVIPHosts(tx *sql.Tx, v vip) error {
 	qry := "UPDATE vip SET active_host_id = ?, standby_host_id = ? WHERE id = ?"
 	// Swap active and standby hosts
 	_, err := tx.Exec(qry, v.standby, v.active, v.id)

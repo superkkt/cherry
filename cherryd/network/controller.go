@@ -54,6 +54,7 @@ type database interface {
 	Switch(dpid uint64) (sw Switch, ok bool, err error)
 	Switches() ([]Switch, error)
 	SwitchPorts(switchID uint64) ([]SwitchPort, error)
+	ToggleVIP(id uint64) (net.IP, net.HardwareAddr, error)
 	VIPs() ([]VIP, error)
 }
 
@@ -119,6 +120,7 @@ func (r *Controller) serveREST(conf *goconf.ConfigFile) {
 		rest.Get("/api/v1/vip", r.listVIP),
 		rest.Post("/api/v1/vip", r.addVIP),
 		rest.Delete("/api/v1/vip/:id", r.removeVIP),
+		rest.Put("/api/v1/vip/:id", r.toggleVIP),
 	)
 	if err != nil {
 		r.log.Err(fmt.Sprintf("Controller: making a REST router: %v", err))
@@ -694,6 +696,34 @@ func (r *Controller) removeFlows(mac net.HardwareAddr) {
 			continue
 		}
 	}
+}
+
+func (r *Controller) toggleVIP(w rest.ResponseWriter, req *rest.Request) {
+	id, err := strconv.ParseUint(req.PathParam("id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	r.log.Debug(fmt.Sprintf("Controller: REST: toggling a VIP (ID=%v)", id))
+	// Toggle VIP and get active server's IP and MAC addresses
+	ip, mac, err := r.db.ToggleVIP(id)
+	if err != nil {
+		r.log.Info(fmt.Sprintf("Controller: REST: failed to query database: %v", err))
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	r.log.Debug(fmt.Sprintf("Controller: REST: toggled the VIP (ID=%v)", id))
+
+	for _, sw := range r.topo.Devices() {
+		r.log.Info(fmt.Sprintf("Controller: REST: sending ARP announcement for a host (IP: %v, MAC: %v) via %v", ip, mac, sw.ID()))
+		if err := sw.SendARPAnnouncement(ip, mac); err != nil {
+			r.log.Err(fmt.Sprintf("Controller: REST: failed to send ARP announcement via %v: %v", sw.ID(), err))
+			continue
+		}
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func writeError(w rest.ResponseWriter, status int, err error) {
