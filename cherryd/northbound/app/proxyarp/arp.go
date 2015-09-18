@@ -185,6 +185,7 @@ func (r *ProxyARP) OnPortDown(finder network.Finder, port *network.Port) error {
 		return r.BaseProcessor.OnPortDown(finder, port)
 	}
 	r.broadcastARPAnnouncement(finder, vips)
+	r.log.Info(fmt.Sprintf("ProxyARP: toggled VIPs connected to the %v port", port.ID()))
 
 	return r.BaseProcessor.OnPortDown(finder, port)
 }
@@ -201,6 +202,7 @@ func (r *ProxyARP) OnDeviceDown(finder network.Finder, device *network.Device) e
 		return r.BaseProcessor.OnDeviceDown(finder, device)
 	}
 	r.broadcastARPAnnouncement(finder, vips)
+	r.log.Info(fmt.Sprintf("ProxyARP: toggled VIPs connected to the %v device", device.ID()))
 
 	return r.BaseProcessor.OnDeviceDown(finder, device)
 }
