@@ -1098,7 +1098,7 @@ func (r *MySQL) AddVIP(vip network.VIPParam) (id uint64, cidr string, err error)
 }
 
 func addNewVIP(tx *sql.Tx, vip network.VIPParam) (uint64, error) {
-	qry := "INSERT INTO host (ip_id, active_host_id, standby_host_id, description) VALUES (?, ?, ?, ?)"
+	qry := "INSERT INTO vip (ip_id, active_host_id, standby_host_id, description) VALUES (?, ?, ?, ?)"
 	result, err := tx.Exec(qry, vip.IPID, vip.ActiveHostID, vip.StandbyHostID, vip.Description)
 	if err != nil {
 		return 0, err
