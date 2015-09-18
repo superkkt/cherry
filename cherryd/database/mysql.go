@@ -1133,40 +1133,6 @@ func getIP(tx *sql.Tx, id uint64) (cidr string, err error) {
 	return cidr, nil
 }
 
-func (r *MySQL) VIPActiveMAC(id uint64) (mac net.HardwareAddr, ok bool, err error) {
-	f := func(db *sql.DB) error {
-		qry := `SELECT HEX(B.mac) 
-			FROM vip A 
-			JOIN host B ON A.active_host_id = B.id 
-			WHERE A.id = ?`
-		row, err := db.Query(qry, id)
-		if err != nil {
-			return err
-		}
-		defer row.Close()
-
-		if !row.Next() {
-			return nil
-		}
-		var v string
-		if err := row.Scan(&v); err != nil {
-			return err
-		}
-		mac, err = decodeMAC(v)
-		if err != nil {
-			return err
-		}
-		ok = true
-
-		return nil
-	}
-	if err = r.query(f); err != nil {
-		return nil, false, err
-	}
-
-	return mac, ok, nil
-}
-
 func (r *MySQL) RemoveVIP(id uint64) (ok bool, err error) {
 	f := func(db *sql.DB) error {
 		result, err := db.Exec("DELETE FROM vip WHERE id = ?", id)

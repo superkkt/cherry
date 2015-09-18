@@ -54,7 +54,6 @@ type database interface {
 	Switch(dpid uint64) (sw Switch, ok bool, err error)
 	Switches() ([]Switch, error)
 	SwitchPorts(switchID uint64) ([]SwitchPort, error)
-	VIPActiveMAC(id uint64) (mac net.HardwareAddr, ok bool, err error)
 	VIPs() ([]VIP, error)
 }
 
@@ -665,17 +664,6 @@ func (r *Controller) removeVIP(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	mac, ok, err := r.db.VIPActiveMAC(id)
-	if err != nil {
-		r.log.Info(fmt.Sprintf("Controller: REST: failed to query database: %v", err))
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	if !ok {
-		writeError(w, http.StatusNotFound, errors.New("unknown VIP active host"))
-		return
-	}
-
 	r.log.Debug(fmt.Sprintf("Controller: REST: removing a VIP (ID=%v)", id))
 	_, err = r.db.RemoveVIP(id)
 	if err != nil {
@@ -684,8 +672,6 @@ func (r *Controller) removeVIP(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 	r.log.Debug(fmt.Sprintf("Controller: REST: removed the VIP (ID=%v)", id))
-	// Remove flows whose destination MAC address is same with the active VIP host's one
-	r.removeFlows(mac)
 
 	w.WriteHeader(http.StatusOK)
 }
