@@ -261,7 +261,7 @@ func (r *MySQL) Location(mac net.HardwareAddr) (dpid string, port uint32, ok boo
 	return dpid, port, ok, err
 }
 
-func (r *MySQL) Switches() (sw []network.RegisteredSwitch, err error) {
+func (r *MySQL) Switches() (sw []network.Switch, err error) {
 	f := func(db *sql.DB) error {
 		rows, err := db.Query("SELECT id, dpid, n_ports, first_port, description FROM switch ORDER BY id DESC")
 		if err != nil {
@@ -270,7 +270,7 @@ func (r *MySQL) Switches() (sw []network.RegisteredSwitch, err error) {
 		defer rows.Close()
 
 		for rows.Next() {
-			v := network.RegisteredSwitch{}
+			v := network.Switch{}
 			if err := rows.Scan(&v.ID, &v.DPID, &v.NumPorts, &v.FirstPort, &v.Description); err != nil {
 				return err
 			}
@@ -286,7 +286,7 @@ func (r *MySQL) Switches() (sw []network.RegisteredSwitch, err error) {
 	return sw, nil
 }
 
-func (r *MySQL) AddSwitch(sw network.Switch) (swID uint64, err error) {
+func (r *MySQL) AddSwitch(sw network.SwitchParam) (swID uint64, err error) {
 	f := func(db *sql.DB) error {
 		tx, err := db.Begin()
 		if err != nil {
@@ -314,7 +314,7 @@ func (r *MySQL) AddSwitch(sw network.Switch) (swID uint64, err error) {
 	return swID, nil
 }
 
-func (r *MySQL) addSwitch(tx *sql.Tx, sw network.Switch) (swID uint64, err error) {
+func (r *MySQL) addSwitch(tx *sql.Tx, sw network.SwitchParam) (swID uint64, err error) {
 	qry := "INSERT INTO switch (dpid, n_ports, first_port, description) VALUES (?, ?, ?, ?)"
 	result, err := tx.Exec(qry, sw.DPID, sw.NumPorts, sw.FirstPort, sw.Description)
 	if err != nil {
@@ -344,7 +344,7 @@ func (r *MySQL) addPorts(tx *sql.Tx, swID uint64, firstPort, n_ports uint16) err
 	return nil
 }
 
-func (r *MySQL) Switch(dpid uint64) (sw network.RegisteredSwitch, ok bool, err error) {
+func (r *MySQL) Switch(dpid uint64) (sw network.Switch, ok bool, err error) {
 	f := func(db *sql.DB) error {
 		row, err := db.Query("SELECT id, dpid, n_ports, first_port, description FROM switch WHERE dpid = ?", dpid)
 		if err != nil {
@@ -364,7 +364,7 @@ func (r *MySQL) Switch(dpid uint64) (sw network.RegisteredSwitch, ok bool, err e
 		return nil
 	}
 	if err = r.query(f); err != nil {
-		return network.RegisteredSwitch{}, false, err
+		return network.Switch{}, false, err
 	}
 
 	return sw, ok, nil
@@ -425,7 +425,7 @@ func (r *MySQL) SwitchPorts(swID uint64) (ports []network.SwitchPort, err error)
 	return ports, nil
 }
 
-func (r *MySQL) Networks() (networks []network.RegisteredNetwork, err error) {
+func (r *MySQL) Networks() (networks []network.Network, err error) {
 	f := func(db *sql.DB) error {
 		qry := `SELECT id, INET_NTOA(address), mask
 			FROM network
@@ -437,7 +437,7 @@ func (r *MySQL) Networks() (networks []network.RegisteredNetwork, err error) {
 		defer rows.Close()
 
 		for rows.Next() {
-			v := network.RegisteredNetwork{}
+			v := network.Network{}
 			if err := rows.Scan(&v.ID, &v.Address, &v.Mask); err != nil {
 				return err
 			}
@@ -514,7 +514,7 @@ func (r *MySQL) addIPAddrs(tx *sql.Tx, netID uint64, addr net.IP, mask net.IPMas
 	return nil
 }
 
-func (r *MySQL) Network(addr net.IP) (n network.RegisteredNetwork, ok bool, err error) {
+func (r *MySQL) Network(addr net.IP) (n network.Network, ok bool, err error) {
 	f := func(db *sql.DB) error {
 		row, err := db.Query("SELECT id, INET_NTOA(address), mask FROM network WHERE address = INET_ATON(?)", addr.String())
 		if err != nil {
@@ -534,7 +534,7 @@ func (r *MySQL) Network(addr net.IP) (n network.RegisteredNetwork, ok bool, err 
 		return nil
 	}
 	if err = r.query(f); err != nil {
-		return network.RegisteredNetwork{}, false, err
+		return network.Network{}, false, err
 	}
 
 	return n, ok, nil
@@ -610,7 +610,7 @@ func decodeMAC(s string) (net.HardwareAddr, error) {
 	return net.HardwareAddr(v), nil
 }
 
-func (r *MySQL) Hosts() (hosts []network.RegisteredHost, err error) {
+func (r *MySQL) Hosts() (hosts []network.Host, err error) {
 	f := func(db *sql.DB) error {
 		qry := `SELECT A.id, CONCAT(INET_NTOA(B.address), '/', E.mask), CONCAT(D.description, '/', C.number), HEX(mac), A.description 
 			FROM host A 
@@ -626,7 +626,7 @@ func (r *MySQL) Hosts() (hosts []network.RegisteredHost, err error) {
 		defer rows.Close()
 
 		for rows.Next() {
-			v := network.RegisteredHost{}
+			v := network.Host{}
 			if err := rows.Scan(&v.ID, &v.IP, &v.Port, &v.MAC, &v.Description); err != nil {
 				return err
 			}
@@ -647,7 +647,7 @@ func (r *MySQL) Hosts() (hosts []network.RegisteredHost, err error) {
 	return hosts, nil
 }
 
-func (r *MySQL) Host(id uint64) (host network.RegisteredHost, ok bool, err error) {
+func (r *MySQL) Host(id uint64) (host network.Host, ok bool, err error) {
 	f := func(db *sql.DB) error {
 		qry := `SELECT A.id, CONCAT(INET_NTOA(B.address), '/', E.mask), CONCAT(D.description, '/', C.number), HEX(mac), A.description 
 			FROM host A 
@@ -678,13 +678,13 @@ func (r *MySQL) Host(id uint64) (host network.RegisteredHost, ok bool, err error
 		return nil
 	}
 	if err = r.query(f); err != nil {
-		return network.RegisteredHost{}, false, err
+		return network.Host{}, false, err
 	}
 
 	return host, ok, nil
 }
 
-func (r *MySQL) AddHost(host network.Host) (hostID uint64, err error) {
+func (r *MySQL) AddHost(host network.HostParam) (hostID uint64, err error) {
 	f := func(db *sql.DB) error {
 		tx, err := db.Begin()
 		if err != nil {
@@ -717,7 +717,7 @@ func (r *MySQL) AddHost(host network.Host) (hostID uint64, err error) {
 	return hostID, nil
 }
 
-func addNewHost(tx *sql.Tx, host network.Host) (uint64, error) {
+func addNewHost(tx *sql.Tx, host network.HostParam) (uint64, error) {
 	qry := "INSERT INTO host (ip_id, port_id, mac, description) VALUES (?, ?, UNHEX(?), ?)"
 	result, err := tx.Exec(qry, host.IPID, host.PortID, normalizeMAC(host.MAC), host.Description)
 	if err != nil {
@@ -986,7 +986,7 @@ func hostMAC(tx *sql.Tx, hostID uint64) (net.HardwareAddr, error) {
 	return mac, nil
 }
 
-func (r *MySQL) VIPs() (result []network.RegisteredVIP, err error) {
+func (r *MySQL) VIPs() (result []network.VIP, err error) {
 	vips, err := r.getVIPs()
 	if err != nil {
 		return nil, err
@@ -1009,7 +1009,7 @@ func (r *MySQL) VIPs() (result []network.RegisteredVIP, err error) {
 			return nil, fmt.Errorf("unknown standby host (ID=%v)", v.standby)
 		}
 
-		result = append(result, network.RegisteredVIP{
+		result = append(result, network.VIP{
 			ID:          v.id,
 			IP:          v.address,
 			ActiveHost:  active,
@@ -1060,7 +1060,7 @@ func (r *MySQL) getVIPs() (result []registeredVIP, err error) {
 	return result, nil
 }
 
-func (r *MySQL) AddVIP(vip network.VIP) (id uint64, cidr string, err error) {
+func (r *MySQL) AddVIP(vip network.VIPParam) (id uint64, cidr string, err error) {
 	f := func(db *sql.DB) error {
 		tx, err := db.Begin()
 		if err != nil {
@@ -1097,7 +1097,7 @@ func (r *MySQL) AddVIP(vip network.VIP) (id uint64, cidr string, err error) {
 	return id, cidr, nil
 }
 
-func addNewVIP(tx *sql.Tx, vip network.VIP) (uint64, error) {
+func addNewVIP(tx *sql.Tx, vip network.VIPParam) (uint64, error) {
 	qry := "INSERT INTO host (ip_id, active_host_id, standby_host_id, description) VALUES (?, ?, ?, ?)"
 	result, err := tx.Exec(qry, vip.IPID, vip.ActiveHostID, vip.StandbyHostID, vip.Description)
 	if err != nil {

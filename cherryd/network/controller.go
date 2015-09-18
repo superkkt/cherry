@@ -37,25 +37,25 @@ import (
 )
 
 type database interface {
-	AddHost(Host) (hostID uint64, err error)
+	AddHost(HostParam) (hostID uint64, err error)
 	AddNetwork(net.IP, net.IPMask) (netID uint64, err error)
-	AddSwitch(Switch) (swID uint64, err error)
-	AddVIP(VIP) (id uint64, cidr string, err error)
-	Host(hostID uint64) (host RegisteredHost, ok bool, err error)
-	Hosts() ([]RegisteredHost, error)
+	AddSwitch(SwitchParam) (swID uint64, err error)
+	AddVIP(VIPParam) (id uint64, cidr string, err error)
+	Host(hostID uint64) (host Host, ok bool, err error)
+	Hosts() ([]Host, error)
 	IPAddrs(networkID uint64) ([]IP, error)
 	Location(mac net.HardwareAddr) (dpid string, port uint32, ok bool, err error)
-	Network(net.IP) (n RegisteredNetwork, ok bool, err error)
-	Networks() ([]RegisteredNetwork, error)
+	Network(net.IP) (n Network, ok bool, err error)
+	Networks() ([]Network, error)
 	RemoveHost(id uint64) (ok bool, err error)
 	RemoveNetwork(id uint64) (ok bool, err error)
 	RemoveSwitch(id uint64) (ok bool, err error)
 	RemoveVIP(id uint64) (ok bool, err error)
-	Switch(dpid uint64) (sw RegisteredSwitch, ok bool, err error)
-	Switches() ([]RegisteredSwitch, error)
+	Switch(dpid uint64) (sw Switch, ok bool, err error)
+	Switches() ([]Switch, error)
 	SwitchPorts(switchID uint64) ([]SwitchPort, error)
 	VIPActiveMAC(id uint64) (mac net.HardwareAddr, ok bool, err error)
-	VIPs() ([]RegisteredVIP, error)
+	VIPs() ([]VIP, error)
 }
 
 type EventListener interface {
@@ -183,14 +183,14 @@ func parseRESTConfig(conf *goconf.ConfigFile) (*restConfig, error) {
 	return c, nil
 }
 
-type Switch struct {
+type SwitchParam struct {
 	DPID        uint64 `json:"dpid"`
 	NumPorts    uint16 `json:"n_ports"`
 	FirstPort   uint16 `json:"first_port"`
 	Description string `json:"description"`
 }
 
-func (r *Switch) validate() error {
+func (r *SwitchParam) validate() error {
 	if r.NumPorts > 512 {
 		return errors.New("too many ports")
 	}
@@ -201,9 +201,9 @@ func (r *Switch) validate() error {
 	return nil
 }
 
-type RegisteredSwitch struct {
+type Switch struct {
 	ID uint64 `json:"id"`
-	Switch
+	SwitchParam
 }
 
 func (r *Controller) listSwitch(w rest.ResponseWriter, req *rest.Request) {
@@ -215,12 +215,12 @@ func (r *Controller) listSwitch(w rest.ResponseWriter, req *rest.Request) {
 	}
 
 	w.WriteJson(&struct {
-		Switches []RegisteredSwitch `json:"switches"`
+		Switches []Switch `json:"switches"`
 	}{sw})
 }
 
 func (r *Controller) addSwitch(w rest.ResponseWriter, req *rest.Request) {
-	sw := Switch{}
+	sw := SwitchParam{}
 	if err := req.DecodeJsonPayload(&sw); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
@@ -310,12 +310,12 @@ func (r *Controller) listPort(w rest.ResponseWriter, req *rest.Request) {
 	}{ports})
 }
 
-type Network struct {
+type NetworkParam struct {
 	Address string `json:"address"`
 	Mask    uint8  `json:"mask"`
 }
 
-func (r *Network) validate() error {
+func (r *NetworkParam) validate() error {
 	if net.ParseIP(r.Address) == nil {
 		return errors.New("invalid network address")
 	}
@@ -326,9 +326,9 @@ func (r *Network) validate() error {
 	return nil
 }
 
-type RegisteredNetwork struct {
+type Network struct {
 	ID uint64 `json:"id"`
-	Network
+	NetworkParam
 }
 
 func (r *Controller) listNetwork(w rest.ResponseWriter, req *rest.Request) {
@@ -340,12 +340,12 @@ func (r *Controller) listNetwork(w rest.ResponseWriter, req *rest.Request) {
 	}
 
 	w.WriteJson(&struct {
-		Networks []RegisteredNetwork `json:"networks"`
+		Networks []Network `json:"networks"`
 	}{networks})
 }
 
 func (r *Controller) addNetwork(w rest.ResponseWriter, req *rest.Request) {
-	network := Network{}
+	network := NetworkParam{}
 	if err := req.DecodeJsonPayload(&network); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
@@ -445,14 +445,14 @@ func (r *Controller) listIP(w rest.ResponseWriter, req *rest.Request) {
 	}{addresses})
 }
 
-type Host struct {
+type HostParam struct {
 	IPID        uint64 `json:"ip_id"`
 	PortID      uint64 `json:"port_id"`
 	MAC         string `json:"mac"`
 	Description string `json:"description"`
 }
 
-func (r *Host) validate() error {
+func (r *HostParam) validate() error {
 	_, err := net.ParseMAC(r.MAC)
 	if err != nil {
 		return err
@@ -461,7 +461,7 @@ func (r *Host) validate() error {
 	return nil
 }
 
-type RegisteredHost struct {
+type Host struct {
 	ID          string `json:"id"`
 	IP          string `json:"ip"`
 	Port        string `json:"port"`
@@ -478,12 +478,12 @@ func (r *Controller) listHost(w rest.ResponseWriter, req *rest.Request) {
 	}
 
 	w.WriteJson(&struct {
-		Hosts []RegisteredHost `json:"hosts"`
+		Hosts []Host `json:"hosts"`
 	}{hosts})
 }
 
 func (r *Controller) addHost(w rest.ResponseWriter, req *rest.Request) {
-	host := Host{}
+	host := HostParam{}
 	if err := req.DecodeJsonPayload(&host); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
@@ -580,19 +580,19 @@ func (r *Controller) removeHost(w rest.ResponseWriter, req *rest.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-type VIP struct {
+type VIPParam struct {
 	IPID          uint64 `json:"ip_id"`
 	ActiveHostID  uint64 `json:"active_host_id"`
 	StandbyHostID uint64 `json:"standby_host_id"`
 	Description   string `json:"description"`
 }
 
-type RegisteredVIP struct {
-	ID          uint64         `json:"id"`
-	IP          string         `json:"ip"`
-	ActiveHost  RegisteredHost `json:"active_host"`
-	StandbyHost RegisteredHost `json:"standby_host"`
-	Description string         `json:"description"`
+type VIP struct {
+	ID          uint64 `json:"id"`
+	IP          string `json:"ip"`
+	ActiveHost  Host   `json:"active_host"`
+	StandbyHost Host   `json:"standby_host"`
+	Description string `json:"description"`
 }
 
 func (r *Controller) listVIP(w rest.ResponseWriter, req *rest.Request) {
@@ -604,12 +604,12 @@ func (r *Controller) listVIP(w rest.ResponseWriter, req *rest.Request) {
 	}
 
 	w.WriteJson(&struct {
-		VIP []RegisteredVIP `json:"vip"`
+		VIP []VIP `json:"vip"`
 	}{vip})
 }
 
 func (r *Controller) addVIP(w rest.ResponseWriter, req *rest.Request) {
-	vip := VIP{}
+	vip := VIPParam{}
 	if err := req.DecodeJsonPayload(&vip); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
