@@ -587,6 +587,14 @@ type VIPParam struct {
 	Description   string `json:"description"`
 }
 
+func (r *VIPParam) validate() error {
+	if r.ActiveHostID == r.StandbyHostID {
+		return errors.New("same host for the active and standby")
+	}
+
+	return nil
+}
+
 type VIP struct {
 	ID          uint64 `json:"id"`
 	IP          string `json:"ip"`
@@ -611,6 +619,11 @@ func (r *Controller) listVIP(w rest.ResponseWriter, req *rest.Request) {
 func (r *Controller) addVIP(w rest.ResponseWriter, req *rest.Request) {
 	vip := VIPParam{}
 	if err := req.DecodeJsonPayload(&vip); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	if err := vip.validate(); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
