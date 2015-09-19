@@ -45,8 +45,8 @@ CREATE TABLE IF NOT EXISTS `host` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `ip` (`ip_id`),
   KEY `port_id` (`port_id`),
-  CONSTRAINT `host_ibfk_1` FOREIGN KEY (`ip_id`) REFERENCES `ip` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `host_ibfk_2` FOREIGN KEY (`port_id`) REFERENCES `port` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+  CONSTRAINT `host_ibfk_1` FOREIGN KEY (`ip_id`) REFERENCES `ip` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT `host_ibfk_2` FOREIGN KEY (`port_id`) REFERENCES `port` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!50003 SET @saved_cs_client      = @@character_set_client */ ;
@@ -114,7 +114,7 @@ CREATE TABLE IF NOT EXISTS `ip` (
   UNIQUE KEY `address` (`address`),
   KEY `used` (`used`),
   KEY `network_id` (`network_id`),
-  CONSTRAINT `ip_ibfk_1` FOREIGN KEY (`network_id`) REFERENCES `network` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+  CONSTRAINT `ip_ibfk_1` FOREIGN KEY (`network_id`) REFERENCES `network` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -180,9 +180,9 @@ CREATE TABLE IF NOT EXISTS `vip` (
   `description` varchar(255) NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `vip` (`ip_id`),
-  CONSTRAINT `vip_ibfk_1` FOREIGN KEY (`ip_id`) REFERENCES `ip` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `vip_ibfk_2` FOREIGN KEY (`active_host_id`) REFERENCES `host` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `vip_ibfk_3` FOREIGN KEY (`standby_host_id`) REFERENCES `host` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+  CONSTRAINT `vip_ibfk_1` FOREIGN KEY (`ip_id`) REFERENCES `ip` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT `vip_ibfk_2` FOREIGN KEY (`active_host_id`) REFERENCES `host` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT `vip_ibfk_3` FOREIGN KEY (`standby_host_id`) REFERENCES `host` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!50003 SET @saved_cs_client      = @@character_set_client */ ;

@@ -37,8 +37,9 @@ import (
 )
 
 const (
-	deadlockErrCode  uint16 = 1213
-	maxDeadlockRetry        = 5
+	deadlockErrCode   uint16 = 1213
+	foreignkeyErrCode uint16 = 1451
+	maxDeadlockRetry         = 5
 )
 
 type MySQL struct {
@@ -132,6 +133,15 @@ func isDeadlock(err error) bool {
 	}
 
 	return e.Number == deadlockErrCode
+}
+
+func isForeignkeyErr(err error) bool {
+	e, ok := err.(*mysql.MySQLError)
+	if !ok {
+		return false
+	}
+
+	return e.Number == foreignkeyErrCode
 }
 
 func isConnectionError(err error) bool {
@@ -387,6 +397,9 @@ func (r *MySQL) RemoveSwitch(id uint64) (ok bool, err error) {
 		return nil
 	}
 	if err = r.query(f); err != nil {
+		if isForeignkeyErr(err) {
+			return false, errors.New("failed to remove a switch: it has child hosts connected to this switch")
+		}
 		return false, err
 	}
 
@@ -557,6 +570,9 @@ func (r *MySQL) RemoveNetwork(id uint64) (ok bool, err error) {
 		return nil
 	}
 	if err = r.query(f); err != nil {
+		if isForeignkeyErr(err) {
+			return false, errors.New("failed to remove a network: it has child IP addresses that are being used by hosts")
+		}
 		return false, err
 	}
 
@@ -772,6 +788,9 @@ func (r *MySQL) RemoveHost(id uint64) (ok bool, err error) {
 		return nil
 	}
 	if err = r.query(f); err != nil {
+		if isForeignkeyErr(err) {
+			return false, errors.New("failed to remove a host: it has child VIP addresses")
+		}
 		return false, err
 	}
 
