@@ -109,17 +109,21 @@ func (r *Controller) serveREST(conf *goconf.ConfigFile) {
 		rest.Get("/api/v1/switch", r.listSwitch),
 		rest.Post("/api/v1/switch", r.addSwitch),
 		rest.Delete("/api/v1/switch/:id", r.removeSwitch),
+		rest.Options("/api/v1/switch/:id", r.allowOrigin),
 		rest.Get("/api/v1/port/:switchID", r.listPort),
 		rest.Get("/api/v1/network", r.listNetwork),
 		rest.Post("/api/v1/network", r.addNetwork),
 		rest.Delete("/api/v1/network/:id", r.removeNetwork),
+		rest.Options("/api/v1/network/:id", r.allowOrigin),
 		rest.Get("/api/v1/ip/:networkID", r.listIP),
 		rest.Get("/api/v1/host", r.listHost),
 		rest.Post("/api/v1/host", r.addHost),
 		rest.Delete("/api/v1/host/:id", r.removeHost),
+		rest.Options("/api/v1/host/:id", r.allowOrigin),
 		rest.Get("/api/v1/vip", r.listVIP),
 		rest.Post("/api/v1/vip", r.addVIP),
 		rest.Delete("/api/v1/vip/:id", r.removeVIP),
+		rest.Options("/api/v1/vip/:id", r.allowOrigin),
 		rest.Put("/api/v1/vip/:id", r.toggleVIP),
 	)
 	if err != nil {
@@ -184,6 +188,11 @@ func parseRESTConfig(conf *goconf.ConfigFile) (*restConfig, error) {
 	return c, nil
 }
 
+func (r *Controller) allowOrigin(w rest.ResponseWriter, req *rest.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "DELETE, PUT")
+}
+
 type SwitchParam struct {
 	DPID        uint64 `json:"dpid"`
 	NumPorts    uint16 `json:"n_ports"`
@@ -208,6 +217,8 @@ type Switch struct {
 }
 
 func (r *Controller) listSwitch(w rest.ResponseWriter, req *rest.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
 	sw, err := r.db.Switches()
 	if err != nil {
 		r.log.Info(fmt.Sprintf("Controller: REST: failed to query database: %v", err))
@@ -221,6 +232,8 @@ func (r *Controller) listSwitch(w rest.ResponseWriter, req *rest.Request) {
 }
 
 func (r *Controller) addSwitch(w rest.ResponseWriter, req *rest.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
 	sw := SwitchParam{}
 	if err := req.DecodeJsonPayload(&sw); err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -257,6 +270,8 @@ func (r *Controller) addSwitch(w rest.ResponseWriter, req *rest.Request) {
 }
 
 func (r *Controller) removeSwitch(w rest.ResponseWriter, req *rest.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
 	id, err := strconv.ParseUint(req.PathParam("id"), 10, 64)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -284,7 +299,7 @@ func (r *Controller) removeSwitch(w rest.ResponseWriter, req *rest.Request) {
 		}
 	}
 
-	w.WriteHeader(http.StatusOK)
+	w.WriteJson(&struct{}{})
 }
 
 type SwitchPort struct {
@@ -293,6 +308,8 @@ type SwitchPort struct {
 }
 
 func (r *Controller) listPort(w rest.ResponseWriter, req *rest.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
 	swID, err := strconv.ParseUint(req.PathParam("switchID"), 10, 64)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -333,6 +350,8 @@ type Network struct {
 }
 
 func (r *Controller) listNetwork(w rest.ResponseWriter, req *rest.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
 	networks, err := r.db.Networks()
 	if err != nil {
 		r.log.Info(fmt.Sprintf("Controller: REST: failed to query database: %v", err))
@@ -346,6 +365,8 @@ func (r *Controller) listNetwork(w rest.ResponseWriter, req *rest.Request) {
 }
 
 func (r *Controller) addNetwork(w rest.ResponseWriter, req *rest.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
 	network := NetworkParam{}
 	if err := req.DecodeJsonPayload(&network); err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -389,6 +410,8 @@ func (r *Controller) addNetwork(w rest.ResponseWriter, req *rest.Request) {
 }
 
 func (r *Controller) removeNetwork(w rest.ResponseWriter, req *rest.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
 	id, err := strconv.ParseUint(req.PathParam("id"), 10, 64)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -416,7 +439,7 @@ func (r *Controller) removeNetwork(w rest.ResponseWriter, req *rest.Request) {
 		}
 	}
 
-	w.WriteHeader(http.StatusOK)
+	w.WriteJson(&struct{}{})
 }
 
 type IP struct {
@@ -428,6 +451,8 @@ type IP struct {
 }
 
 func (r *Controller) listIP(w rest.ResponseWriter, req *rest.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
 	networkID, err := strconv.ParseUint(req.PathParam("networkID"), 10, 64)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -471,6 +496,8 @@ type Host struct {
 }
 
 func (r *Controller) listHost(w rest.ResponseWriter, req *rest.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
 	hosts, err := r.db.Hosts()
 	if err != nil {
 		r.log.Info(fmt.Sprintf("Controller: REST: failed to query database: %v", err))
@@ -484,6 +511,8 @@ func (r *Controller) listHost(w rest.ResponseWriter, req *rest.Request) {
 }
 
 func (r *Controller) addHost(w rest.ResponseWriter, req *rest.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
 	host := HostParam{}
 	if err := req.DecodeJsonPayload(&host); err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -546,6 +575,8 @@ func (r *Controller) sendARPAnnouncement(cidr string, mac string) error {
 }
 
 func (r *Controller) removeHost(w rest.ResponseWriter, req *rest.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
 	id, err := strconv.ParseUint(req.PathParam("id"), 10, 64)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -578,7 +609,7 @@ func (r *Controller) removeHost(w rest.ResponseWriter, req *rest.Request) {
 	// Remove flows whose destination MAC is one we are removing when we remove a host
 	r.removeFlows(mac)
 
-	w.WriteHeader(http.StatusOK)
+	w.WriteJson(&struct{}{})
 }
 
 type VIPParam struct {
@@ -605,6 +636,8 @@ type VIP struct {
 }
 
 func (r *Controller) listVIP(w rest.ResponseWriter, req *rest.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
 	vip, err := r.db.VIPs()
 	if err != nil {
 		r.log.Info(fmt.Sprintf("Controller: REST: failed to query database: %v", err))
@@ -618,6 +651,8 @@ func (r *Controller) listVIP(w rest.ResponseWriter, req *rest.Request) {
 }
 
 func (r *Controller) addVIP(w rest.ResponseWriter, req *rest.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
 	vip := VIPParam{}
 	if err := req.DecodeJsonPayload(&vip); err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -660,6 +695,8 @@ func (r *Controller) addVIP(w rest.ResponseWriter, req *rest.Request) {
 }
 
 func (r *Controller) removeVIP(w rest.ResponseWriter, req *rest.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
 	id, err := strconv.ParseUint(req.PathParam("id"), 10, 64)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -675,7 +712,7 @@ func (r *Controller) removeVIP(w rest.ResponseWriter, req *rest.Request) {
 	}
 	r.log.Debug(fmt.Sprintf("Controller: REST: removed the VIP (ID=%v)", id))
 
-	w.WriteHeader(http.StatusOK)
+	w.WriteJson(&struct{}{})
 }
 
 func (r *Controller) removeFlows(mac net.HardwareAddr) {
@@ -699,6 +736,8 @@ func (r *Controller) removeFlows(mac net.HardwareAddr) {
 }
 
 func (r *Controller) toggleVIP(w rest.ResponseWriter, req *rest.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
 	id, err := strconv.ParseUint(req.PathParam("id"), 10, 64)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -723,7 +762,7 @@ func (r *Controller) toggleVIP(w rest.ResponseWriter, req *rest.Request) {
 		}
 	}
 
-	w.WriteHeader(http.StatusOK)
+	w.WriteJson(&struct{}{})
 }
 
 func writeError(w rest.ResponseWriter, status int, err error) {
