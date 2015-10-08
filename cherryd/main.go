@@ -38,11 +38,13 @@ import (
 )
 
 const (
+	Version           = "1.0-RC"
 	defaultConfigFile = "/usr/local/etc/cherryd.conf"
 )
 
 var (
-	configFile = flag.String("config", defaultConfigFile, "Absolute path of the configuration file")
+	showVersion = flag.Bool("version", false, "Show program version and exit")
+	configFile  = flag.String("config", defaultConfigFile, "Absolute path of the configuration file")
 )
 
 func listen(ctx context.Context, log *log.Syslog, port int, controller *network.Controller) {
@@ -120,6 +122,11 @@ func createAppManager(config *Config, log *log.Syslog, db *database.MySQL) (*nor
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("Version: %v\n", Version)
+		os.Exit(0)
+	}
 
 	conf := NewConfig()
 	if err := conf.Read(); err != nil {
