@@ -1,19 +1,19 @@
 # Cherry
 
-Cherry is an OpenFlow controller written in Go that supports OpenFlow 1.0 and 1.3 protocols.
+Cherry is an OpenFlow controller written in Go that supports OpenFlow 1.0 and 1.3 protocols. This project is not designed for general purpose, instead it focuses on SDN (Software-Defined Networking) for an IT service provider.
 
 ## Features
 
 * Supports OpenFlow 1.0 and 1.3 protocols
 * Focuses on compatibility with commercial OpenFlow-enabled switches
 * Supports network topology that has loops in it
-* Provides several northbound applications: ProxyARP, L2Switch, Router, Firewall (in progress), Loadbalancer (in progress), etc.
+* Provides several northbound applications: ProxyARP, L2Switch, Floating-IP, etc.
 * Provides simple plugin system for northbound applications
 
-## Tested OpenFlow Switches
+## Supported OpenFlow Switches
 
 * Dell Force10 S4810
-* HP 2920G
+* Dell Force10 S3048-ON
 
 ## Requirements
 
@@ -84,15 +84,6 @@ name = DB_NAME
  ```$ /usr/local/bin/cherryd &```
 
 * That's it! Cherry will be started in L2 switch mode.
-
-## Documentation
-
-in progress..
-
-## Roadmap
-
-* Support loadbalancer and firewall applications in July
-* Support multiple controllers for load balancing and automatic failover in August
 
 ## Copyright and License
 
