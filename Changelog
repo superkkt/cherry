@@ -1,0 +1,573 @@
+* v0.8.0 (2015-07-02)
+	commit 861e3dd8c302c58a0b13e5b7ccdc3d98fed9fe5b
+	Merge: 3ee079f 2933299
+	Author: Kitae Kim <superkkt@gmail.com>
+	Date:   Wed Sep 23 11:08:12 2015 +0900
+	
+	    Merge pull request #1 from yebinMoon/dev
+	    
+	    Add HTTP CORS headers
+	
+	commit 2933299dcd4ba856dea0835dfac448c43c9f496e
+	Author: yebinMoon <yebinMoon@github.com>
+	Date:   Wed Sep 23 10:42:12 2015 +0900
+	
+	    Add origin header
+	
+	commit 3ee079f0cd5097eb610defa46784305fbac651a7
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Sun Sep 20 18:47:34 2015 +0900
+	
+	    Improve VIP toggling logs
+	
+	commit d30502705bc7dc8bd7497d598cbf39b8e1271d31
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Sun Sep 20 18:39:38 2015 +0900
+	
+	    Remove useless modules
+	
+	commit b66bcb372c551b646dc71c7da6491e364b900d88
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Sat Sep 19 15:58:35 2015 +0900
+	
+	    Remove foreign key delete cascade as MySQL does not call triggers on the cascding
+	
+	commit e471dbc2c589c4db95965cc09dbf93f1848d4724
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Fri Sep 18 21:37:44 2015 +0900
+	
+	    Implement manual toggle VIP active/standby hosts (see #6109)
+	
+	commit 38f8be46a97e43f8d8c49a128a971ca74442e403
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Fri Sep 18 15:55:50 2015 +0900
+	
+	    Drop useless removing flows when removeVIP API is called
+	
+	commit 211df46c486b41de975853ac7bdcafc94e168138
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Fri Sep 18 15:05:44 2015 +0900
+	
+	    Add VIP toggle log messages
+	
+	commit a2ea75eb1534d7b072a472b43dfadf191f81b958
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Fri Sep 18 11:53:37 2015 +0900
+	
+	    Fix incorrect query string
+	
+	commit 4f383e3cad38396e9c40eaab5c0899d26b235156
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Fri Sep 18 11:46:36 2015 +0900
+	
+	    Add VIPParam validation
+	
+	commit db7db86788acf881cf66727671b9c32927d0f29a
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Fri Sep 18 11:42:02 2015 +0900
+	
+	    Minor refactoring
+	
+	commit d24b64dd11efe2fde3f0718caa30c14bc51a017a
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Thu Sep 17 23:59:44 2015 +0900
+	
+	    Implement floating virtual IP (see #6109)
+	
+	commit 34c7956a669207294d443b3023c2aa46181a9791
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Mon Sep 14 15:12:04 2015 +0900
+	
+	    Improve MAC address handling of the REST module
+	
+	commit e0eaced2be28fbd9447d5a1c137c8237ea79eb6a
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Sat Sep 12 00:37:18 2015 +0900
+	
+	    Fix incorrect IP and MAC parser and add log messages
+	
+	commit 7c762a2988d8ee7d001987f82a9ef89c60755471
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Fri Sep 11 21:44:59 2015 +0900
+	
+	    Fix decoding MAC address routine that results in panic
+	
+	commit 5ef7ab85042cc5d5767242ffc968965402a2dffc
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Fri Sep 11 20:35:13 2015 +0900
+	
+	    Implement host list, add, and remove REST APIs
+	
+	commit c2a5f0f42b776332f497f741886edda310a080b8
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Fri Sep 11 09:55:25 2015 +0900
+	
+	    Refactoring of REST APIs
+	
+	commit 2aa69f33498c57571aabdb3abd6606678ce4df96
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Thu Sep 10 17:42:08 2015 +0900
+	
+	    Implement network list, add, and delete APIs via REST
+	
+	commit 66469a1cc19169d910b4807810ea786db3818346
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Thu Sep 10 10:06:04 2015 +0900
+	
+	    Change default REST port number from 8080 to 7070
+	
+	commit 06b7fad176f0e1e11a92117717d93406694e5ac3
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Wed Sep 9 18:27:54 2015 +0900
+	
+	    Implement switch list, add, and delete APIs via REST
+	
+	commit 91b9b282ebf29481ef04e32a5af58edfbb3fd8e7
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Wed Sep 9 17:43:09 2015 +0900
+	
+	    Do not return error if we cannot find a neighbor device or its port to avoid unexpected device disconnection
+	
+	commit a82d8df75a1dd5c758eb900ff6e5aa0c023b8409
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Tue Sep 8 17:27:53 2015 +0900
+	
+	    Send barrier reqeust after setting ARP sender flow
+	
+	commit 1a88dd4e8025bde6963824b3c4664aaaabd904d5
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Mon Sep 7 14:30:53 2015 +0900
+	
+	    Remove incorrect log message of ProxyARP
+	
+	commit 4d42ee826f186b96d77db371a55243674f5af413
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Mon Sep 7 13:51:35 2015 +0900
+	
+	    Improve ARP announcement checker
+	
+	commit 6c732c3ec2002248b4ac62b61e57989b5fce5dd0
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Mon Sep 7 13:31:45 2015 +0900
+	
+	    Allow database connection error if there is at least one avaliable server on the database pool (see #6236)
+	
+	commit 22e683857ead0cb60b72666f7f60c460e0fa4de4
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Mon Sep 7 13:24:56 2015 +0900
+	
+	    Log malicious ARP packet whose ethernet destination MAC is not the broadcast address
+	
+	commit 15700251c0635239c34bbed2a6fd3bf4e23754fc
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Mon Sep 7 13:24:40 2015 +0900
+	
+	    Refactoring ARP sender flow routines
+	
+	commit f82246b5089208091f71a1c8f079423742be34bc
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Sun Sep 6 12:29:40 2015 +0900
+	
+	    Add a permanent flow for ARP packets to forward them to the controller
+	
+	commit 545625b7b0b6d68b94ca55cefbec7ca4e35cd096
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Fri Sep 4 20:44:24 2015 +0900
+	
+	    Improve DB index
+	
+	commit 259e06df2fbf6264d0adac4eafe467cb1dd7e2a1
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Fri Sep 4 20:35:42 2015 +0900
+	
+	    Improve DB indices
+	
+	commit 4a8185131b86cd91ac22d4fef615c439a0966944
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Fri Sep 4 19:57:41 2015 +0900
+	
+	    Fix incorrect unique keys of host DB table
+	
+	commit 5558f15e245c23cd7c689f673ce089149696aed9
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Fri Sep 4 15:45:36 2015 +0900
+	
+	    Make DB DELETE to be cascaded
+	
+	commit b03ea165da42fd4fa58dc30ceba3ba73374f2ebd
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Fri Sep 4 14:43:08 2015 +0900
+	
+	    Add host description field to the database schema
+	
+	commit 4d7fcbf385791024f1e9e5942a2e72c8e55cb09a
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Wed Aug 12 00:28:57 2015 +0900
+	
+	    Implement multiple database connections (see #6115)
+	
+	commit b44a7b6c091ade0fdc40beec5e1368ed2ff71e1b
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Mon Aug 10 22:19:55 2015 +0900
+	
+	    Check ARP announcement before ARP operation (see #6109)
+	
+	commit 0ba70d7b8b08c20917627879b0ad92cc28d54647
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Mon Aug 10 21:54:44 2015 +0900
+	
+	    Drop ARP announcement packets (see #6109)
+	
+	commit 3d31799be4ce3099f95e2c3de338000039fb39ed
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Mon Aug 10 21:42:26 2015 +0900
+	
+	    Fix typo
+	
+	commit ac588a837aeff80ab7a2c87205b82d6b3311fc74
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Mon Aug 10 21:40:31 2015 +0900
+	
+	    Implement ARP packet description
+	
+	commit ceb047a3ad15c27bae4407c6548837c734ecec8e
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Mon Aug 10 20:42:53 2015 +0900
+	
+	    Remove useless assigning of return values (see #6104)
+	
+	commit c7935d6d5711bb29be71fee60b27ad80ed56b331
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Mon Aug 10 20:37:45 2015 +0900
+	
+	    Implement MySQL deadlock protection (see #6104)
+	
+	commit 4959db77641867005edb18ff0ee16e99f4f29f5c
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Mon Aug 10 18:16:01 2015 +0900
+	
+	    Add OFPFF_CHECK_OVERLAP flag to FLOW_MOD (see #6108)
+	
+	commit 1037c7351e6d117b34918205753e7ef05021d626
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Mon Aug 10 18:14:55 2015 +0900
+	
+	    Change host DB table schema
+	
+	commit 253cf47ae77ee5bf3752ce8ffba7b80e2fd1b73c
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Mon Aug 10 18:14:12 2015 +0900
+	
+	    Remove flows when port down event is detected (see #6108)
+	
+	commit 90da4659e459a72490ab9018e33285e1746c4b21
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Sat Aug 8 17:04:09 2015 +0900
+	
+	    Implement fixed host location (see #6103)
+	
+	commit 3827e3d8755175e11a2d2103cc4eff56d757b4c8
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Fri Aug 7 17:58:02 2015 +0900
+	
+	    Clear all learned MAC addresses when the topology is updated (see #6102)
+	
+	commit d5e0bde4da2b9e6d4348fc8eeb5190d5ed289bf3
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Tue Aug 4 15:11:28 2015 +0900
+	
+	    Fix incorrect Deadline interface
+	
+	commit 08322553a63dd2b464f650f32aaab83ab6cb6702
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Sun Jul 26 14:37:52 2015 +0900
+	
+	    Remove ARP announcement routines from the ProxyARP module
+	
+	commit 691a2db38255bb18839edaffc063823919c82d0e
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Sun Jul 26 14:37:09 2015 +0900
+	
+	    Remove the router module
+	
+	commit 9676380d326bd6a7d89613ec78c70fd0d5326768
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Sat Jul 25 20:14:42 2015 +0900
+	
+	    Implement VLAN ID of the OpenFlow action
+	
+	commit 94dd8e689bf768377b6044493bb0a6a595d391a0
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Sat Jul 25 01:04:35 2015 +0900
+	
+	    Add the router module
+	
+	commit fd3eb213795fe98b0cb23b2d706c1166140561c9
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Mon Jul 20 01:12:38 2015 +0900
+	
+	    Implement per-device host database in the topology
+	
+	commit 9ac95951d509f571c77fbbfa11e0e137ccbe43ab
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Mon Jul 20 01:11:25 2015 +0900
+	
+	    Remove the router northbound application
+	
+	commit ecd84f5274cea63a1ffb8107adf1046a644168d3
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Mon Jul 20 01:09:47 2015 +0900
+	
+	    Implement InPort output action
+	
+	commit 136ee9712f740145c5473771c416ef9acf76199a
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Sun Jul 19 02:23:04 2015 +0900
+	
+	    Fix missing IP ToS wildcard
+	
+	commit 6ced806b0426b74ffd46db964d06a0c590f689c5
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Sat Jul 18 17:22:19 2015 +0900
+	
+	    Fix incorrect IPv4 address handling
+	
+	commit 7961ab53b6cd93999c22feccbb08a9a64904bdc2
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Sat Jul 18 14:38:09 2015 +0900
+	
+	    Implement SetEnqueue for QoS in the router application (see #5950)
+	
+	commit cf3eef522d65130afa37a426a8dc172f5a8cc76d
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Fri Jul 17 00:26:27 2015 +0900
+	
+	    Implement QueueGetConfigRequest (see #5950)
+	
+	commit 2844e19ec1cd9709485df4a4bbd5e5b9538b0e9e
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Thu Jul 16 22:21:42 2015 +0900
+	
+	    Checks northbound applications' dependencies among them (see #6001)
+	
+	commit d2613f643d369193dd443b7dd87d4b6cc7dafe74
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Thu Jul 16 21:39:46 2015 +0900
+	
+	    Minor typo changes
+	
+	commit eafc9b19200ed746e8687ca5867594c6983aff89
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Thu Jul 16 17:51:21 2015 +0900
+	
+	    Remove useless comments
+	
+	commit 299f5811ac9f82ba725fc4788fa88a7a6590bc7e
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Thu Jul 16 17:51:03 2015 +0900
+	
+	    Remove OnFlowRemoved callback handler from northbound applications
+	
+	commit 4863b619d121d8020bbff7f5ca7250c45e9c5da3
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Thu Jul 16 17:50:13 2015 +0900
+	
+	    Change OF action's output type from map to slice
+	
+	commit dbab7c473022cfcf8548fb91b407c518ded9b6ff
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Thu Jul 16 10:09:56 2015 +0900
+	
+	    Drop an incoming packet heading to a private address
+	
+	commit e49fb986c3c190739e4d2f2a5f0bd0d4f4324748
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Wed Jul 15 23:25:56 2015 +0900
+	
+	    Add SIGHUP handler to northbound applications and extra debugging messages
+	
+	commit 2bf959292abe5571b79cd670b5aebfea46b8b2bf
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Wed Jul 15 23:21:35 2015 +0900
+	
+	    Drop an incoming packet heading to link-local address
+	
+	commit 05db1b09caffd8c1ebb71cb97bbe16e923bfa29d
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Tue Jul 14 01:24:42 2015 +0900
+	
+	    Add extra debugging messages
+	
+	commit 9c426392afe4fb59e5e0d3644b4a1633be57e398
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Tue Jul 14 01:08:10 2015 +0900
+	
+	    Fix missing flow reverse
+	
+	commit 10df6b1199ca0ee07bbaf2af12fcdba9e90f9c0b
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Tue Jul 14 01:07:22 2015 +0900
+	
+	    Add verbose debugging messages
+	
+	commit ba0ed3e76d66b6a286ec983bd8ae58562369baef
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Tue Jul 14 00:10:45 2015 +0900
+	
+	    Implement HUP signal handler to show current daemon status (see #5974)
+	
+	commit 04adb675340d96769085206ddd7c4bec704f2316
+	Merge: 386fa87 240ad0a
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Sun Jul 12 18:50:19 2015 +0900
+	
+	    Merge branch 'dev' of https://github.com/superkkt/cherry into dev
+	
+	commit 386fa872f4f8ed269b66250d067f47457c8a27d5
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Sun Jul 12 18:50:11 2015 +0900
+	
+	    Refactoring of Dockerfile and entrypoint script
+	
+	commit 240ad0a4ec85ac16733398e55fae7f940bf3c415
+	Author: Kitae Kim <superkkt@gmail.com>
+	Date:   Sun Jul 12 18:42:51 2015 +0900
+	
+	    Update README.md
+	
+	commit 7858b4195febabe960235f778d87f77fe66005b6
+	Author: Kitae Kim <superkkt@gmail.com>
+	Date:   Sun Jul 12 18:32:32 2015 +0900
+	
+	    Update README.md
+	
+	commit 1ac3427f8e8f1017b069a3cd1006369920e81166
+	Author: Kitae Kim <superkkt@gmail.com>
+	Date:   Sun Jul 12 18:31:13 2015 +0900
+	
+	    Update README.md
+	
+	commit e708323dbeedc7be5005041e58d18cd1d453cda2
+	Author: Kitae Kim <superkkt@gmail.com>
+	Date:   Sun Jul 12 18:28:41 2015 +0900
+	
+	    Update README.md
+	
+	commit a389236cf0b356ea18b329e2eb6afe535d2186e9
+	Author: Kitae Kim <superkkt@gmail.com>
+	Date:   Sun Jul 12 18:26:55 2015 +0900
+	
+	    Update README.md
+	
+	commit eaf16e0c3cfb79e71b7e7d5b98dc0bfab09ae541
+	Author: Kitae Kim <superkkt@gmail.com>
+	Date:   Sun Jul 12 18:19:27 2015 +0900
+	
+	    Update README.md
+	
+	commit d329deb9916c2774159417076dae159c9573194a
+	Merge: 5412891 d536fa5
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Sun Jul 12 18:13:32 2015 +0900
+	
+	    Merge branch 'dev' of https://github.com/superkkt/cherry into dev
+	
+	commit 541289166ab173549d33322b4856565bf1be4812
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Sun Jul 12 18:13:00 2015 +0900
+	
+	    Remove MySQL from Dockerfile
+	
+	commit 8b733aa3b4cb9798726d133f0909feae18d56a1d
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Sun Jul 12 00:56:53 2015 +0900
+	
+	    Remove SIGHUP from the Docker entrypoint script
+	
+	commit d536fa588536ecc8af1ad1301b6aa796abef85bc
+	Author: Kitae Kim <superkkt@gmail.com>
+	Date:   Sun Jul 12 00:46:20 2015 +0900
+	
+	    Update README.md
+	
+	commit 3eb59ea67fa0e04a445ac07bc03217ecb09b2347
+	Author: Kitae Kim <superkkt@gmail.com>
+	Date:   Sun Jul 12 00:40:22 2015 +0900
+	
+	    Update README.md
+	
+	commit 8c5308c62d2cb8e97e772e3c35d414c44d80cad9
+	Author: Kitae Kim <superkkt@gmail.com>
+	Date:   Sun Jul 12 00:38:49 2015 +0900
+	
+	    Update README.md
+	
+	commit 7473a51933808ff6a1132bbd667efe56dd360174
+	Author: Kitae Kim <superkkt@gmail.com>
+	Date:   Sun Jul 12 00:37:51 2015 +0900
+	
+	    Update README.md
+	
+	commit 3d2558855c4ecc3b4b75aac32111c43b6a2d6db7
+	Author: Kitae Kim <superkkt@gmail.com>
+	Date:   Sun Jul 12 00:37:36 2015 +0900
+	
+	    Update README.md
+	
+	commit 3e94b8067ffff62f69e9542181998918e6e8c7c2
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Sun Jul 12 00:30:44 2015 +0900
+	
+	    Add Dockerfile
+	
+	commit cbdbe46c648c4945c9b704dea3a470faf43c9f4a
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Fri Jul 10 09:12:03 2015 +0900
+	
+	    Remove internal prefixes of import paths
+	
+	commit fd5ff25596b420568041b42dc2aa461e0c970e4a
+	Merge: da3f8c1 9225b3c
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Wed Jul 8 00:52:27 2015 +0900
+	
+	    Merge branch 'dev' of https://github.com/superkkt/cherry into dev
+	
+	commit da3f8c1334ecc709a1ec4ad328cfa6c3dba4843d
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Wed Jul 8 00:52:00 2015 +0900
+	
+	    Implement ICMP echo reply
+	
+	commit 9225b3c2f5bf12b4fa865bc4f30c0f25b1fdd0f3
+	Author: Kitae Kim <superkkt@gmail.com>
+	Date:   Tue Jul 7 00:26:55 2015 +0900
+	
+	    Update README.md
+	
+	commit 062645b26aacc678a6d5cea0f47a6b664f873848
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Tue Jul 7 00:12:30 2015 +0900
+	
+	    Change MAC address type of the database schema
+	
+	commit 529b1aae72c91da793afe9ec8440379476117b74
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Mon Jul 6 22:44:05 2015 +0900
+	
+	    Separate database module
+	
+	commit 65aea0a5171a99264a407e79cc53e5a4d2a15b55
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Fri Jul 3 12:42:51 2015 +0900
+	
+	    Preventing IP spoofing
+	
+	commit 9e9d0a7ec6f74f291293250ef5ea857cf05b99bf
+	Author: Kitae Kim <superkkt@sds.co.kr>
+	Date:   Fri Jul 3 12:42:13 2015 +0900
+	
+	    Preventing IP spoofing
+
+* v0.8.0 (2015-07-02)
+	Initial revision
