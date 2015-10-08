@@ -1,6 +1,6 @@
 # Cherry
 
-Cherry is an OpenFlow controller written in Go that supports OpenFlow 1.0 and 1.3 protocols. This project is not designed for general purpose, instead it focuses on SDN (Software-Defined Networking) for an IT service provider.
+Cherry is an OpenFlow controller written in Go that supports OpenFlow 1.0 and 1.3 protocols. This project is not designed for general purpose, and it instead focuses on SDN (Software-Defined Networking) for an IT service provider.
 
 ## Features
 
