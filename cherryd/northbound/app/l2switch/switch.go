@@ -25,13 +25,16 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"net"
+	"time"
+
 	"github.com/dlintw/goconf"
+	lru "github.com/hashicorp/golang-lru"
 	"github.com/superkkt/cherry/cherryd/log"
 	"github.com/superkkt/cherry/cherryd/network"
 	"github.com/superkkt/cherry/cherryd/northbound/app"
 	"github.com/superkkt/cherry/cherryd/openflow"
 	"github.com/superkkt/cherry/cherryd/protocol"
-	"net"
 )
 
 type L2Switch struct {
@@ -39,12 +42,51 @@ type L2Switch struct {
 	conf   *goconf.ConfigFile
 	log    log.Logger
 	vlanID uint16
+	cache  *flowCache
+}
+
+type flowCache struct {
+	cache *lru.Cache
+}
+
+func newFlowCache() *flowCache {
+	c, err := lru.New(8192)
+	if err != nil {
+		panic(fmt.Sprintf("LRU flow cache: %v", err))
+	}
+
+	return &flowCache{
+		cache: c,
+	}
+}
+
+func (r *flowCache) getKeyString(flow flowParam) string {
+	return fmt.Sprintf("%v/%v/%v", flow.device.ID(), flow.dstMAC, flow.outPort)
+}
+
+func (r *flowCache) exist(flow flowParam) bool {
+	v, ok := r.cache.Get(r.getKeyString(flow))
+	if !ok {
+		return false
+	}
+	// Timeout?
+	if time.Since(v.(time.Time)) > 5*time.Second {
+		return false
+	}
+
+	return true
+}
+
+func (r *flowCache) add(flow flowParam) {
+	// Update if the key already exists
+	r.cache.Add(r.getKeyString(flow), time.Now())
 }
 
 func New(conf *goconf.ConfigFile, log log.Logger) *L2Switch {
 	return &L2Switch{
-		conf: conf,
-		log:  log,
+		conf:  conf,
+		log:   log,
+		cache: newFlowCache(),
 	}
 }
 
@@ -106,10 +148,13 @@ func (r *flowParam) String() string {
 }
 
 func (r *L2Switch) installFlow(p flowParam) error {
-	f := p.device.Factory()
+	// Skip the installation if p is already installed
+	if r.cache.exist(p) {
+		r.log.Debug(fmt.Sprintf("L2Switch: skipping duplicated flow installation: deviceID=%v, dstMAC=%v, outPort=%v", p.device.ID(), p.dstMAC, p.outPort))
+		return nil
+	}
 
-	inPort := openflow.NewInPort()
-	inPort.SetValue(p.inPort)
+	f := p.device.Factory()
 	match, err := f.NewMatch()
 	if err != nil {
 		return err
@@ -140,7 +185,21 @@ func (r *L2Switch) installFlow(p flowParam) error {
 	flow.SetFlowMatch(match)
 	flow.SetFlowInstruction(inst)
 
-	return p.device.SendMessage(flow)
+	if err := p.device.SendMessage(flow); err != nil {
+		return err
+	}
+	barrier, err := f.NewBarrierRequest()
+	if err != nil {
+		return err
+	}
+	if err := p.device.SendMessage(barrier); err != nil {
+		return err
+	}
+
+	r.cache.add(p)
+	r.log.Debug(fmt.Sprintf("L2Switch: added a flow cache entry: deviceID=%v, dstMAC=%v, outPort=%v", p.device.ID(), p.dstMAC, p.outPort))
+
+	return nil
 }
 
 type switchParam struct {
