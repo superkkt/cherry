@@ -136,7 +136,6 @@ func (r *L2Switch) installFlow(p flowParam) error {
 	}
 	flow.SetTableID(p.device.FlowTableID())
 	flow.SetIdleTimeout(30)
-	flow.SetHardTimeout(600)
 	flow.SetPriority(10)
 	flow.SetFlowMatch(match)
 	flow.SetFlowInstruction(inst)
