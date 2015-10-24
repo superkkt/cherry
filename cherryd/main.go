@@ -38,7 +38,7 @@ import (
 )
 
 const (
-	Version           = "1.0-RC"
+	Version           = "0.10-RC"
 	defaultConfigFile = "/usr/local/etc/cherryd.conf"
 )
 
