@@ -39,10 +39,11 @@ import (
 
 type L2Switch struct {
 	app.BaseProcessor
-	conf   *goconf.ConfigFile
-	log    log.Logger
-	vlanID uint16
-	cache  *flowCache
+	conf      *goconf.ConfigFile
+	log       log.Logger
+	vlanID    uint16
+	cache     *flowCache
+	stormCtrl *stormController
 }
 
 type flowCache struct {
@@ -84,27 +85,16 @@ func (r *flowCache) add(flow flowParam) {
 
 func New(conf *goconf.ConfigFile, log log.Logger) *L2Switch {
 	return &L2Switch{
-		conf:  conf,
-		log:   log,
-		cache: newFlowCache(),
+		conf:      conf,
+		log:       log,
+		cache:     newFlowCache(),
+		stormCtrl: newStormController(100, log, new(flooder)),
 	}
 }
 
-func (r *L2Switch) Init() error {
-	vlanID, err := r.conf.GetInt("default", "vlan_id")
-	if err != nil || vlanID < 0 || vlanID > 4095 {
-		return errors.New("invalid default VLAN ID in the config file")
-	}
-	r.vlanID = uint16(vlanID)
+type flooder struct{}
 
-	return nil
-}
-
-func (r *L2Switch) Name() string {
-	return "L2Switch"
-}
-
-func flood(ingress *network.Port, packet []byte) error {
+func (r *flooder) flood(ingress *network.Port, packet []byte) error {
 	f := ingress.Device().Factory()
 
 	inPort := openflow.NewInPort()
@@ -128,6 +118,20 @@ func flood(ingress *network.Port, packet []byte) error {
 	out.SetData(packet)
 
 	return ingress.Device().SendMessage(out)
+}
+
+func (r *L2Switch) Init() error {
+	vlanID, err := r.conf.GetInt("default", "vlan_id")
+	if err != nil || vlanID < 0 || vlanID > 4095 {
+		return errors.New("invalid default VLAN ID in the config file")
+	}
+	r.vlanID = uint16(vlanID)
+
+	return nil
+}
+
+func (r *L2Switch) Name() string {
+	return "L2Switch"
 }
 
 func isBroadcast(eth *protocol.Ethernet) bool {
@@ -249,7 +253,7 @@ func (r *L2Switch) processPacket(finder network.Finder, ingress *network.Port, e
 	// Broadcast?
 	if isBroadcast(eth) {
 		r.log.Debug(fmt.Sprintf("L2Switch: broadcasting.. SrcMAC=%v, DstMAC=%v", eth.SrcMAC, eth.DstMAC))
-		return true, flood(ingress, packet)
+		return true, r.stormCtrl.broadcast(ingress, packet)
 	}
 
 	dstNode, err := finder.Node(eth.DstMAC)
