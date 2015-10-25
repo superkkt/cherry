@@ -65,17 +65,25 @@ func (r *Monitor) String() string {
 }
 
 func (r *Monitor) OnDeviceUp(finder network.Finder, device *network.Device) error {
-	if err := r.sendAlarm("Cherry: device is up!", device.String()); err != nil {
-		r.log.Err(fmt.Sprintf("Monitor: failed to send an alarm email: %v", err))
-	}
+	go func() {
+		subject := "Cherry: device is up!"
+		body := fmt.Sprintf("DPID: %v", device.ID())
+		if err := r.sendAlarm(subject, body); err != nil {
+			r.log.Err(fmt.Sprintf("Monitor: failed to send an alarm email: %v", err))
+		}
+	}()
 
 	return r.BaseProcessor.OnDeviceUp(finder, device)
 }
 
 func (r *Monitor) OnDeviceDown(finder network.Finder, device *network.Device) error {
-	if err := r.sendAlarm("Cherry: device is down!", device.String()); err != nil {
-		r.log.Err(fmt.Sprintf("Monitor: failed to send an alarm email: %v", err))
-	}
+	go func() {
+		subject := "Cherry: device is down!"
+		body := fmt.Sprintf("DPID: %v", device.ID())
+		if err := r.sendAlarm(subject, body); err != nil {
+			r.log.Err(fmt.Sprintf("Monitor: failed to send an alarm email: %v", err))
+		}
+	}()
 
 	return r.BaseProcessor.OnDeviceDown(finder, device)
 }
