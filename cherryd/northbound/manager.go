@@ -24,15 +24,17 @@ package northbound
 import (
 	"bytes"
 	"fmt"
+	"strings"
+	"sync"
+
 	"github.com/dlintw/goconf"
 	"github.com/superkkt/cherry/cherryd/database"
 	"github.com/superkkt/cherry/cherryd/log"
 	"github.com/superkkt/cherry/cherryd/network"
 	"github.com/superkkt/cherry/cherryd/northbound/app"
 	"github.com/superkkt/cherry/cherryd/northbound/app/l2switch"
+	"github.com/superkkt/cherry/cherryd/northbound/app/monitor"
 	"github.com/superkkt/cherry/cherryd/northbound/app/proxyarp"
-	"strings"
-	"sync"
 )
 
 type EventSender interface {
@@ -70,6 +72,7 @@ func NewManager(conf *goconf.ConfigFile, log log.Logger, db *database.MySQL) (*M
 	// Registering north-bound applications
 	v.register(l2switch.New(conf, log))
 	v.register(proxyarp.New(conf, log, db))
+	v.register(monitor.New(conf, log))
 
 	return v, nil
 }

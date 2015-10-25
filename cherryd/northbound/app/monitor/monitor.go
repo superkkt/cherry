@@ -60,6 +60,10 @@ func (r *Monitor) Name() string {
 	return "Monitor"
 }
 
+func (r *Monitor) String() string {
+	return fmt.Sprintf("%v", r.Name())
+}
+
 func (r *Monitor) OnDeviceUp(finder network.Finder, device *network.Device) error {
 	if err := r.sendAlarm("Cherry: device is up!", device.String()); err != nil {
 		r.log.Err(fmt.Sprintf("Monitor: failed to send an alarm email: %v", err))
@@ -82,5 +86,11 @@ func (r *Monitor) sendAlarm(subject, body string) error {
 	header := fmt.Sprintf("From: %v\r\nTo: %v\r\nSubject: %v", from, r.email, subject)
 	msg := []byte(fmt.Sprintf("%v\r\n\r\n%v", header, body))
 
-	return sendmail(from, to, msg)
+	if err := sendmail(from, to, msg); err != nil {
+		return err
+	}
+	r.log.Debug(fmt.Sprintf("Monitor: sent an alarm email to %v: subject=%v", r.email, subject))
+
+	return nil
+
 }
