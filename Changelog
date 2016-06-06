@@ -1,3 +1,16 @@
+* v0.11.0 (Mon Jun 6 15:42:29 2016 +0900)
+
+4599801 (HEAD, tag: v0.11.0, origin/v0.11, origin/master, origin/HEAD, v0.11, master) Bump version to 0.11.0
+601ac80 Fix the duplicated DPID by disconnecting the previous main connection (see #8313)
+2cb100e Vendoring all libraries
+21b7e2f Update Changelog and LICENSE
+4797aa3 Change version to 0.11-RC3
+6700906 Send the alarm email asynchronously (see #6547)
+c21420a Change version to 0.11-RC2
+25ac489 Enable the monitor app (see #6547)
+f26e497 Change version to 0.11-RC
+29f152a Implement notification when a device is up and down (see #6547)
+
 * v0.10.0 (Sat Oct 24 17:57:16 2015 +0900)
 
 18fb269 (tag: v0.10.0, origin/v0.10) Change version to 0.10-RC
