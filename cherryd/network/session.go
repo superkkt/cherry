@@ -51,6 +51,8 @@ type session struct {
 	watcher    watcher
 	finder     Finder
 	listener   ControllerEventListener
+	// A cancel function to disconnect this session.
+	canceller context.CancelFunc
 }
 
 type sessionConfig struct {
@@ -142,9 +144,20 @@ func (r *session) OnFeaturesReply(f openflow.Factory, w trans.Writer, v openflow
 	dpid := strconv.FormatUint(v.DPID(), 10)
 	// Already connected device?
 	if r.finder.Device(dpid) != nil {
+		cancel, ok := popCanceller(dpid)
+		if ok {
+			// Disconnect the previous session. Sometimes, the Dell switch tries to
+			// make a new fresh connection even if it already has a main connection.
+			// I guess this occurrs when there is a momentary abnormal physical
+			// disconnection between the switch and Cherry. After that, the switch
+			// does not work properly, so we have to disconnect the previous session
+			// so that Cherry allows a new fresh connection.
+			cancel()
+		}
 		return errors.New("duplicated device DPID (aux. connection is not supported yet)")
 	}
 	r.device.setID(dpid)
+	pushCanceller(dpid, r.canceller)
 	// We assume a device is up after setting its DPID
 	if err := r.listener.OnDeviceUp(r.finder, r.device); err != nil {
 		return err
@@ -478,7 +491,10 @@ func (r *session) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.Pack
 }
 
 func (r *session) Run(ctx context.Context) {
-	if err := r.trans.Run(ctx); err != nil && err != io.EOF {
+	sessionCtx, canceller := context.WithCancel(ctx)
+	// This canceller will be used to disconnect this session when it is necessary.
+	r.canceller = canceller
+	if err := r.trans.Run(sessionCtx); err != nil && err != io.EOF {
 		r.log.Err(fmt.Sprintf("Session: transceiver is closed: %v", err))
 	}
 	r.trans.Close()
@@ -486,6 +502,7 @@ func (r *session) Run(ctx context.Context) {
 	r.log.Debug(fmt.Sprintf("Session: disconnected device (DPID=%v)", r.device.ID()))
 
 	if r.device.isValid() {
+		popCanceller(r.device.ID())
 		if err := r.listener.OnDeviceDown(r.finder, r.device); err != nil {
 			r.log.Err(fmt.Sprintf("Session: executing OnDeviceDown: %v", err))
 		}

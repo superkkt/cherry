@@ -92,7 +92,9 @@ func listen(ctx context.Context, log *log.Syslog, port int, controller *network.
 				log.Debug("Trying to enable socket keepalive..")
 				if err := v.SetKeepAlive(true); err == nil {
 					log.Debug("Setting socket keepalive period...")
-					v.SetKeepAlivePeriod(time.Duration(30) * time.Second)
+					// Makes a broken connection will be disconnected within 45 seconds.
+					// http://felixge.de/2014/08/26/tcp-keepalive-with-golang.html
+					v.SetKeepAlivePeriod(time.Duration(5) * time.Second)
 				} else {
 					log.Err(fmt.Sprintf("Failed to enable socket keepalive: %v", err))
 				}

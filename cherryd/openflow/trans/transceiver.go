@@ -1,7 +1,7 @@
 /*
  * Cherry - An OpenFlow Controller
  *
- * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved. 
+ * Copyright (C) 2015 Samjung Data Service, Inc. All rights reserved.
  * Kitae Kim <superkkt@sds.co.kr>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -190,7 +190,7 @@ func (r *Transceiver) Run(ctx context.Context) error {
 		// Check shutdown signal
 		select {
 		case <-ctx.Done():
-			return errors.New("closed by user's shutdown signal")
+			return errors.New("closed by the context done signal")
 		default:
 		}
 
