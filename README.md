@@ -53,7 +53,7 @@ name = DB_NAME
 
  ```# docker run -d -p 6633:6633 -v /dev/log:/dev/log -v /usr/local/etc/cherryd.conf:/usr/local/etc/cherryd.conf cherryd```
 
-The bind mount of /dev/log is to collect syslog messages from the container and then write to the host's syslog daemon.
+ The bind mount of /dev/log is to collect syslog messages from the container and then write to the host's syslog daemon.
 
 * That's it! Cherry will be started in L2 switch mode.
 
