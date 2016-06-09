@@ -24,17 +24,18 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/superkkt/cherry/cherryd/database"
-	"github.com/superkkt/cherry/cherryd/log"
-	"github.com/superkkt/cherry/cherryd/network"
-	"github.com/superkkt/cherry/cherryd/northbound"
-	"golang.org/x/net/context"
 	"net"
 	"os"
 	"os/signal"
 	"runtime"
 	"syscall"
 	"time"
+
+	"github.com/superkkt/cherry/cherryd/database"
+	"github.com/superkkt/cherry/cherryd/log"
+	"github.com/superkkt/cherry/cherryd/network"
+	"github.com/superkkt/cherry/cherryd/northbound"
+	"golang.org/x/net/context"
 )
 
 const (
