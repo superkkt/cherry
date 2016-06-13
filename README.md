@@ -9,6 +9,7 @@ Cherry is an OpenFlow controller written in Go that supports OpenFlow 1.0 and 1.
 * Supports network topology that has loops in it
 * Provides several northbound applications: ProxyARP, L2Switch, Floating-IP, etc.
 * Provides simple plugin system for northbound applications
+* RESTful API to manage the controller itself
 
 ## Supported (Fully Tested) OpenFlow Switches
 
