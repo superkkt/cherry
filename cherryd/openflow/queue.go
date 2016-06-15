@@ -25,6 +25,32 @@ import (
 	"encoding"
 )
 
+type PropertyType uint16
+
+const (
+	OFPQT_NONE PropertyType = iota
+	OFPQT_MIN_RATE
+	OFPQT_MAX_RATE
+	OFPQT_EXPERIMENTER = 0xffff
+)
+
+type Queue interface {
+	ID() uint32
+	Port() uint32
+	Length() uint16
+	Property() []QueueProperty
+	encoding.BinaryUnmarshaler
+}
+
+type QueueProperty interface {
+	Type() PropertyType
+	Length() uint16
+	Rate() (uint16, error)
+	Experimenter() (uint32, error)
+	Data() []byte
+	encoding.BinaryUnmarshaler
+}
+
 type QueueGetConfigRequest interface {
 	Header
 	Port() OutPort
@@ -32,4 +58,9 @@ type QueueGetConfigRequest interface {
 	encoding.BinaryMarshaler
 }
 
-// TODO: QueueGetConfigReply
+type QueueGetConfigReply interface {
+	Header
+	Port() uint32
+	Queue() []Queue
+	encoding.BinaryUnmarshaler
+}
