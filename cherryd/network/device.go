@@ -80,7 +80,16 @@ func newDevice(log log.Logger, s *session) *Device {
 }
 
 func (r *Device) String() string {
-	return fmt.Sprintf("Device ID=%v, Descriptions=%+v, Features=%+v, # of ports=%v, FlowTableID=%v, Connected=%v", r.id, r.descriptions, r.features, len(r.ports), r.flowTableID, !r.closed)
+	// Read lock
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	v := fmt.Sprintf("Device ID=%v, Descriptions=%+v, Features=%+v, # of ports=%v, FlowTableID=%v, Connected=%v\n", r.id, r.descriptions, r.features, len(r.ports), r.flowTableID, !r.closed)
+	for _, p := range r.ports {
+		v += fmt.Sprintf("\t%v\n", p.String())
+	}
+
+	return v
 }
 
 func (r *Device) ID() string {
@@ -206,6 +215,8 @@ func (r *Device) updatePort(num uint32, p openflow.Port) {
 	if p == nil {
 		panic("Port is nil")
 	}
+	r.log.Debug(fmt.Sprintf("Device: updatePort: Device=%v, PortNum=%v, AdminUp=%v, LinkUp=%v", r.id, p.Number(), !p.IsPortDown(), !p.IsLinkDown()))
+
 	port := r.ports[num]
 	if port == nil {
 		r.setPort(num, p)

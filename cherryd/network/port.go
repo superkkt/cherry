@@ -45,7 +45,11 @@ func NewPort(d *Device, num uint32) *Port {
 }
 
 func (r *Port) String() string {
-	return fmt.Sprintf("Port Number=%v, Device_id=%v", r.number, r.device.ID())
+	// Read lock
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	return fmt.Sprintf("Port Number=%v, Device_id=%v, AdminUp=%v, LinkUp=%v", r.number, r.device.ID(), !r.value.IsPortDown(), !r.value.IsLinkDown())
 }
 
 func (r *Port) ID() string {
