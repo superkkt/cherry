@@ -27,8 +27,10 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/rand"
 	"net"
 	"strings"
+	"time"
 
 	"github.com/dlintw/goconf"
 	"github.com/go-sql-driver/mysql"
@@ -43,11 +45,12 @@ const (
 )
 
 type MySQL struct {
-	db []*sql.DB
+	db     *sql.DB
+	random *rand.Rand
 }
 
 type config struct {
-	hosts    []string
+	host     string
 	port     uint16
 	username string
 	password string
@@ -77,7 +80,7 @@ func parseConfig(conf *goconf.ConfigFile) (*config, error) {
 	}
 
 	v := &config{
-		hosts:    strings.Split(strings.Replace(host, " ", "", -1), ","),
+		host:     host,
 		port:     uint16(port),
 		username: user,
 		password: password,
@@ -92,30 +95,21 @@ func NewMySQL(conf *goconf.ConfigFile) (*MySQL, error) {
 		return nil, err
 	}
 
-	db := make([]*sql.DB, 0)
-	var lastErr error
-	for _, host := range c.hosts {
-		v, err := newDBConn(host, c.username, c.password, c.dbName, c.port)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		v.SetMaxOpenConns(32)
-		v.SetMaxIdleConns(4)
-		db = append(db, v)
+	db, err := newDBConn(c.host, c.username, c.password, c.dbName, c.port)
+	if err != nil {
+		return nil, err
 	}
-	if len(db) == 0 {
-		return nil, fmt.Errorf("no avaliable database server: %v", lastErr)
-	}
-	mysql := &MySQL{
-		db: db,
-	}
+	db.SetMaxOpenConns(32)
+	db.SetMaxIdleConns(4)
 
-	return mysql, nil
+	return &MySQL{
+		db:     db,
+		random: rand.New(&randomSource{src: rand.NewSource(time.Now().Unix())}),
+	}, nil
 }
 
 func newDBConn(host, username, password, dbname string, port uint16) (*sql.DB, error) {
-	db, err := sql.Open("mysql", fmt.Sprintf("%v:%v@tcp(%v:%v)/%v?timeout=5s", username, password, host, port, dbname))
+	db, err := sql.Open("mysql", fmt.Sprintf("%v:%v@tcp(%v:%v)/%v?timeout=5s&wait_timeout=120", username, password, host, port, dbname))
 	if err != nil {
 		return nil, err
 	}
@@ -144,40 +138,21 @@ func isForeignkeyErr(err error) bool {
 	return e.Number == foreignkeyErrCode
 }
 
-func isConnectionError(err error) bool {
-	e, ok := err.(*mysql.MySQLError)
-	// Assume all errors except MySQLError are connection failure
-	if !ok || e.Number >= 2000 {
-		return true
-	}
-
-	return false
-}
-
 func (r *MySQL) query(f func(*sql.DB) error) error {
-	var err error
+	deadlockRetry := 0
 
-	for _, db := range r.db {
-		deadlockRetry := 0
-
-	retry:
-		err = f(db)
+	for {
+		err := f(r.db)
 		if err == nil {
+			// Success
 			return nil
 		}
-		if isConnectionError(err) {
-			// Use other DB server if we got connection failure
-			continue
-		}
-
 		if !isDeadlock(err) || deadlockRetry >= maxDeadlockRetry {
 			return err
 		}
+		time.Sleep(time.Duration(r.random.Int31n(500)) * time.Millisecond)
 		deadlockRetry++
-		goto retry
 	}
-
-	return err
 }
 
 func (r *MySQL) MAC(ip net.IP) (mac net.HardwareAddr, ok bool, err error) {
