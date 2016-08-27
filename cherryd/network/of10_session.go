@@ -23,10 +23,13 @@ package network
 
 import (
 	"fmt"
+
 	"github.com/superkkt/cherry/cherryd/log"
 	"github.com/superkkt/cherry/cherryd/openflow"
 	"github.com/superkkt/cherry/cherryd/openflow/of10"
 	"github.com/superkkt/cherry/cherryd/openflow/trans"
+
+	"github.com/pkg/errors"
 )
 
 type of10Session struct {
@@ -43,28 +46,28 @@ func newOF10Session(log log.Logger, d *Device) *of10Session {
 
 func (r *of10Session) OnHello(f openflow.Factory, w trans.Writer, v openflow.Hello) error {
 	if err := sendHello(f, w); err != nil {
-		return fmt.Errorf("failed to send HELLO: %v", err)
+		return errors.Wrap(err, "failed to send HELLO")
 	}
 	if err := sendSetConfig(f, w); err != nil {
-		return fmt.Errorf("failed to send SET_CONFIG: %v", err)
+		return errors.Wrap(err, "failed to send SET_CONFIG")
 	}
 	if err := sendFeaturesRequest(f, w); err != nil {
-		return fmt.Errorf("failed to send FEATURE_REQUEST: %v", err)
+		return errors.Wrap(err, "failed to send FEATURE_REQUEST")
 	}
 	if err := sendBarrierRequest(f, w); err != nil {
-		return fmt.Errorf("failed to send BARRIER_REQUEST: %v", err)
+		return errors.Wrap(err, "failed to send BARRIER_REQUEST")
 	}
 	if err := sendRemovingAllFlows(f, w); err != nil {
-		return fmt.Errorf("failed to send FLOW_MOD to remove all flows: %v", err)
+		return errors.Wrap(err, "failed to send FLOW_MOD to remove all flows")
 	}
 	if err := sendDescriptionRequest(f, w); err != nil {
-		return fmt.Errorf("failed to send DESCRIPTION_REQUEST: %v", err)
+		return errors.Wrap(err, "failed to send DESCRIPTION_REQUEST")
 	}
 	if err := sendBarrierRequest(f, w); err != nil {
-		return fmt.Errorf("failed to send BARRIER_REQUEST: %v", err)
+		return errors.Wrap(err, "failed to send BARRIER_REQUEST")
 	}
 	if err := setARPSender(f, w); err != nil {
-		return fmt.Errorf("failed to set ARP sender flow: %v", err)
+		return errors.Wrap(err, "failed to set ARP sender flow")
 	}
 
 	return nil

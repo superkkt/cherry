@@ -23,11 +23,14 @@ package network
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/superkkt/cherry/cherryd/log"
 	"github.com/superkkt/cherry/cherryd/openflow"
 	"github.com/superkkt/cherry/cherryd/openflow/of13"
 	"github.com/superkkt/cherry/cherryd/openflow/trans"
-	"strings"
+
+	"github.com/pkg/errors"
 )
 
 type of13Session struct {
@@ -44,36 +47,36 @@ func newOF13Session(log log.Logger, d *Device) *of13Session {
 
 func (r *of13Session) OnHello(f openflow.Factory, w trans.Writer, v openflow.Hello) error {
 	if err := sendHello(f, w); err != nil {
-		return fmt.Errorf("failed to send HELLO: %v", err)
+		return errors.Wrap(err, "failed to send HELLO")
 	}
 	if err := sendSetConfig(f, w); err != nil {
-		return fmt.Errorf("failed to send SET_CONFIG: %v", err)
+		return errors.Wrap(err, "failed to send SET_CONFIG")
 	}
 	if err := sendFeaturesRequest(f, w); err != nil {
-		return fmt.Errorf("failed to send FEATURE_REQUEST: %v", err)
+		return errors.Wrap(err, "failed to send FEATURE_REQUEST")
 	}
 	if err := sendBarrierRequest(f, w); err != nil {
-		return fmt.Errorf("failed to send BARRIER_REQUEST: %v", err)
+		return errors.Wrap(err, "failed to send BARRIER_REQUEST")
 	}
 	if err := sendRemovingAllFlows(f, w); err != nil {
-		return fmt.Errorf("failed to send FLOW_MOD to remove all flows: %v", err)
+		return errors.Wrap(err, "failed to send FLOW_MOD to remove all flows")
 	}
 	// Make sure that the installed flows are removed before setTableMiss() is called
 	if err := sendBarrierRequest(f, w); err != nil {
-		return fmt.Errorf("failed to send BARRIER_REQUEST: %v", err)
+		return errors.Wrap(err, "failed to send BARRIER_REQUEST")
 	}
 	if err := setARPSender(f, w); err != nil {
-		return fmt.Errorf("failed to set ARP sender flow: %v", err)
+		return errors.Wrap(err, "failed to set ARP sender flow")
 	}
 	if err := sendDescriptionRequest(f, w); err != nil {
-		return fmt.Errorf("failed to send DESCRIPTION_REQUEST: %v", err)
+		return errors.Wrap(err, "failed to send DESCRIPTION_REQUEST")
 	}
 	// Make sure that DESCRIPTION_REPLY is received before PORT_DESCRIPTION_REPLY
 	if err := sendBarrierRequest(f, w); err != nil {
-		return fmt.Errorf("failed to send BARRIER_REQUEST: %v", err)
+		return errors.Wrap(err, "failed to send BARRIER_REQUEST")
 	}
 	if err := sendPortDescriptionRequest(f, w); err != nil {
-		return fmt.Errorf("failed to send DESCRIPTION_REQUEST: %v", err)
+		return errors.Wrap(err, "failed to send DESCRIPTION_REQUEST")
 	}
 
 	return nil
@@ -134,12 +137,12 @@ func (r *of13Session) setHP2920TableMiss(f openflow.Factory, w trans.Writer) err
 	// 0 -> 100
 	inst.GotoTable(100)
 	if err := r.setTableMiss(f, w, 0, inst); err != nil {
-		return fmt.Errorf("failed to set table_miss flow entry: %v", err)
+		return errors.Wrap(err, "failed to set table_miss flow entry")
 	}
 	// 100 -> 200
 	inst.GotoTable(200)
 	if err := r.setTableMiss(f, w, 100, inst); err != nil {
-		return fmt.Errorf("failed to set table_miss flow entry: %v", err)
+		return errors.Wrap(err, "failed to set table_miss flow entry")
 	}
 
 	// 200 -> Controller
@@ -153,7 +156,7 @@ func (r *of13Session) setHP2920TableMiss(f openflow.Factory, w trans.Writer) err
 
 	inst.ApplyAction(action)
 	if err := r.setTableMiss(f, w, 200, inst); err != nil {
-		return fmt.Errorf("failed to set table_miss flow entry: %v", err)
+		return errors.Wrap(err, "failed to set table_miss flow entry")
 	}
 	r.device.setFlowTableID(200)
 
@@ -186,7 +189,7 @@ func (r *of13Session) setDefaultTableMiss(f openflow.Factory, w trans.Writer) er
 
 	inst.ApplyAction(action)
 	if err := r.setTableMiss(f, w, 0, inst); err != nil {
-		return fmt.Errorf("failed to set table_miss flow entry: %v", err)
+		return errors.Wrap(err, "failed to set table_miss flow entry")
 	}
 	r.device.setFlowTableID(0)
 

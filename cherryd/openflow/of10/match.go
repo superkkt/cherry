@@ -23,10 +23,11 @@ package of10
 
 import (
 	"encoding/binary"
-	"errors"
-	"fmt"
-	"github.com/superkkt/cherry/cherryd/openflow"
 	"net"
+
+	"github.com/superkkt/cherry/cherryd/openflow"
+
+	"github.com/pkg/errors"
 )
 
 type Wildcard struct {
@@ -190,12 +191,12 @@ func (r *Match) SetWildcardSrcPort() {
 func (r *Match) SetSrcPort(p uint16) {
 	// IPv4?
 	if r.etherType != 0x0800 {
-		r.err = fmt.Errorf("SetSrcPort: %v", openflow.ErrUnsupportedEtherType)
+		r.err = errors.Wrap(openflow.ErrUnsupportedEtherType, "SetSrcPort")
 		return
 	}
 	// TCP or UDP?
 	if r.protocol != 0x06 && r.protocol != 0x11 {
-		r.err = fmt.Errorf("SetSrcPort: %v", openflow.ErrUnsupportedIPProtocol)
+		r.err = errors.Wrap(openflow.ErrUnsupportedIPProtocol, "SetSrcPort")
 		return
 	}
 
@@ -215,12 +216,12 @@ func (r *Match) SetWildcardDstPort() {
 func (r *Match) SetDstPort(p uint16) {
 	// IPv4?
 	if r.etherType != 0x0800 {
-		r.err = fmt.Errorf("SetDstPort: %v", openflow.ErrUnsupportedEtherType)
+		r.err = errors.Wrap(openflow.ErrUnsupportedEtherType, "SetDstPort")
 		return
 	}
 	// TCP or UDP?
 	if r.protocol != 0x06 && r.protocol != 0x11 {
-		r.err = fmt.Errorf("SetDstPort: %v", openflow.ErrUnsupportedIPProtocol)
+		r.err = errors.Wrap(openflow.ErrUnsupportedIPProtocol, "SetDstPort")
 		return
 	}
 
@@ -268,7 +269,7 @@ func (r *Match) SetWildcardIPProtocol() {
 func (r *Match) SetIPProtocol(p uint8) {
 	// IPv4?
 	if r.etherType != 0x0800 {
-		r.err = fmt.Errorf("SetIPProtocol: %v", openflow.ErrUnsupportedEtherType)
+		r.err = errors.Wrap(openflow.ErrUnsupportedEtherType, "SetIPProtocol")
 		return
 	}
 
@@ -303,7 +304,7 @@ func (r *Match) SetWildcardSrcMAC() {
 
 func (r *Match) SetSrcMAC(mac net.HardwareAddr) {
 	if mac == nil || len(mac) == 0 {
-		r.err = fmt.Errorf("SetSrcMAC: %v", openflow.ErrInvalidMACAddress)
+		r.err = errors.Wrap(openflow.ErrInvalidMACAddress, "SetSrcMAC")
 		return
 	}
 	r.srcMAC = make([]byte, len(mac))
@@ -322,7 +323,7 @@ func (r *Match) SetWildcardDstMAC() {
 
 func (r *Match) SetDstMAC(mac net.HardwareAddr) {
 	if mac == nil || len(mac) == 0 {
-		r.err = fmt.Errorf("SetDstMAC: %v", openflow.ErrInvalidMACAddress)
+		r.err = errors.Wrap(openflow.ErrInvalidMACAddress, "SetDstMAC")
 		return
 	}
 	r.dstMAC = make([]byte, len(mac))
@@ -339,12 +340,12 @@ func (r *Match) SetSrcIP(ip *net.IPNet) {
 		panic("ip is nil")
 	}
 	if ip.IP == nil || len(ip.IP) == 0 {
-		r.err = fmt.Errorf("SetSrcIP: %v", openflow.ErrInvalidIPAddress)
+		r.err = errors.Wrap(openflow.ErrInvalidIPAddress, "SetSrcIP")
 		return
 	}
 	// IPv4?
 	if r.etherType != 0x0800 {
-		r.err = fmt.Errorf("SetSrcIP: %v", openflow.ErrUnsupportedEtherType)
+		r.err = errors.Wrap(openflow.ErrUnsupportedEtherType, "SetSrcIP")
 		return
 	}
 
@@ -374,12 +375,12 @@ func (r *Match) SetDstIP(ip *net.IPNet) {
 		panic("ip is nil")
 	}
 	if ip.IP == nil || len(ip.IP) == 0 {
-		r.err = fmt.Errorf("SetDstIP: %v", openflow.ErrInvalidIPAddress)
+		r.err = errors.Wrap(openflow.ErrInvalidIPAddress, "SetDstIP")
 		return
 	}
 	// IPv4?
 	if r.etherType != 0x0800 {
-		r.err = fmt.Errorf("SetDstIP: %v", openflow.ErrUnsupportedEtherType)
+		r.err = errors.Wrap(openflow.ErrUnsupportedEtherType, "SetDstIP")
 		return
 	}
 

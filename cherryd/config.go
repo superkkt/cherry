@@ -22,11 +22,13 @@
 package main
 
 import (
-	"errors"
 	"fmt"
-	"github.com/dlintw/goconf"
-	"github.com/superkkt/cherry/cherryd/log"
 	"strings"
+
+	"github.com/superkkt/cherry/cherryd/log"
+
+	"github.com/dlintw/goconf"
+	"github.com/pkg/errors"
 )
 
 type Config struct {
@@ -114,7 +116,7 @@ func (c *Config) readDefaultConfig(conf *goconf.ConfigFile) error {
 		return errors.New("empty applications in the config file")
 	}
 	if err := c.parseApplications(apps); err != nil {
-		return fmt.Errorf("invalid applications config: %v", err)
+		return errors.Wrap(err, "invalid applications config")
 	}
 
 	return nil

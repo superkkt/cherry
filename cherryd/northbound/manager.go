@@ -27,7 +27,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/dlintw/goconf"
 	"github.com/superkkt/cherry/cherryd/database"
 	"github.com/superkkt/cherry/cherryd/log"
 	"github.com/superkkt/cherry/cherryd/network"
@@ -35,6 +34,9 @@ import (
 	"github.com/superkkt/cherry/cherryd/northbound/app/l2switch"
 	"github.com/superkkt/cherry/cherryd/northbound/app/monitor"
 	"github.com/superkkt/cherry/cherryd/northbound/app/proxyarp"
+
+	"github.com/dlintw/goconf"
+	"github.com/pkg/errors"
 )
 
 type EventSender interface {
@@ -114,10 +116,10 @@ func (r *Manager) Enable(appName string) error {
 	app := v.instance
 
 	if err := app.Init(); err != nil {
-		return fmt.Errorf("initializing application: %v", err)
+		return errors.Wrap(err, "initializing application")
 	}
 	if err := r.checkDependencies(app.Dependencies()); err != nil {
-		return fmt.Errorf("checking dependencies: %v", err)
+		return errors.Wrap(err, "checking dependencies")
 	}
 	v.enabled = true
 	r.log.Debug(fmt.Sprintf("Enabled %v application..", appName))

@@ -23,8 +23,9 @@ package openflow
 
 import (
 	"encoding"
-	"fmt"
 	"net"
+
+	"github.com/pkg/errors"
 )
 
 type Action interface {
@@ -94,7 +95,7 @@ func (r *BaseAction) OutPort() OutPort {
 
 func (r *BaseAction) SetSrcMAC(mac net.HardwareAddr) {
 	if mac == nil || len(mac) < 6 {
-		r.err = fmt.Errorf("SetSrcMAC: %v", ErrInvalidMACAddress)
+		r.err = errors.Wrap(ErrInvalidMACAddress, "SetSrcMAC")
 		return
 	}
 
@@ -111,7 +112,7 @@ func (r *BaseAction) SrcMAC() (ok bool, mac net.HardwareAddr) {
 
 func (r *BaseAction) SetDstMAC(mac net.HardwareAddr) {
 	if mac == nil || len(mac) < 6 {
-		r.err = fmt.Errorf("SetDstMAC: %v", ErrInvalidMACAddress)
+		r.err = errors.Wrap(ErrInvalidMACAddress, "SetDstMAC")
 		return
 	}
 

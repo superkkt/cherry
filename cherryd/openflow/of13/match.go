@@ -24,11 +24,13 @@ package of13
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
-	"github.com/superkkt/cherry/cherryd/openflow"
 	"net"
 	"sync"
+
+	"github.com/superkkt/cherry/cherryd/openflow"
+
+	"github.com/pkg/errors"
 )
 
 type Match struct {
@@ -62,18 +64,18 @@ func (r *Match) SetSrcPort(p uint16) {
 
 	etherType, ok := r.m[OFPXMT_OFB_ETH_TYPE]
 	if !ok {
-		r.err = fmt.Errorf("SetSrcPort: %v", openflow.ErrMissingEtherType)
+		r.err = errors.Wrap(openflow.ErrMissingEtherType, "SetSrcPort")
 		return
 	}
 	// IPv4?
 	if etherType.(uint16) != 0x0800 {
-		r.err = fmt.Errorf("SetSrcPort: %v", openflow.ErrUnsupportedEtherType)
+		r.err = errors.Wrap(openflow.ErrUnsupportedEtherType, "SetSrcPort")
 		return
 	}
 
 	proto, ok := r.m[OFPXMT_OFB_IP_PROTO]
 	if !ok {
-		r.err = fmt.Errorf("SetSrcPort: %v", openflow.ErrMissingIPProtocol)
+		r.err = errors.Wrap(openflow.ErrMissingIPProtocol, "SetSrcPort")
 		return
 	}
 
@@ -87,7 +89,7 @@ func (r *Match) SetSrcPort(p uint16) {
 		r.m[OFPXMT_OFB_UDP_SRC] = p
 		delete(r.m, OFPXMT_OFB_TCP_SRC)
 	default:
-		r.err = fmt.Errorf("SetSrcPort: %v", openflow.ErrUnsupportedIPProtocol)
+		r.err = errors.Wrap(openflow.ErrUnsupportedIPProtocol, "SetSrcPort")
 		return
 	}
 }
@@ -123,18 +125,18 @@ func (r *Match) SetDstPort(p uint16) {
 
 	etherType, ok := r.m[OFPXMT_OFB_ETH_TYPE]
 	if !ok {
-		r.err = fmt.Errorf("SetDstPort: %v", openflow.ErrMissingEtherType)
+		r.err = errors.Wrap(openflow.ErrMissingEtherType, "SetDstPort")
 		return
 	}
 	// IPv4?
 	if etherType.(uint16) != 0x0800 {
-		r.err = fmt.Errorf("SetDstPort: %v", openflow.ErrUnsupportedEtherType)
+		r.err = errors.Wrap(openflow.ErrUnsupportedEtherType, "SetDstPort")
 		return
 	}
 
 	proto, ok := r.m[OFPXMT_OFB_IP_PROTO]
 	if !ok {
-		r.err = fmt.Errorf("SetDstPort: %v", openflow.ErrMissingIPProtocol)
+		r.err = errors.Wrap(openflow.ErrMissingIPProtocol, "SetDstPort")
 		return
 	}
 
@@ -148,7 +150,7 @@ func (r *Match) SetDstPort(p uint16) {
 		r.m[OFPXMT_OFB_UDP_DST] = p
 		delete(r.m, OFPXMT_OFB_TCP_DST)
 	default:
-		r.err = fmt.Errorf("SetDstPort: %v", openflow.ErrUnsupportedIPProtocol)
+		r.err = errors.Wrap(openflow.ErrUnsupportedIPProtocol, "SetDstPort")
 		return
 	}
 }
@@ -235,12 +237,12 @@ func (r *Match) SetIPProtocol(p uint8) {
 
 	etherType, ok := r.m[OFPXMT_OFB_ETH_TYPE]
 	if !ok {
-		r.err = fmt.Errorf("SetIPProtocol: %v", openflow.ErrMissingEtherType)
+		r.err = errors.Wrap(openflow.ErrMissingEtherType, "SetIPProtocol")
 		return
 	}
 	// IPv4?
 	if etherType.(uint16) != 0x0800 {
-		r.err = fmt.Errorf("SetIPProtocol: %v", openflow.ErrUnsupportedEtherType)
+		r.err = errors.Wrap(openflow.ErrUnsupportedEtherType, "SetIPProtocol")
 		return
 	}
 
@@ -302,7 +304,7 @@ func (r *Match) SetSrcMAC(mac net.HardwareAddr) {
 		panic("mac is nil")
 	}
 	if len(mac) < 6 {
-		r.err = fmt.Errorf("SetSrcMAC: %v", openflow.ErrInvalidMACAddress)
+		r.err = errors.Wrap(openflow.ErrInvalidMACAddress, "SetSrcMAC")
 		return
 	}
 	r.m[OFPXMT_OFB_ETH_SRC] = mac
@@ -335,7 +337,7 @@ func (r *Match) SetDstMAC(mac net.HardwareAddr) {
 		panic("mac is nil")
 	}
 	if len(mac) < 6 {
-		r.err = fmt.Errorf("SetDstMAC: %v", openflow.ErrInvalidMACAddress)
+		r.err = errors.Wrap(openflow.ErrInvalidMACAddress, "SetDstMAC")
 		return
 	}
 	r.m[OFPXMT_OFB_ETH_DST] = mac
@@ -361,18 +363,18 @@ func (r *Match) SetSrcIP(ip *net.IPNet) {
 		panic("ip is nil")
 	}
 	if ip.IP == nil || len(ip.IP) == 0 {
-		r.err = fmt.Errorf("SetSrcIP: %v", openflow.ErrInvalidIPAddress)
+		r.err = errors.Wrap(openflow.ErrInvalidIPAddress, "SetSrcIP")
 		return
 	}
 
 	etherType, ok := r.m[OFPXMT_OFB_ETH_TYPE]
 	if !ok {
-		r.err = fmt.Errorf("SetSrcIP: %v", openflow.ErrMissingEtherType)
+		r.err = errors.Wrap(openflow.ErrMissingEtherType, "SetSrcIP")
 		return
 	}
 	// IPv4?
 	if etherType.(uint16) != 0x0800 {
-		r.err = fmt.Errorf("SetSrcIP: %v", openflow.ErrUnsupportedEtherType)
+		r.err = errors.Wrap(openflow.ErrUnsupportedEtherType, "SetSrcIP")
 		return
 	}
 
@@ -402,18 +404,18 @@ func (r *Match) SetDstIP(ip *net.IPNet) {
 		panic("ip is nil")
 	}
 	if ip.IP == nil || len(ip.IP) == 0 {
-		r.err = fmt.Errorf("SetDstIP: %v", openflow.ErrInvalidIPAddress)
+		r.err = errors.Wrap(openflow.ErrInvalidIPAddress, "SetDstIP")
 		return
 	}
 
 	etherType, ok := r.m[OFPXMT_OFB_ETH_TYPE]
 	if !ok {
-		r.err = fmt.Errorf("SetDstIP: %v", openflow.ErrMissingEtherType)
+		r.err = errors.Wrap(openflow.ErrMissingEtherType, "SetDstIP")
 		return
 	}
 	// IPv4?
 	if etherType.(uint16) != 0x0800 {
-		r.err = fmt.Errorf("SetDstIP: %v", openflow.ErrUnsupportedEtherType)
+		r.err = errors.Wrap(openflow.ErrUnsupportedEtherType, "SetDstIP")
 		return
 	}
 

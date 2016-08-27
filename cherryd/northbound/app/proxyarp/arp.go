@@ -27,12 +27,14 @@ import (
 	"net"
 	"strconv"
 
-	"github.com/dlintw/goconf"
 	"github.com/superkkt/cherry/cherryd/log"
 	"github.com/superkkt/cherry/cherryd/network"
 	"github.com/superkkt/cherry/cherryd/northbound/app"
 	"github.com/superkkt/cherry/cherryd/openflow"
 	"github.com/superkkt/cherry/cherryd/protocol"
+
+	"github.com/dlintw/goconf"
+	"github.com/pkg/errors"
 )
 
 type ProxyARP struct {
@@ -92,7 +94,7 @@ func (r *ProxyARP) OnPacketIn(finder network.Finder, ingress *network.Port, eth 
 
 	mac, ok, err := r.db.MAC(arp.TPA)
 	if err != nil {
-		return err
+		return errors.Wrap(&proxyarpErr{temporary: true, err: err}, "failed to query MAC")
 	}
 	if !ok {
 		r.log.Debug(fmt.Sprintf("ProxyARP: drop the ARP request for unknown host (%v)", arp.TPA))

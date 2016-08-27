@@ -24,10 +24,13 @@ package network
 import (
 	"bytes"
 	"fmt"
-	"github.com/superkkt/cherry/cherryd/graph"
-	"github.com/superkkt/cherry/cherryd/log"
 	"net"
 	"sync"
+
+	"github.com/superkkt/cherry/cherryd/graph"
+	"github.com/superkkt/cherry/cherryd/log"
+
+	"github.com/pkg/errors"
 )
 
 type watcher interface {
@@ -173,7 +176,7 @@ func (r *topology) Node(mac net.HardwareAddr) (*Node, error) {
 
 	dpid, portNum, ok, err := r.db.Location(mac)
 	if err != nil {
-		return nil, fmt.Errorf("querying host location to the database: %v", err)
+		return nil, errors.Wrap(&networkErr{temporary: true, err: err}, "querying host location to the database")
 	}
 	if !ok {
 		return nil, nil

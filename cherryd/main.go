@@ -35,6 +35,8 @@ import (
 	"github.com/superkkt/cherry/cherryd/log"
 	"github.com/superkkt/cherry/cherryd/network"
 	"github.com/superkkt/cherry/cherryd/northbound"
+
+	"github.com/pkg/errors"
 	"golang.org/x/net/context"
 )
 
@@ -115,7 +117,7 @@ func createAppManager(config *Config, log *log.Syslog, db *database.MySQL) (*nor
 
 	for _, v := range config.Apps {
 		if err := manager.Enable(v); err != nil {
-			return nil, fmt.Errorf("enabling %v: %v", v, err)
+			return nil, errors.Wrap(err, fmt.Sprintf("enabling %v", v))
 		}
 	}
 

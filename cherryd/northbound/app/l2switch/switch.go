@@ -23,18 +23,19 @@ package l2switch
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"net"
 	"time"
 
-	"github.com/dlintw/goconf"
-	lru "github.com/hashicorp/golang-lru"
 	"github.com/superkkt/cherry/cherryd/log"
 	"github.com/superkkt/cherry/cherryd/network"
 	"github.com/superkkt/cherry/cherryd/northbound/app"
 	"github.com/superkkt/cherry/cherryd/openflow"
 	"github.com/superkkt/cherry/cherryd/protocol"
+
+	"github.com/dlintw/goconf"
+	lru "github.com/hashicorp/golang-lru"
+	"github.com/pkg/errors"
 )
 
 type L2Switch struct {
@@ -258,7 +259,7 @@ func (r *L2Switch) processPacket(finder network.Finder, ingress *network.Port, e
 
 	dstNode, err := finder.Node(eth.DstMAC)
 	if err != nil {
-		return true, fmt.Errorf("locating a node (MAC=%v): %v", eth.DstMAC, err)
+		return true, errors.Wrap(err, fmt.Sprintf("locating a node (MAC=%v)", eth.DstMAC))
 	}
 	// Unknown node?
 	if dstNode == nil {
@@ -352,7 +353,7 @@ func (r *L2Switch) OnPortDown(finder network.Finder, port *network.Port) error {
 	outPort.SetValue(port.Number())
 
 	if err := device.RemoveFlow(match, outPort); err != nil {
-		return fmt.Errorf("removing flows heading to port %v: %v", port.ID(), err)
+		return errors.Wrap(err, fmt.Sprintf("removing flows heading to port %v", port.ID()))
 	}
 
 	return r.BaseProcessor.OnPortDown(finder, port)

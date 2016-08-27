@@ -24,13 +24,15 @@ package trans
 import (
 	"encoding"
 	"encoding/binary"
-	"errors"
 	"fmt"
+	"time"
+
 	"github.com/superkkt/cherry/cherryd/openflow"
 	"github.com/superkkt/cherry/cherryd/openflow/of10"
 	"github.com/superkkt/cherry/cherryd/openflow/of13"
+
+	"github.com/pkg/errors"
 	"golang.org/x/net/context"
-	"time"
 )
 
 const (
@@ -158,7 +160,7 @@ func (r *Transceiver) sendEchoRequest() error {
 	}
 	echo.SetData(timestamp)
 	if err := r.Write(echo); err != nil {
-		return fmt.Errorf("failed to send ECHO_REQUEST message: %v", err)
+		return errors.Wrap(err, "failed to send ECHO_REQUEST message")
 	}
 	r.pingCounter++
 
@@ -182,7 +184,10 @@ func (r *Transceiver) Run(ctx context.Context) error {
 	// Infinite loop
 	for {
 		if err := r.dispatch(packet); err != nil {
-			return err
+			if !isTemporaryErr(err) {
+				return err
+			}
+			// TODO: Ignore a temporary error. Just log the error and keep go on.
 		}
 		r.updateTimestamp()
 
@@ -213,6 +218,13 @@ func (r *Transceiver) Run(ctx context.Context) error {
 
 	// Never reached
 	return nil
+}
+
+func isTemporaryErr(err error) bool {
+	e, ok := errors.Cause(err).(interface {
+		Temporary() bool
+	})
+	return ok && e.Temporary()
 }
 
 func (r *Transceiver) readPacket() ([]byte, error) {
@@ -350,7 +362,7 @@ func (r *Transceiver) handleEchoRequest(packet []byte) error {
 	reply.SetTransactionID(msg.TransactionID())
 	reply.SetData(msg.Data())
 	if err := r.Write(reply); err != nil {
-		return fmt.Errorf("failed to send ECHO_REPLY message: %v", err)
+		return errors.Wrap(err, "failed to send ECHO_REPLY message")
 	}
 
 	return nil

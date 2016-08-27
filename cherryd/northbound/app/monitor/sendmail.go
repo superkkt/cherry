@@ -5,6 +5,8 @@ import (
 	"net"
 	"net/smtp"
 	"strings"
+
+	"github.com/pkg/errors"
 )
 
 // msg is a RFC 822-style email with headers first, a blank line, and then the message body.
@@ -12,7 +14,7 @@ import (
 func sendmail(from string, to []string, msg []byte) error {
 	mx, err := lookupMX(from)
 	if err != nil {
-		return fmt.Errorf("failed to lookup MX for %v: %v", from, err)
+		return errors.Wrap(err, fmt.Sprintf("failed to lookup MX for %v", from))
 	}
 
 	err = nil
