@@ -31,8 +31,13 @@ import (
 	"github.com/superkkt/cherry/openflow/of10"
 	"github.com/superkkt/cherry/openflow/of13"
 
+	"github.com/op/go-logging"
 	"github.com/pkg/errors"
 	"golang.org/x/net/context"
+)
+
+var (
+	logger = logging.MustGetLogger("trans")
 )
 
 const (
@@ -187,7 +192,8 @@ func (r *Transceiver) Run(ctx context.Context) error {
 			if !isTemporaryErr(err) {
 				return err
 			}
-			// TODO: Ignore a temporary error. Just log the error and keep go on.
+			// Ignore the temporary error. Just log the error and keep go on.
+			logger.Errorf("failed to dispatch the packet: %v", err)
 		}
 		r.updateTimestamp()
 

@@ -28,136 +28,56 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/superkkt/cherry/database"
-	"github.com/superkkt/cherry/log"
 	"github.com/superkkt/cherry/network"
 	"github.com/superkkt/cherry/northbound"
 
+	"github.com/op/go-logging"
 	"github.com/pkg/errors"
 	"golang.org/x/net/context"
 )
 
 const (
-	Version           = "0.11.0"
-	defaultConfigFile = "/usr/local/etc/cherry.conf"
+	programName     = "cherry"
+	programVersion  = "0.11.0"
+	defaultLogLevel = logging.INFO
 )
 
 var (
-	showVersion = flag.Bool("version", false, "Show program version and exit")
-	configFile  = flag.String("config", defaultConfigFile, "Absolute path of the configuration file")
+	logger            = logging.MustGetLogger("main")
+	showVersion       = flag.Bool("version", false, "Show program version and exit")
+	defaultConfigFile = flag.String("config", fmt.Sprintf("/usr/local/etc/%v.conf", programName), "absolute path of the configuration file")
 )
-
-func listen(ctx context.Context, log *log.Syslog, port int, controller *network.Controller) {
-	type KeepAliver interface {
-		SetKeepAlive(keepalive bool) error
-		SetKeepAlivePeriod(d time.Duration) error
-	}
-
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%v", port))
-	if err != nil {
-		log.Err(fmt.Sprintf("Failed to listen on %v port: %v", port, err))
-		return
-	}
-	defer listener.Close()
-
-	f := func(c chan<- net.Conn) {
-		for {
-			conn, err := listener.Accept()
-
-			// Check shutdown signal
-			select {
-			case <-ctx.Done():
-				log.Info("Socket listener is finished by the shutdown signal")
-				return
-			default:
-			}
-
-			if err != nil {
-				log.Err(fmt.Sprintf("Failed to accept a new connection: %v", err))
-				continue
-			}
-			c <- conn
-			log.Info(fmt.Sprintf("New device is connected from %v", conn.RemoteAddr()))
-		}
-	}
-	backlog := make(chan net.Conn, 32)
-	go f(backlog)
-
-	// Infinite loop
-	for {
-		select {
-		case conn := <-backlog:
-			log.Debug("Fetching a new connection from the backlog..")
-			if v, ok := conn.(KeepAliver); ok {
-				log.Debug("Trying to enable socket keepalive..")
-				if err := v.SetKeepAlive(true); err == nil {
-					log.Debug("Setting socket keepalive period...")
-					// Makes a broken connection will be disconnected within 45 seconds.
-					// http://felixge.de/2014/08/26/tcp-keepalive-with-golang.html
-					v.SetKeepAlivePeriod(time.Duration(5) * time.Second)
-				} else {
-					log.Err(fmt.Sprintf("Failed to enable socket keepalive: %v", err))
-				}
-			}
-			controller.AddConnection(ctx, conn)
-		case <-ctx.Done():
-			return
-		}
-	}
-}
-
-func createAppManager(config *Config, log *log.Syslog, db *database.MySQL) (*northbound.Manager, error) {
-	manager, err := northbound.NewManager(config.RawConfig(), log, db)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, v := range config.Apps {
-		if err := manager.Enable(v); err != nil {
-			return nil, errors.Wrap(err, fmt.Sprintf("enabling %v", v))
-		}
-	}
-
-	return manager, nil
-}
 
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	flag.Parse()
-
 	if *showVersion {
-		fmt.Printf("Version: %v\n", Version)
+		fmt.Printf("Version: %v\n", programVersion)
 		os.Exit(0)
 	}
 
 	conf := NewConfig()
 	if err := conf.Read(); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to read configurations: %v\n", err)
-		os.Exit(1)
+		logger.Fatalf("failed to read configurations: %v", err)
 	}
-
-	log, err := log.NewSyslog(conf.LogLevel)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to init logger: %v\n", err)
-		os.Exit(1)
+	if err := initLog(getLogLevel(conf.LogLevel)); err != nil {
+		logger.Fatalf("failed to init log: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-
 	db, err := database.NewMySQL(conf.RawConfig())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to init MySQL database: %v\n", err)
-		os.Exit(1)
+		logger.Fatalf("failed to init MySQL database: %v", err)
 	}
-
-	controller := network.NewController(log, db, conf.RawConfig())
-	manager, err := createAppManager(conf, log, db)
+	controller := network.NewController(db, conf.RawConfig())
+	manager, err := createAppManager(conf, db)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create application manager: %v\n", err)
-		os.Exit(1)
+		logger.Fatalf("failed to create application manager: %v", err)
 	}
 	manager.AddEventSender(controller)
 
@@ -171,7 +91,7 @@ func main() {
 			s := <-c
 			if s == syscall.SIGTERM || s == syscall.SIGINT {
 				// Graceful shutdown
-				log.Info("Shutting down...")
+				logger.Info("Shutting down...")
 				cancel()
 				// Timeout for cancelation
 				time.Sleep(5 * time.Second)
@@ -185,5 +105,105 @@ func main() {
 		}
 	}()
 
-	listen(ctx, log, conf.Port, controller)
+	listen(ctx, conf.Port, controller)
+}
+
+func initLog(level logging.Level) error {
+	backend, err := newSyslog(programName)
+	if err != nil {
+		return err
+	}
+	backend = logging.NewBackendFormatter(backend, logging.MustStringFormatter(`%{level}: %{shortpkg}.%{shortfunc}: %{message}`))
+
+	leveled := logging.AddModuleLevel(backend)
+	// Set log level for all modules
+	leveled.SetLevel(level, "")
+	logging.SetBackend(leveled)
+
+	return nil
+}
+
+func getLogLevel(level string) logging.Level {
+	level = strings.ToUpper(level)
+	ret, err := logging.LogLevel(level)
+	if err != nil {
+		logger.Infof("invalid log level=%v, defaulting to %v..", level, defaultLogLevel)
+		return defaultLogLevel
+	}
+
+	return ret
+}
+
+func listen(ctx context.Context, port int, controller *network.Controller) {
+	type KeepAliver interface {
+		SetKeepAlive(keepalive bool) error
+		SetKeepAlivePeriod(d time.Duration) error
+	}
+
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%v", port))
+	if err != nil {
+		logger.Errorf("failed to listen on %v port: %v", port, err)
+		return
+	}
+	defer listener.Close()
+
+	f := func(c chan<- net.Conn) {
+		for {
+			conn, err := listener.Accept()
+
+			// Check shutdown signal
+			select {
+			case <-ctx.Done():
+				logger.Info("socket listener is finished by the shutdown signal")
+				return
+			default:
+			}
+
+			if err != nil {
+				logger.Errorf("failed to accept a new connection: %v", err)
+				continue
+			}
+			c <- conn
+			logger.Infof("new device is connected from %v", conn.RemoteAddr())
+		}
+	}
+	backlog := make(chan net.Conn, 32)
+	go f(backlog)
+
+	// Infinite loop
+	for {
+		select {
+		case conn := <-backlog:
+			logger.Debug("fetching a new connection from the backlog..")
+			if v, ok := conn.(KeepAliver); ok {
+				logger.Debug("trying to enable socket keepalive..")
+				if err := v.SetKeepAlive(true); err == nil {
+					logger.Debug("setting socket keepalive period...")
+					// Makes a broken connection will be disconnected within 45 seconds.
+					// http://felixge.de/2014/08/26/tcp-keepalive-with-golang.html
+					v.SetKeepAlivePeriod(time.Duration(5) * time.Second)
+				} else {
+					logger.Errorf("failed to enable socket keepalive: %v", err)
+				}
+			}
+			controller.AddConnection(ctx, conn)
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func createAppManager(config *Config, db *database.MySQL) (*northbound.Manager, error) {
+	manager, err := northbound.NewManager(config.RawConfig(), db)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, v := range config.Apps {
+		if err := manager.Enable(v); err != nil {
+			return nil, errors.Wrap(err, fmt.Sprintf("enabling %v", v))
+		}
+	}
+
+	return manager, nil
 }

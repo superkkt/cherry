@@ -22,10 +22,7 @@
 package main
 
 import (
-	"fmt"
 	"strings"
-
-	"github.com/superkkt/cherry/log"
 
 	"github.com/dlintw/goconf"
 	"github.com/pkg/errors"
@@ -34,7 +31,7 @@ import (
 type Config struct {
 	conf     *goconf.ConfigFile
 	Port     int
-	LogLevel log.Level
+	LogLevel string
 	Apps     []string
 }
 
@@ -45,7 +42,7 @@ func NewConfig() *Config {
 }
 
 func (c *Config) Read() error {
-	conf, err := goconf.ReadConfigFile(*configFile)
+	conf, err := goconf.ReadConfigFile(*defaultConfigFile)
 	if err != nil {
 		return err
 	}
@@ -76,25 +73,6 @@ func (c *Config) parseApplications(apps string) error {
 	return nil
 }
 
-func (c *Config) parseLogLevel(l string) error {
-	switch strings.ToUpper(l) {
-	case "DEBUG":
-		c.LogLevel = log.Debug
-	case "INFO":
-		c.LogLevel = log.Info
-	case "NOTICE":
-		c.LogLevel = log.Notice
-	case "WARNING":
-		c.LogLevel = log.Warning
-	case "ERROR":
-		c.LogLevel = log.Error
-	default:
-		return fmt.Errorf("invalid log level: %v", l)
-	}
-
-	return nil
-}
-
 func (c *Config) readDefaultConfig(conf *goconf.ConfigFile) error {
 	var err error
 
@@ -107,9 +85,7 @@ func (c *Config) readDefaultConfig(conf *goconf.ConfigFile) error {
 	if err != nil || len(logLevel) == 0 {
 		return errors.New("invalid log level in the config file")
 	}
-	if err := c.parseLogLevel(logLevel); err != nil {
-		return err
-	}
+	c.LogLevel = logLevel
 
 	apps, err := conf.GetString("default", "applications")
 	if err != nil || len(apps) == 0 {

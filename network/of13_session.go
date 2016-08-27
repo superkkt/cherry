@@ -22,10 +22,8 @@
 package network
 
 import (
-	"fmt"
 	"strings"
 
-	"github.com/superkkt/cherry/log"
 	"github.com/superkkt/cherry/openflow"
 	"github.com/superkkt/cherry/openflow/of13"
 	"github.com/superkkt/cherry/openflow/trans"
@@ -34,13 +32,11 @@ import (
 )
 
 type of13Session struct {
-	log    log.Logger
 	device *Device
 }
 
-func newOF13Session(log log.Logger, d *Device) *of13Session {
+func newOF13Session(d *Device) *of13Session {
 	return &of13Session{
-		log:    log,
 		device: d,
 	}
 }
@@ -224,13 +220,13 @@ func (r *of13Session) OnPortDescReply(f openflow.Factory, w trans.Writer, v open
 		if !p.IsPortDown() && !p.IsLinkDown() && r.device.isValid() {
 			// Send LLDP to update network topology
 			if err := sendLLDP(r.device.ID(), f, w, p); err != nil {
-				r.log.Err(fmt.Sprintf("OF13Session: failed to send LLDP: %v", err))
+				logger.Errorf("failed to send LLDP: %v", err)
 			}
 		}
-		r.log.Debug(fmt.Sprintf("OF13Session: PortNum=%v, AdminUp=%v, LinkUp=%v", p.Number(), !p.IsPortDown(), !p.IsLinkDown()))
+		logger.Debugf("PortNum=%v, AdminUp=%v, LinkUp=%v", p.Number(), !p.IsPortDown(), !p.IsLinkDown())
 
 		if err := sendQueueConfigRequest(f, w, p.Number()); err != nil {
-			r.log.Err(fmt.Sprintf("OF13Session: sending queue config request: %v", err))
+			logger.Errorf("failed to send the queue config request: %v", err)
 		}
 	}
 

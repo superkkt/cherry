@@ -26,24 +26,26 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/superkkt/cherry/log"
 	"github.com/superkkt/cherry/network"
 	"github.com/superkkt/cherry/northbound/app"
 
 	"github.com/dlintw/goconf"
+	"github.com/op/go-logging"
+)
+
+var (
+	logger = logging.MustGetLogger("monitor")
 )
 
 type Monitor struct {
 	app.BaseProcessor
 	conf  *goconf.ConfigFile
-	log   log.Logger
 	email string
 }
 
-func New(conf *goconf.ConfigFile, log log.Logger) *Monitor {
+func New(conf *goconf.ConfigFile) *Monitor {
 	return &Monitor{
 		conf: conf,
-		log:  log,
 	}
 }
 
@@ -70,7 +72,7 @@ func (r *Monitor) OnDeviceUp(finder network.Finder, device *network.Device) erro
 		subject := "Cherry: device is up!"
 		body := fmt.Sprintf("DPID: %v", device.ID())
 		if err := r.sendAlarm(subject, body); err != nil {
-			r.log.Err(fmt.Sprintf("Monitor: failed to send an alarm email: %v", err))
+			logger.Errorf("failed to send an alarm email: %v", err)
 		}
 	}()
 
@@ -82,7 +84,7 @@ func (r *Monitor) OnDeviceDown(finder network.Finder, device *network.Device) er
 		subject := "Cherry: device is down!"
 		body := fmt.Sprintf("DPID: %v", device.ID())
 		if err := r.sendAlarm(subject, body); err != nil {
-			r.log.Err(fmt.Sprintf("Monitor: failed to send an alarm email: %v", err))
+			logger.Errorf("failed to send an alarm email: %v", err)
 		}
 	}()
 
@@ -98,7 +100,7 @@ func (r *Monitor) sendAlarm(subject, body string) error {
 	if err := sendmail(from, to, msg); err != nil {
 		return err
 	}
-	r.log.Debug(fmt.Sprintf("Monitor: sent an alarm email to %v: subject=%v", r.email, subject))
+	logger.Debugf("sent an alarm email to %v: subject=%v", r.email, subject)
 
 	return nil
 

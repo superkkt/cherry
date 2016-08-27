@@ -30,7 +30,6 @@ import (
 	"net"
 	"strconv"
 
-	"github.com/superkkt/cherry/log"
 	"github.com/superkkt/cherry/openflow"
 	"github.com/superkkt/cherry/openflow/of10"
 	"github.com/superkkt/cherry/openflow/of13"
@@ -46,7 +45,6 @@ var (
 
 type session struct {
 	negotiated bool
-	log        log.Logger
 	device     *Device
 	trans      *trans.Transceiver
 	handler    trans.Handler
@@ -59,7 +57,6 @@ type session struct {
 
 type sessionConfig struct {
 	conn     net.Conn
-	logger   log.Logger
 	watcher  watcher
 	finder   Finder
 	listener ControllerEventListener
@@ -68,9 +65,6 @@ type sessionConfig struct {
 func checkParam(c sessionConfig) {
 	if c.conn == nil {
 		panic("Conn is nil")
-	}
-	if c.logger == nil {
-		panic("Logger is nil")
 	}
 	if c.watcher == nil {
 		panic("Watcher is nil")
@@ -88,18 +82,17 @@ func newSession(c sessionConfig) *session {
 
 	stream := trans.NewStream(c.conn)
 	v := new(session)
-	v.log = c.logger
 	v.watcher = c.watcher
 	v.finder = c.finder
 	v.listener = c.listener
-	v.device = newDevice(c.logger, v)
+	v.device = newDevice(v)
 	v.trans = trans.NewTransceiver(stream, v)
 
 	return v
 }
 
 func (r *session) OnHello(f openflow.Factory, w trans.Writer, v openflow.Hello) error {
-	r.log.Debug(fmt.Sprintf("Session: HELLO (ver=%v) is received", v.Version()))
+	logger.Debugf("HELLO (ver=%v) is received", v.Version())
 
 	// Ignore duplicated HELLO messages
 	if r.negotiated {
@@ -108,9 +101,9 @@ func (r *session) OnHello(f openflow.Factory, w trans.Writer, v openflow.Hello) 
 
 	switch v.Version() {
 	case openflow.OF10_VERSION:
-		r.handler = newOF10Session(r.log, r.device)
+		r.handler = newOF10Session(r.device)
 	case openflow.OF13_VERSION:
-		r.handler = newOF13Session(r.log, r.device)
+		r.handler = newOF13Session(r.device)
 	default:
 		return fmt.Errorf("unsupported OpenFlow version: %v", v.Version())
 	}
@@ -124,11 +117,11 @@ func (r *session) OnError(f openflow.Factory, w trans.Writer, v openflow.Error) 
 	// Is this the CHECK_OVERLAP error?
 	if v.Class() == 3 && v.Code() == 1 {
 		// Ignore this CHECK_OVERLAP error
-		r.log.Debug("Session: FLOW_MOD is overlapped")
+		logger.Debug("FLOW_MOD is overlapped")
 		return nil
 	}
 
-	r.log.Err(fmt.Sprintf("Session: ERROR (class=%v, code=%v, data=%v)", v.Class(), v.Code(), v.Data()))
+	logger.Errorf("ERROR (class=%v, code=%v, data=%v)", v.Class(), v.Code(), v.Data())
 	if !r.negotiated {
 		return errNotNegotiated
 	}
@@ -137,7 +130,7 @@ func (r *session) OnError(f openflow.Factory, w trans.Writer, v openflow.Error) 
 }
 
 func (r *session) OnFeaturesReply(f openflow.Factory, w trans.Writer, v openflow.FeaturesReply) error {
-	r.log.Debug(fmt.Sprintf("Session: FEATURES_REPLY (DPID=%v, NumBufs=%v, NumTables=%v)", v.DPID(), v.NumBuffers(), v.NumTables()))
+	logger.Debugf("FEATURES_REPLY (DPID=%v, NumBufs=%v, NumTables=%v)", v.DPID(), v.NumBuffers(), v.NumTables())
 
 	if !r.negotiated {
 		return errNotNegotiated
@@ -177,7 +170,7 @@ func (r *session) OnFeaturesReply(f openflow.Factory, w trans.Writer, v openflow
 }
 
 func (r *session) OnGetConfigReply(f openflow.Factory, w trans.Writer, v openflow.GetConfigReply) error {
-	r.log.Debug("Session: GET_CONFIG_REPLY is received")
+	logger.Debug("GET_CONFIG_REPLY is received")
 
 	if !r.negotiated {
 		return errNotNegotiated
@@ -187,17 +180,17 @@ func (r *session) OnGetConfigReply(f openflow.Factory, w trans.Writer, v openflo
 }
 
 func (r *session) OnDescReply(f openflow.Factory, w trans.Writer, v openflow.DescReply) error {
-	r.log.Debug("Session: DESC_REPLY is received")
+	logger.Debug("DESC_REPLY is received")
 
 	if !r.negotiated {
 		return errNotNegotiated
 	}
 
-	r.log.Debug(fmt.Sprintf("Session: Manufacturer=%v", v.Manufacturer()))
-	r.log.Debug(fmt.Sprintf("Session: Hardware=%v", v.Hardware()))
-	r.log.Debug(fmt.Sprintf("Session: Software=%v", v.Software()))
-	r.log.Debug(fmt.Sprintf("Session: Serial=%v", v.Serial()))
-	r.log.Debug(fmt.Sprintf("Session: Description=%v", v.Description()))
+	logger.Debugf("Manufacturer=%v", v.Manufacturer())
+	logger.Debugf("Hardware=%v", v.Hardware())
+	logger.Debugf("Software=%v", v.Software())
+	logger.Debugf("Serial=%v", v.Serial())
+	logger.Debugf("Description=%v", v.Description())
 
 	desc := Descriptions{
 		Manufacturer: v.Manufacturer(),
@@ -212,7 +205,7 @@ func (r *session) OnDescReply(f openflow.Factory, w trans.Writer, v openflow.Des
 }
 
 func (r *session) OnPortDescReply(f openflow.Factory, w trans.Writer, v openflow.PortDescReply) error {
-	r.log.Debug(fmt.Sprintf("Session: PORT_DESC_REPLY is received (# of ports=%v)", len(v.Ports())))
+	logger.Debugf("PORT_DESC_REPLY is received (# of ports=%v)", len(v.Ports()))
 
 	if !r.negotiated {
 		return errNotNegotiated
@@ -290,12 +283,12 @@ func (r *session) sendPortEvent(portNum uint32, up bool) {
 
 	if up {
 		if err := r.listener.OnPortUp(r.finder, port); err != nil {
-			r.log.Err(fmt.Sprintf("Session: OnPortUp: %v", err))
+			logger.Errorf("OnPortUp: %v", err)
 			return
 		}
 	} else {
 		if err := r.listener.OnPortDown(r.finder, port); err != nil {
-			r.log.Err(fmt.Sprintf("Session: OnPortDown: %v", err))
+			logger.Errorf("OnPortDown: %v", err)
 			return
 		}
 	}
@@ -320,14 +313,14 @@ func (r *session) updatePort(v openflow.PortStatus) {
 }
 
 func (r *session) OnPortStatus(f openflow.Factory, w trans.Writer, v openflow.PortStatus) error {
-	r.log.Debug("Session: PORT_STATUS is received")
+	logger.Debug("PORT_STATUS is received")
 
 	if !r.negotiated {
 		return errNotNegotiated
 	}
 
 	port := v.Port()
-	r.log.Debug(fmt.Sprintf("Session: Device=%v, PortNum=%v, AdminUp=%v, LinkUp=%v", r.device.ID(), port.Number(), !port.IsPortDown(), !port.IsLinkDown()))
+	logger.Debugf("Device=%v, PortNum=%v, AdminUp=%v, LinkUp=%v", r.device.ID(), port.Number(), !port.IsPortDown(), !port.IsLinkDown())
 	r.updatePort(v)
 
 	// Send port event
@@ -352,7 +345,7 @@ func (r *session) OnPortStatus(f openflow.Factory, w trans.Writer, v openflow.Po
 }
 
 func (r *session) OnFlowRemoved(f openflow.Factory, w trans.Writer, v openflow.FlowRemoved) error {
-	r.log.Debug(fmt.Sprintf("Session: FLOW_REMOVED is received (cookie=%v)", v.Cookie()))
+	logger.Debugf("FLOW_REMOVED is received (cookie=%v)", v.Cookie())
 
 	if !r.negotiated {
 		return errNotNegotiated
@@ -436,13 +429,13 @@ func (r *session) handleLLDP(inPort *Port, ethernet *protocol.Ethernet) error {
 	deviceID, portNum, err := extractDeviceInfo(lldp)
 	if err != nil {
 		// Do nothing if this packet is not the one we sent
-		r.log.Info("Session: ignoring a LLDP packet issued by an unknown device")
+		logger.Info("ignoring a LLDP packet issued by an unknown device")
 		return nil
 	}
 	port, err := r.findNeighborPort(deviceID, portNum)
 	if err != nil {
 		// Do nothing if we cannot find neighbor device and its port
-		r.log.Warning(fmt.Sprintf("Session: ignoring a LLDP packet: %v", err))
+		logger.Warningf("ignoring a LLDP packet: %v", err)
 		return nil
 	}
 	r.watcher.DeviceLinked([2]*Port{inPort, port})
@@ -451,7 +444,8 @@ func (r *session) handleLLDP(inPort *Port, ethernet *protocol.Ethernet) error {
 }
 
 func (r *session) isActivatedPort(p *Port) bool {
-	// We assume that a port is in inactive state during specified time after setting its value to avoid broadcast storm.
+	// We assume that a port is in inactive state during specified time after
+	// setting its value to avoid broadcast storm.
 	return p.duration().Seconds() > 1.5
 }
 
@@ -459,7 +453,8 @@ func (r *session) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.Pack
 	if !r.negotiated {
 		return errNotNegotiated
 	}
-	r.log.Debug(fmt.Sprintf("Session: PACKET_IN is received (device=%v, inport=%v, reason=%v, tableID=%v, cookie=%v)", r.device.ID(), v.InPort(), v.Reason(), v.TableID(), v.Cookie()))
+	logger.Debugf("PACKET_IN is received (device=%v, inport=%v, reason=%v, tableID=%v, cookie=%v)",
+		r.device.ID(), v.InPort(), v.Reason(), v.TableID(), v.Cookie())
 
 	ethernet, err := getEthernet(v.Data())
 	if err != nil {
@@ -467,7 +462,7 @@ func (r *session) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.Pack
 	}
 	inPort := r.device.Port(v.InPort())
 	if inPort == nil {
-		r.log.Err(fmt.Sprintf("Session: failed to find a port: deviceID=%v, portNum=%v, so ignore PACKET_IN..", r.device.ID(), v.InPort()))
+		logger.Errorf("failed to find a port: deviceID=%v, portNum=%v, so ignore PACKET_IN..", r.device.ID(), v.InPort())
 		return nil
 	}
 	// Process LLDP, and then add an edge among two switches
@@ -476,12 +471,12 @@ func (r *session) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.Pack
 	}
 	// Do nothing if the ingress port is in inactive state
 	if !r.isActivatedPort(inPort) {
-		r.log.Debug(fmt.Sprintf("Session: ignoring PACKET_IN from %v:%v because the ingress port is not in active state yet", r.device.ID(), v.InPort()))
+		logger.Debugf("ignoring PACKET_IN from %v:%v because the ingress port is not in active state yet", r.device.ID(), v.InPort())
 		return nil
 	}
 	// Do nothing if the ingress port is an edge between switches and is disabled by STP.
 	if r.finder.IsEdge(inPort) && !r.finder.IsEnabledBySTP(inPort) {
-		r.log.Debug(fmt.Sprintf("Session: ignoring PACKET_IN from %v:%v by STP", r.device.ID(), v.InPort()))
+		logger.Debugf("ignoring PACKET_IN from %v:%v by STP", r.device.ID(), v.InPort())
 		return nil
 	}
 	// Call specific version handler
@@ -497,16 +492,16 @@ func (r *session) Run(ctx context.Context) {
 	// This canceller will be used to disconnect this session when it is necessary.
 	r.canceller = canceller
 	if err := r.trans.Run(sessionCtx); err != nil && err != io.EOF {
-		r.log.Err(fmt.Sprintf("Session: transceiver is closed: %v", err))
+		logger.Errorf("openflow transceiver is unexpectedly closed: %v", err)
 	}
 	r.trans.Close()
 	r.device.Close()
-	r.log.Debug(fmt.Sprintf("Session: disconnected device (DPID=%v)", r.device.ID()))
+	logger.Infof("disconnected device (DPID=%v)", r.device.ID())
 
 	if r.device.isValid() {
 		popCanceller(r.device.ID())
 		if err := r.listener.OnDeviceDown(r.finder, r.device); err != nil {
-			r.log.Err(fmt.Sprintf("Session: executing OnDeviceDown: %v", err))
+			logger.Errorf("OnDeviceDown: %v", err)
 		}
 		r.watcher.DeviceRemoved(r.device)
 	}

@@ -28,7 +28,6 @@ import (
 	"sync"
 
 	"github.com/superkkt/cherry/database"
-	"github.com/superkkt/cherry/log"
 	"github.com/superkkt/cherry/network"
 	"github.com/superkkt/cherry/northbound/app"
 	"github.com/superkkt/cherry/northbound/app/l2switch"
@@ -36,7 +35,12 @@ import (
 	"github.com/superkkt/cherry/northbound/app/proxyarp"
 
 	"github.com/dlintw/goconf"
+	"github.com/op/go-logging"
 	"github.com/pkg/errors"
+)
+
+var (
+	logger = logging.MustGetLogger("northbound")
 )
 
 type EventSender interface {
@@ -50,31 +54,26 @@ type application struct {
 
 type Manager struct {
 	mutex      sync.Mutex
-	log        log.Logger
 	conf       *goconf.ConfigFile
 	apps       map[string]*application // Registered applications
 	head, tail app.Processor
 	db         *database.MySQL
 }
 
-func NewManager(conf *goconf.ConfigFile, log log.Logger, db *database.MySQL) (*Manager, error) {
+func NewManager(conf *goconf.ConfigFile, db *database.MySQL) (*Manager, error) {
 	if conf == nil {
 		panic("nil config")
 	}
-	if log == nil {
-		panic("nil logger")
-	}
 
 	v := &Manager{
-		log:  log,
 		conf: conf,
 		apps: make(map[string]*application),
 		db:   db,
 	}
 	// Registering north-bound applications
-	v.register(l2switch.New(conf, log))
-	v.register(proxyarp.New(conf, log, db))
-	v.register(monitor.New(conf, log))
+	v.register(l2switch.New(conf))
+	v.register(proxyarp.New(conf, db))
+	v.register(monitor.New(conf))
 
 	return v, nil
 }
@@ -95,7 +94,7 @@ func (r *Manager) checkDependencies(appNames []string) error {
 
 	for _, name := range appNames {
 		app, ok := r.apps[strings.ToUpper(name)]
-		r.log.Debug(fmt.Sprintf("app: %+v, ok: %v", app, ok))
+		logger.Debugf("app: %+v, ok: %v", app, ok)
 		if !ok || !app.enabled {
 			return fmt.Errorf("%v application is not loaded", name)
 		}
@@ -108,7 +107,7 @@ func (r *Manager) Enable(appName string) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	r.log.Debug(fmt.Sprintf("Enabling %v application..", appName))
+	logger.Debugf("enabling %v application..", appName)
 	v, ok := r.apps[strings.ToUpper(appName)]
 	if !ok {
 		return fmt.Errorf("unknown application: %v", appName)
@@ -122,7 +121,7 @@ func (r *Manager) Enable(appName string) error {
 		return errors.Wrap(err, "checking dependencies")
 	}
 	v.enabled = true
-	r.log.Debug(fmt.Sprintf("Enabled %v application..", appName))
+	logger.Debugf("enabled %v application", appName)
 
 	if r.head == nil {
 		r.head = app

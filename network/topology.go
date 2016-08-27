@@ -28,7 +28,6 @@ import (
 	"sync"
 
 	"github.com/superkkt/cherry/graph"
-	"github.com/superkkt/cherry/log"
 
 	"github.com/pkg/errors"
 )
@@ -55,16 +54,14 @@ type topology struct {
 	mutex sync.RWMutex
 	// Key is the device ID
 	devices  map[string]*Device
-	log      log.Logger
 	graph    *graph.Graph
 	listener TopologyEventListener
 	db       database
 }
 
-func newTopology(log log.Logger, db database) *topology {
+func newTopology(db database) *topology {
 	return &topology{
 		devices: make(map[string]*Device),
-		log:     log,
 		graph:   graph.New(),
 		db:      db,
 	}
@@ -96,7 +93,7 @@ func (r *topology) sendEvent() {
 	}
 
 	if err := r.listener.OnTopologyChange(r); err != nil {
-		r.log.Err(fmt.Sprintf("Topology: executing OnTopologyChange: %v", err))
+		logger.Errorf("OnTopologyChange: %v", err)
 		return
 	}
 }
@@ -161,7 +158,7 @@ func (r *topology) DeviceLinked(ports [2]*Port) {
 
 		link := newLink(ports)
 		if err := r.graph.AddEdge(link); err != nil {
-			r.log.Err(fmt.Sprintf("Topology: adding new graph edge: %v", err))
+			logger.Errorf("failed to add a new graph edge: %v", err)
 			return
 		}
 	}()

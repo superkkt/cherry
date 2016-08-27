@@ -22,9 +22,6 @@
 package network
 
 import (
-	"fmt"
-
-	"github.com/superkkt/cherry/log"
 	"github.com/superkkt/cherry/openflow"
 	"github.com/superkkt/cherry/openflow/of10"
 	"github.com/superkkt/cherry/openflow/trans"
@@ -33,13 +30,11 @@ import (
 )
 
 type of10Session struct {
-	log    log.Logger
 	device *Device
 }
 
-func newOF10Session(log log.Logger, d *Device) *of10Session {
+func newOF10Session(d *Device) *of10Session {
 	return &of10Session{
-		log:    log,
 		device: d,
 	}
 }
@@ -87,13 +82,13 @@ func (r *of10Session) OnFeaturesReply(f openflow.Factory, w trans.Writer, v open
 		if !p.IsPortDown() && !p.IsLinkDown() && r.device.isValid() {
 			// Send LLDP to update network topology
 			if err := sendLLDP(r.device.ID(), f, w, p); err != nil {
-				r.log.Err(fmt.Sprintf("OF10Session: failed to send LLDP: %v", err))
+				logger.Errorf("failed to send LLDP: %v", err)
 			}
 		}
-		r.log.Debug(fmt.Sprintf("OF10Session: PortNum=%v, AdminUp=%v, LinkUp=%v", p.Number(), !p.IsPortDown(), !p.IsLinkDown()))
+		logger.Debugf("PortNum=%v, AdminUp=%v, LinkUp=%v", p.Number(), !p.IsPortDown(), !p.IsLinkDown())
 
 		if err := sendQueueConfigRequest(f, w, p.Number()); err != nil {
-			r.log.Err(fmt.Sprintf("OF10Session: sending queue config request: %v", err))
+			logger.Errorf("failed to send the queue config request: %v", err)
 		}
 	}
 

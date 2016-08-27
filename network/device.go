@@ -28,7 +28,6 @@ import (
 	"net"
 	"sync"
 
-	"github.com/superkkt/cherry/log"
 	"github.com/superkkt/cherry/openflow"
 	"github.com/superkkt/cherry/protocol"
 )
@@ -50,7 +49,6 @@ type Features struct {
 type Device struct {
 	mutex        sync.RWMutex
 	id           string
-	log          log.Logger
 	session      *session
 	descriptions Descriptions
 	features     Features
@@ -64,16 +62,12 @@ var (
 	ErrClosedDevice = errors.New("already closed device")
 )
 
-func newDevice(log log.Logger, s *session) *Device {
-	if log == nil {
-		panic("Logger is nil")
-	}
+func newDevice(s *session) *Device {
 	if s == nil {
 		panic("Session is nil")
 	}
 
 	return &Device{
-		log:     log,
 		session: s,
 		ports:   make(map[uint32]*Port),
 	}
@@ -215,7 +209,7 @@ func (r *Device) updatePort(num uint32, p openflow.Port) {
 	if p == nil {
 		panic("Port is nil")
 	}
-	r.log.Debug(fmt.Sprintf("Device: updatePort: Device=%v, PortNum=%v, AdminUp=%v, LinkUp=%v", r.id, p.Number(), !p.IsPortDown(), !p.IsLinkDown()))
+	logger.Debugf("Device=%v, PortNum=%v, AdminUp=%v, LinkUp=%v", r.id, p.Number(), !p.IsPortDown(), !p.IsLinkDown())
 
 	port := r.ports[num]
 	if port == nil {

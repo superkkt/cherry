@@ -25,7 +25,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/superkkt/cherry/log"
 	"github.com/superkkt/cherry/network"
 )
 
@@ -33,7 +32,6 @@ type stormController struct {
 	mutex      sync.Mutex
 	max        uint
 	broadcasts []time.Time
-	log        log.Logger
 	bcaster    broadcaster
 }
 
@@ -42,12 +40,9 @@ type broadcaster interface {
 }
 
 // max is the number of broadcasts that are allowed per second.
-func newStormController(max uint, logger log.Logger, bcaster broadcaster) *stormController {
+func newStormController(max uint, bcaster broadcaster) *stormController {
 	if max <= 0 {
 		panic("max should be greater than zero")
-	}
-	if logger == nil {
-		panic("logger is nil")
 	}
 	if bcaster == nil {
 		panic("bcaster is nil")
@@ -56,7 +51,6 @@ func newStormController(max uint, logger log.Logger, bcaster broadcaster) *storm
 	return &stormController{
 		max:        max,
 		broadcasts: make([]time.Time, 0),
-		log:        logger,
 		bcaster:    bcaster,
 	}
 }
@@ -79,7 +73,7 @@ func (r *stormController) broadcast(ingress *network.Port, packet []byte) error 
 		return r.bcaster.flood(ingress, packet)
 	}
 	// Deny! r.broadcast should not be updated!
-	r.log.Warning("StormController: too many broadcasts: broadcast is denied to avoid the broadcast storm!")
+	logger.Warning("too many broadcasts: broadcast is denied to avoid the broadcast storm!")
 
 	return nil
 }

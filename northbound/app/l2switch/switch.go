@@ -27,7 +27,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/superkkt/cherry/log"
 	"github.com/superkkt/cherry/network"
 	"github.com/superkkt/cherry/northbound/app"
 	"github.com/superkkt/cherry/openflow"
@@ -35,13 +34,17 @@ import (
 
 	"github.com/dlintw/goconf"
 	lru "github.com/hashicorp/golang-lru"
+	"github.com/op/go-logging"
 	"github.com/pkg/errors"
+)
+
+var (
+	logger = logging.MustGetLogger("l2switch")
 )
 
 type L2Switch struct {
 	app.BaseProcessor
 	conf      *goconf.ConfigFile
-	log       log.Logger
 	vlanID    uint16
 	cache     *flowCache
 	stormCtrl *stormController
@@ -84,12 +87,11 @@ func (r *flowCache) add(flow flowParam) {
 	r.cache.Add(r.getKeyString(flow), time.Now())
 }
 
-func New(conf *goconf.ConfigFile, log log.Logger) *L2Switch {
+func New(conf *goconf.ConfigFile) *L2Switch {
 	return &L2Switch{
 		conf:      conf,
-		log:       log,
 		cache:     newFlowCache(),
-		stormCtrl: newStormController(100, log, new(flooder)),
+		stormCtrl: newStormController(100, new(flooder)),
 	}
 }
 
@@ -149,13 +151,15 @@ type flowParam struct {
 }
 
 func (r *flowParam) String() string {
-	return fmt.Sprintf("Device=%v, EtherType=%v, InPort=%v, OutPort=%v, SrcMAC=%v, DstMAC=%v", r.device.ID(), r.etherType, r.inPort, r.outPort, r.srcMAC, r.dstMAC)
+	return fmt.Sprintf("Device=%v, EtherType=%v, InPort=%v, OutPort=%v, SrcMAC=%v, DstMAC=%v",
+		r.device.ID(), r.etherType, r.inPort, r.outPort, r.srcMAC, r.dstMAC)
 }
 
 func (r *L2Switch) installFlow(p flowParam) error {
 	// Skip the installation if p is already installed
 	if r.cache.exist(p) {
-		r.log.Debug(fmt.Sprintf("L2Switch: skipping duplicated flow installation: deviceID=%v, dstMAC=%v, outPort=%v", p.device.ID(), p.dstMAC, p.outPort))
+		logger.Debugf("skipping duplicated flow installation: deviceID=%v, dstMAC=%v, outPort=%v",
+			p.device.ID(), p.dstMAC, p.outPort)
 		return nil
 	}
 
@@ -202,7 +206,7 @@ func (r *L2Switch) installFlow(p flowParam) error {
 	}
 
 	r.cache.add(p)
-	r.log.Debug(fmt.Sprintf("L2Switch: added a flow cache entry: deviceID=%v, dstMAC=%v, outPort=%v", p.device.ID(), p.dstMAC, p.outPort))
+	logger.Debugf("added a flow cache entry: deviceID=%v, dstMAC=%v, outPort=%v", p.device.ID(), p.dstMAC, p.outPort)
 
 	return nil
 }
@@ -227,10 +231,10 @@ func (r *L2Switch) switching(p switchParam) error {
 	if err := r.installFlow(param); err != nil {
 		return err
 	}
-	r.log.Debug(fmt.Sprintf("L2Switch: installed a flow rule.. %v", param))
+	logger.Debugf("installed a flow rule: %v", param)
 
 	// Send this ethernet packet directly to the destination node
-	r.log.Debug(fmt.Sprintf("L2Switch: sending a packet (Src=%v, Dst=%v) to egress port %v..", p.ethernet.SrcMAC, p.ethernet.DstMAC, p.egress.ID()))
+	logger.Debugf("sending a packet (Src=%v, Dst=%v) to egress port %v..", p.ethernet.SrcMAC, p.ethernet.DstMAC, p.egress.ID())
 	return r.PacketOut(p.egress, p.rawPacket)
 }
 
@@ -244,7 +248,7 @@ func (r *L2Switch) OnPacketIn(finder network.Finder, ingress *network.Port, eth 
 }
 
 func (r *L2Switch) processPacket(finder network.Finder, ingress *network.Port, eth *protocol.Ethernet) (drop bool, err error) {
-	r.log.Debug(fmt.Sprintf("L2Switch: PACKET_IN.. Ingress=%v, SrcMAC=%v, DstMAC=%v", ingress.ID(), eth.SrcMAC, eth.DstMAC))
+	logger.Debugf("PACKET_IN.. Ingress=%v, SrcMAC=%v, DstMAC=%v", ingress.ID(), eth.SrcMAC, eth.DstMAC)
 
 	packet, err := eth.MarshalBinary()
 	if err != nil {
@@ -253,7 +257,7 @@ func (r *L2Switch) processPacket(finder network.Finder, ingress *network.Port, e
 
 	// Broadcast?
 	if isBroadcast(eth) {
-		r.log.Debug(fmt.Sprintf("L2Switch: broadcasting.. SrcMAC=%v, DstMAC=%v", eth.SrcMAC, eth.DstMAC))
+		logger.Debugf("broadcasting.. SrcMAC=%v, DstMAC=%v", eth.SrcMAC, eth.DstMAC)
 		return true, r.stormCtrl.broadcast(ingress, packet)
 	}
 
@@ -263,13 +267,13 @@ func (r *L2Switch) processPacket(finder network.Finder, ingress *network.Port, e
 	}
 	// Unknown node?
 	if dstNode == nil {
-		r.log.Debug(fmt.Sprintf("L2Switch: unknown node! dropping.. SrcMAC=%v, DstMAC=%v", eth.SrcMAC, eth.DstMAC))
+		logger.Debugf("unknown node! dropping.. SrcMAC=%v, DstMAC=%v", eth.SrcMAC, eth.DstMAC)
 		return true, nil
 	}
 	// Disconnected node?
 	port := dstNode.Port().Value()
 	if port.IsPortDown() || port.IsLinkDown() {
-		r.log.Debug(fmt.Sprintf("L2Switch: disconnected node! dropping.. SrcMAC=%v, DstMAC=%v", eth.SrcMAC, eth.DstMAC))
+		logger.Debugf("disconnected node! dropping.. SrcMAC=%v, DstMAC=%v", eth.SrcMAC, eth.DstMAC)
 		return true, nil
 	}
 
@@ -286,13 +290,13 @@ func (r *L2Switch) processPacket(finder network.Finder, ingress *network.Port, e
 	} else {
 		path := finder.Path(ingress.Device().ID(), dstNode.Port().Device().ID())
 		if len(path) == 0 {
-			r.log.Debug(fmt.Sprintf("L2Switch: empty path.. dropping SrcMAC=%v, DstMAC=%v", eth.SrcMAC, eth.DstMAC))
+			logger.Debugf("empty path.. dropping SrcMAC=%v, DstMAC=%v", eth.SrcMAC, eth.DstMAC)
 			return true, nil
 		}
 		egress := path[0][0]
 		// Drop this packet if it goes back to the ingress port to avoid duplicated packet routing
 		if ingress.Number() == egress.Number() {
-			r.log.Debug(fmt.Sprintf("L2Switch: ignore routing path that goes back to the ingress port (SrcMAC=%v, DstMAC=%v)", eth.SrcMAC, eth.DstMAC))
+			logger.Debugf("ignore routing path that goes back to the ingress port (SrcMAC=%v, DstMAC=%v)", eth.SrcMAC, eth.DstMAC)
 			return true, nil
 		}
 
@@ -309,7 +313,7 @@ func (r *L2Switch) processPacket(finder network.Finder, ingress *network.Port, e
 }
 
 func (r *L2Switch) OnTopologyChange(finder network.Finder) error {
-	r.log.Debug("L2Switch: OnTopologyChange..")
+	logger.Debug("OnTopologyChange..")
 
 	// We should remove all edges from all switch devices when the network topology is changed.
 	// Otherwise, installed flow rules in switches may result in incorrect packet routing based on the previous topology.
@@ -321,7 +325,7 @@ func (r *L2Switch) OnTopologyChange(finder network.Finder) error {
 }
 
 func (r *L2Switch) removeAllFlows(devices []*network.Device) error {
-	r.log.Debug("L2Switch: removing all flows from all devices..")
+	logger.Debug("removing all flows from all devices..")
 
 	for _, d := range devices {
 		if d.IsClosed() {
@@ -340,7 +344,7 @@ func (r *L2Switch) String() string {
 }
 
 func (r *L2Switch) OnPortDown(finder network.Finder, port *network.Port) error {
-	r.log.Debug(fmt.Sprintf("L2Switch: port down! removing all flows heading to that port (%v)..", port.ID()))
+	logger.Debugf("port down! removing all flows heading to that port (%v)..", port.ID())
 
 	device := port.Device()
 	factory := device.Factory()

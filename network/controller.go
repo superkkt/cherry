@@ -28,13 +28,17 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/superkkt/cherry/log"
 	"github.com/superkkt/cherry/openflow"
 	"github.com/superkkt/cherry/protocol"
 
 	"github.com/ant0ine/go-json-rest/rest"
 	"github.com/dlintw/goconf"
+	"github.com/op/go-logging"
 	"golang.org/x/net/context"
+)
+
+var (
+	logger = logging.MustGetLogger("network")
 )
 
 type database interface {
@@ -77,20 +81,14 @@ type TopologyEventListener interface {
 }
 
 type Controller struct {
-	log      log.Logger
 	topo     *topology
 	listener EventListener
 	db       database
 }
 
-func NewController(log log.Logger, db database, conf *goconf.ConfigFile) *Controller {
-	if log == nil {
-		panic("Logger is nil")
-	}
-
+func NewController(db database, conf *goconf.ConfigFile) *Controller {
 	v := &Controller{
-		log:  log,
-		topo: newTopology(log, db),
+		topo: newTopology(db),
 		db:   db,
 	}
 	go v.serveREST(conf)
@@ -101,7 +99,7 @@ func NewController(log log.Logger, db database, conf *goconf.ConfigFile) *Contro
 func (r *Controller) serveREST(conf *goconf.ConfigFile) {
 	c, err := parseRESTConfig(conf)
 	if err != nil {
-		r.log.Err(fmt.Sprintf("Controller: parsing REST configurations: %v", err))
+		logger.Errorf("failed to parse REST configurations: %v", err)
 		return
 	}
 
@@ -128,7 +126,7 @@ func (r *Controller) serveREST(conf *goconf.ConfigFile) {
 		rest.Put("/api/v1/vip/:id", r.toggleVIP),
 	)
 	if err != nil {
-		r.log.Err(fmt.Sprintf("Controller: making a REST router: %v", err))
+		logger.Errorf("failed to make a REST router: %v", err)
 		return
 	}
 	api.SetApp(router)
@@ -141,7 +139,7 @@ func (r *Controller) serveREST(conf *goconf.ConfigFile) {
 	}
 
 	if err != nil {
-		r.log.Err(fmt.Sprintf("Controller: listening on HTTP: %v", err))
+		logger.Errorf("failed to listen on HTTP(S): %v", err)
 		return
 	}
 }
@@ -220,9 +218,10 @@ type Switch struct {
 func (r *Controller) listSwitch(w rest.ResponseWriter, req *rest.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
+	logger.Debug("listing all switches..")
 	sw, err := r.db.Switches()
 	if err != nil {
-		r.log.Info(fmt.Sprintf("Controller: REST: failed to query database: %v", err))
+		logger.Errorf("failed to query database: %v", err)
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -245,25 +244,25 @@ func (r *Controller) addSwitch(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	r.log.Info(fmt.Sprintf("Controller: REST: adding a new switch whose DPID is %v", sw.DPID))
+	logger.Debugf("adding a new switch whose DPID is %v", sw.DPID)
 	_, ok, err := r.db.Switch(sw.DPID)
 	if err != nil {
-		r.log.Info(fmt.Sprintf("Controller: REST: failed to query database: %v", err))
+		logger.Errorf("failed to query database: %v", err)
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 	if ok {
-		r.log.Info(fmt.Sprintf("Controller: REST: duplicated switch DPID: %v", sw.DPID))
+		logger.Infof("duplicated switch DPID: %v", sw.DPID)
 		writeError(w, http.StatusConflict, errors.New("duplicated switch DPID"))
 		return
 	}
 	swID, err := r.db.AddSwitch(sw)
 	if err != nil {
-		r.log.Info(fmt.Sprintf("Controller: REST: failed to query database: %v", err))
+		logger.Errorf("failed to query database: %v", err)
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	r.log.Info(fmt.Sprintf("Controller: REST: added the new switch whose DPID is %v", sw.DPID))
+	logger.Infof("added the new switch whose DPID is %v", sw.DPID)
 
 	w.WriteJson(&struct {
 		SwitchID uint64 `json:"switch_id"`
@@ -279,10 +278,10 @@ func (r *Controller) removeSwitch(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	r.log.Info(fmt.Sprintf("Controller: REST: removing a switch whose id is %v", id))
+	logger.Debugf("removing a switch whose id is %v", id)
 	ok, err := r.db.RemoveSwitch(id)
 	if err != nil {
-		r.log.Info(fmt.Sprintf("Controller: REST: failed to query database: %v", err))
+		logger.Errorf("failed to query database: %v", err)
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -290,12 +289,12 @@ func (r *Controller) removeSwitch(w rest.ResponseWriter, req *rest.Request) {
 		writeError(w, http.StatusNotFound, errors.New("unknown switch ID"))
 		return
 	}
-	r.log.Info(fmt.Sprintf("Controller: REST: removed the switch whose id is %v", id))
+	logger.Infof("removed the switch whose id is %v", id)
 
 	for _, sw := range r.topo.Devices() {
-		r.log.Info(fmt.Sprintf("Controller: REST: removing all flows from %v", sw.ID()))
+		logger.Infof("removing all flows from %v", sw.ID())
 		if err := sw.RemoveAllFlows(); err != nil {
-			r.log.Warning(fmt.Sprintf("Controller: REST: failed to remove all flows on %v device: %v", sw.ID(), err))
+			logger.Warningf("failed to remove all flows on %v device: %v", sw.ID(), err)
 			continue
 		}
 	}
@@ -319,7 +318,7 @@ func (r *Controller) listPort(w rest.ResponseWriter, req *rest.Request) {
 
 	ports, err := r.db.SwitchPorts(swID)
 	if err != nil {
-		r.log.Info(fmt.Sprintf("Controller: REST: failed to query database: %v", err))
+		logger.Errorf("failed to query database: %v", err)
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -353,9 +352,10 @@ type Network struct {
 func (r *Controller) listNetwork(w rest.ResponseWriter, req *rest.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
+	logger.Debug("listing all networks..")
 	networks, err := r.db.Networks()
 	if err != nil {
-		r.log.Info(fmt.Sprintf("Controller: REST: failed to query database: %v", err))
+		logger.Errorf("failed to query database: %v", err)
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -385,25 +385,25 @@ func (r *Controller) addNetwork(w rest.ResponseWriter, req *rest.Request) {
 	}
 	netAddr = netAddr.Mask(netMask)
 
-	r.log.Info(fmt.Sprintf("Controller: REST: adding new network address: %v/%v", network.Address, network.Mask))
+	logger.Debugf("adding new network address: %v/%v", network.Address, network.Mask)
 	_, ok, err := r.db.Network(netAddr)
 	if err != nil {
-		r.log.Info(fmt.Sprintf("Controller: REST: failed to query database: %v", err))
+		logger.Errorf("failed to query database: %v", err)
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 	if ok {
-		r.log.Info(fmt.Sprintf("Controller: REST: duplicated network address: %v/%v", network.Address, network.Mask))
+		logger.Infof("duplicated network address: %v/%v", network.Address, network.Mask)
 		writeError(w, http.StatusConflict, errors.New("duplicated network address"))
 		return
 	}
 	netID, err := r.db.AddNetwork(netAddr, netMask)
 	if err != nil {
-		r.log.Info(fmt.Sprintf("Controller: REST: failed to query database: %v", err))
+		logger.Errorf("failed to query database: %v", err)
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	r.log.Info(fmt.Sprintf("Controller: REST: added new network address: %v/%v", network.Address, network.Mask))
+	logger.Infof("added new network address: %v/%v", network.Address, network.Mask)
 
 	w.WriteJson(&struct {
 		NetworkID uint64 `json:"network_id"`
@@ -419,10 +419,10 @@ func (r *Controller) removeNetwork(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	r.log.Info(fmt.Sprintf("Controller: REST: removing network address whose id is %v", id))
+	logger.Debugf("removing network address whose id is %v", id)
 	ok, err := r.db.RemoveNetwork(id)
 	if err != nil {
-		r.log.Info(fmt.Sprintf("Controller: REST: failed to query database: %v", err))
+		logger.Errorf("failed to query database: %v", err)
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -430,12 +430,12 @@ func (r *Controller) removeNetwork(w rest.ResponseWriter, req *rest.Request) {
 		writeError(w, http.StatusNotFound, errors.New("unknown network ID"))
 		return
 	}
-	r.log.Info(fmt.Sprintf("Controller: REST: removed network address whose id is %v", id))
+	logger.Infof("removed network address whose id is %v", id)
 
 	for _, sw := range r.topo.Devices() {
-		r.log.Info(fmt.Sprintf("Controller: REST: removing all flows from %v", sw.ID()))
+		logger.Infof("removing all flows from %v", sw.ID())
 		if err := sw.RemoveAllFlows(); err != nil {
-			r.log.Warning(fmt.Sprintf("Controller: REST: failed to remove all flows on %v device: %v", sw.ID(), err))
+			logger.Warningf("failed to remove all flows on %v device: %v", sw.ID(), err)
 			continue
 		}
 	}
@@ -462,7 +462,7 @@ func (r *Controller) listIP(w rest.ResponseWriter, req *rest.Request) {
 
 	addresses, err := r.db.IPAddrs(networkID)
 	if err != nil {
-		r.log.Info(fmt.Sprintf("Controller: REST: failed to query database: %v", err))
+		logger.Errorf("failed to query database: %v", err)
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -499,9 +499,10 @@ type Host struct {
 func (r *Controller) listHost(w rest.ResponseWriter, req *rest.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
+	logger.Debug("listing all hosts..")
 	hosts, err := r.db.Hosts()
 	if err != nil {
-		r.log.Info(fmt.Sprintf("Controller: REST: failed to query database: %v", err))
+		logger.Errorf("failed to query database: %v", err)
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -524,14 +525,14 @@ func (r *Controller) addHost(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	r.log.Info(fmt.Sprintf("Controller: REST: adding a new host (%+v)", host))
+	logger.Debugf("adding a new host (%+v)", host)
 	hostID, err := r.db.AddHost(host)
 	if err != nil {
-		r.log.Info(fmt.Sprintf("Controller: REST: failed to query database: %v", err))
+		logger.Errorf("failed to query database: %v", err)
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	r.log.Info(fmt.Sprintf("Controller: REST: added the new host (%+v)", host))
+	logger.Infof("added the new host (%+v)", host)
 
 	w.WriteJson(&struct {
 		HostID uint64 `json:"host_id"`
@@ -539,17 +540,17 @@ func (r *Controller) addHost(w rest.ResponseWriter, req *rest.Request) {
 
 	regHost, ok, err := r.db.Host(hostID)
 	if err != nil {
-		r.log.Err(fmt.Sprintf("Controller: REST: failed to query a registered host: %v", err))
+		logger.Errorf("failed to query a registered host: %v", err)
 		return
 	}
 	if !ok {
-		r.log.Err(fmt.Sprintf("Controller: REST: registered host (ID=%v) is vanished", hostID))
+		logger.Errorf("registered host (ID=%v) is vanished", hostID)
 		return
 	}
 
 	// Sends ARP announcement to all hosts to update their ARP caches
 	if err := r.sendARPAnnouncement(regHost.IP, regHost.MAC); err != nil {
-		r.log.Err(fmt.Sprintf("Controller: REST: failed to send ARP announcement for newly added host (ID=%v): %v", hostID, err))
+		logger.Errorf("failed to send ARP announcement for newly added host (ID=%v): %v", hostID, err)
 		return
 	}
 }
@@ -565,9 +566,9 @@ func (r *Controller) sendARPAnnouncement(cidr string, mac string) error {
 	}
 
 	for _, sw := range r.topo.Devices() {
-		r.log.Info(fmt.Sprintf("Controller: REST: sending ARP announcement for a host (IP: %v, MAC: %v) via %v", ip, hwAddr, sw.ID()))
+		logger.Infof("sending ARP announcement for a host (IP: %v, MAC: %v) via %v", ip, hwAddr, sw.ID())
 		if err := sw.SendARPAnnouncement(ip, hwAddr); err != nil {
-			r.log.Err(fmt.Sprintf("Controller: REST: failed to send ARP announcement via %v: %v", sw.ID(), err))
+			logger.Errorf("failed to send ARP announcement via %v: %v", sw.ID(), err)
 			continue
 		}
 	}
@@ -586,7 +587,7 @@ func (r *Controller) removeHost(w rest.ResponseWriter, req *rest.Request) {
 
 	host, ok, err := r.db.Host(id)
 	if err != nil {
-		r.log.Info(fmt.Sprintf("Controller: REST: failed to query database: %v", err))
+		logger.Errorf("failed to query database: %v", err)
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -599,14 +600,14 @@ func (r *Controller) removeHost(w rest.ResponseWriter, req *rest.Request) {
 		panic("host.MAC should be valid")
 	}
 
-	r.log.Debug(fmt.Sprintf("Controller: REST: removing a host whose MAC address is %v", mac))
+	logger.Debugf("removing a host whose MAC address is %v", mac)
 	_, err = r.db.RemoveHost(id)
 	if err != nil {
-		r.log.Info(fmt.Sprintf("Controller: REST: failed to query database: %v", err))
+		logger.Errorf("failed to query database: %v", err)
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	r.log.Debug(fmt.Sprintf("Controller: REST: removed the host whose MAC address is %v", mac))
+	logger.Infof("removed the host whose MAC address is %v", mac)
 	// Remove flows whose destination MAC is one we are removing when we remove a host
 	r.removeFlows(mac)
 
@@ -641,7 +642,7 @@ func (r *Controller) listVIP(w rest.ResponseWriter, req *rest.Request) {
 
 	vip, err := r.db.VIPs()
 	if err != nil {
-		r.log.Info(fmt.Sprintf("Controller: REST: failed to query database: %v", err))
+		logger.Errorf("failed to query database: %v", err)
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -665,14 +666,14 @@ func (r *Controller) addVIP(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	r.log.Info(fmt.Sprintf("Controller: REST: adding a new VIP (%+v)", vip))
+	logger.Debugf("adding a new VIP (%+v)", vip)
 	id, cidr, err := r.db.AddVIP(vip)
 	if err != nil {
-		r.log.Info(fmt.Sprintf("Controller: REST: failed to query database: %v", err))
+		logger.Errorf("failed to query database: %v", err)
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	r.log.Info(fmt.Sprintf("Controller: REST: added the new VIP (%+v)", vip))
+	logger.Infof("added the new VIP (%+v)", vip)
 
 	w.WriteJson(&struct {
 		ID uint64 `json:"vip_id"`
@@ -680,17 +681,17 @@ func (r *Controller) addVIP(w rest.ResponseWriter, req *rest.Request) {
 
 	active, ok, err := r.db.Host(vip.ActiveHostID)
 	if err != nil {
-		r.log.Err(fmt.Sprintf("Controller: REST: failed to query active VIP host: %v", err))
+		logger.Errorf("failed to query active VIP host: %v", err)
 		return
 	}
 	if !ok {
-		r.log.Err(fmt.Sprintf("Controller: REST: unknown active VIP host (ID=%v)", vip.ActiveHostID))
+		logger.Errorf("unknown active VIP host (ID=%v)", vip.ActiveHostID)
 		return
 	}
 
 	// Sends ARP announcement to all hosts to update their ARP caches (IP = VIP, MAC = Active's MAC)
 	if err := r.sendARPAnnouncement(cidr, active.MAC); err != nil {
-		r.log.Err(fmt.Sprintf("Controller: REST: failed to send ARP announcement for newly added VIP (ID=%v): %v", id, err))
+		logger.Errorf("failed to send ARP announcement for newly added VIP (ID=%v): %v", id, err)
 		return
 	}
 }
@@ -704,14 +705,14 @@ func (r *Controller) removeVIP(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	r.log.Debug(fmt.Sprintf("Controller: REST: removing a VIP (ID=%v)", id))
+	logger.Debugf("removing a VIP (ID=%v)..", id)
 	_, err = r.db.RemoveVIP(id)
 	if err != nil {
-		r.log.Info(fmt.Sprintf("Controller: REST: failed to query database: %v", err))
+		logger.Errorf("failed to query database: %v", err)
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	r.log.Debug(fmt.Sprintf("Controller: REST: removed the VIP (ID=%v)", id))
+	logger.Infof("removed the VIP (ID=%v)", id)
 
 	w.WriteJson(&struct{}{})
 }
@@ -721,16 +722,16 @@ func (r *Controller) removeFlows(mac net.HardwareAddr) {
 		f := sw.Factory()
 		match, err := f.NewMatch()
 		if err != nil {
-			r.log.Err(fmt.Sprintf("Controller: REST: failed to create an OpenFlow match: %v", err))
+			logger.Errorf("failed to create an OpenFlow match: %v", err)
 			continue
 		}
 		match.SetDstMAC(mac)
 		outPort := openflow.NewOutPort()
 		outPort.SetNone()
 
-		r.log.Debug(fmt.Sprintf("Controller: REST: removing flows whose destinatcion MAC address is %v on %v", mac, sw.ID()))
+		logger.Debugf("removing flows whose destinatcion MAC address is %v on %v", mac, sw.ID())
 		if err := sw.RemoveFlow(match, outPort); err != nil {
-			r.log.Err(fmt.Sprintf("Controller: REST: failed to remove a flow from %v: %v", sw.ID(), err))
+			logger.Errorf("failed to remove a flow from %v: %v", sw.ID(), err)
 			continue
 		}
 	}
@@ -745,20 +746,20 @@ func (r *Controller) toggleVIP(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	r.log.Debug(fmt.Sprintf("Controller: REST: toggling a VIP (ID=%v)", id))
+	logger.Debugf("toggling a VIP (ID=%v)..", id)
 	// Toggle VIP and get active server's IP and MAC addresses
 	ip, mac, err := r.db.ToggleVIP(id)
 	if err != nil {
-		r.log.Info(fmt.Sprintf("Controller: REST: failed to query database: %v", err))
+		logger.Errorf("failed to query database: %v", err)
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	r.log.Debug(fmt.Sprintf("Controller: REST: toggled the VIP (ID=%v)", id))
+	logger.Infof("toggled the VIP (ID=%v)", id)
 
 	for _, sw := range r.topo.Devices() {
-		r.log.Info(fmt.Sprintf("Controller: REST: sending ARP announcement for a host (IP: %v, MAC: %v) via %v", ip, mac, sw.ID()))
+		logger.Infof("sending ARP announcement for a host (IP: %v, MAC: %v) via %v", ip, mac, sw.ID())
 		if err := sw.SendARPAnnouncement(ip, mac); err != nil {
-			r.log.Err(fmt.Sprintf("Controller: REST: failed to send ARP announcement via %v: %v", sw.ID(), err))
+			logger.Errorf("failed to send ARP announcement via %v: %v", sw.ID(), err)
 			continue
 		}
 	}
@@ -776,7 +777,6 @@ func writeError(w rest.ResponseWriter, status int, err error) {
 func (r *Controller) AddConnection(ctx context.Context, c net.Conn) {
 	conf := sessionConfig{
 		conn:     c,
-		logger:   r.log,
 		watcher:  r.topo,
 		finder:   r.topo,
 		listener: r.listener,
