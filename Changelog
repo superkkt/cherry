@@ -1,3 +1,14 @@
+* v0.12.0 (Sun Aug 28 18:57:08 2016 +0900)
+
+46a636c Fix the bug caused by unnecessary protocol vercion checking
+e40cda8 Run the packet reader thread in the OpenFlow transceiver
+6a16954 Rename the openflow/trans package to openflow/transceiver
+14fd96d Replace the custom logger with the go-logging library
+b5ca266 Reorganize the package structure
+9f48eb6 Adopt a temporary error to ignore soft errors
+b522598 Vendoring by Godeps
+a107e1f Do not support multiple DB hosts and set the wait_time MySQL variable to 120s
+
 * v0.11.0 (Mon Jun 6 15:42:29 2016 +0900)
 
 4599801 (HEAD, tag: v0.11.0, origin/v0.11, origin/master, origin/HEAD, v0.11, master) Bump version to 0.11.0
