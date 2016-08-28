@@ -289,7 +289,7 @@ func (r *Device) RemoveAllFlows() error {
 		return err
 	}
 
-	return setARPSender(r.factory, r.session.trans)
+	return setARPSender(r.factory, r.session.transceiver)
 }
 
 func (r *Device) RemoveFlow(match openflow.Match, port openflow.OutPort) error {

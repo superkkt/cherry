@@ -26,7 +26,7 @@ import (
 
 	"github.com/superkkt/cherry/openflow"
 	"github.com/superkkt/cherry/openflow/of13"
-	"github.com/superkkt/cherry/openflow/trans"
+	"github.com/superkkt/cherry/openflow/transceiver"
 
 	"github.com/pkg/errors"
 )
@@ -41,7 +41,7 @@ func newOF13Session(d *Device) *of13Session {
 	}
 }
 
-func (r *of13Session) OnHello(f openflow.Factory, w trans.Writer, v openflow.Hello) error {
+func (r *of13Session) OnHello(f openflow.Factory, w transceiver.Writer, v openflow.Hello) error {
 	if err := sendHello(f, w); err != nil {
 		return errors.Wrap(err, "failed to send HELLO")
 	}
@@ -78,15 +78,15 @@ func (r *of13Session) OnHello(f openflow.Factory, w trans.Writer, v openflow.Hel
 	return nil
 }
 
-func (r *of13Session) OnError(f openflow.Factory, w trans.Writer, v openflow.Error) error {
+func (r *of13Session) OnError(f openflow.Factory, w transceiver.Writer, v openflow.Error) error {
 	return nil
 }
 
-func (r *of13Session) OnFeaturesReply(f openflow.Factory, w trans.Writer, v openflow.FeaturesReply) error {
+func (r *of13Session) OnFeaturesReply(f openflow.Factory, w transceiver.Writer, v openflow.FeaturesReply) error {
 	return nil
 }
 
-func (r *of13Session) OnGetConfigReply(f openflow.Factory, w trans.Writer, v openflow.GetConfigReply) error {
+func (r *of13Session) OnGetConfigReply(f openflow.Factory, w transceiver.Writer, v openflow.GetConfigReply) error {
 	return nil
 }
 
@@ -98,7 +98,7 @@ func isAS460054_T(msg openflow.DescReply) bool {
 	return strings.Contains(msg.Hardware(), "AS4600-54T")
 }
 
-func (r *of13Session) setTableMiss(f openflow.Factory, w trans.Writer, tableID uint8, inst openflow.Instruction) error {
+func (r *of13Session) setTableMiss(f openflow.Factory, w transceiver.Writer, tableID uint8, inst openflow.Instruction) error {
 	match, err := f.NewMatch() // Wildcard
 	if err != nil {
 		return err
@@ -122,7 +122,7 @@ func (r *of13Session) setTableMiss(f openflow.Factory, w trans.Writer, tableID u
 	return w.Write(msg)
 }
 
-func (r *of13Session) setHP2920TableMiss(f openflow.Factory, w trans.Writer) error {
+func (r *of13Session) setHP2920TableMiss(f openflow.Factory, w transceiver.Writer) error {
 	// Table-100 is a hardware table, and Table-200 is a software table
 	// that has very low performance.
 	inst, err := f.NewInstruction()
@@ -159,7 +159,7 @@ func (r *of13Session) setHP2920TableMiss(f openflow.Factory, w trans.Writer) err
 	return nil
 }
 
-func (r *of13Session) setAS4600TableMiss(f openflow.Factory, w trans.Writer) error {
+func (r *of13Session) setAS4600TableMiss(f openflow.Factory, w transceiver.Writer) error {
 	// FIXME:
 	// AS460054-T gives an error (type=5, code=1) that means TABLE_FULL
 	// when we install a table-miss flow on Table-0 after we delete all
@@ -168,7 +168,7 @@ func (r *of13Session) setAS4600TableMiss(f openflow.Factory, w trans.Writer) err
 	return nil
 }
 
-func (r *of13Session) setDefaultTableMiss(f openflow.Factory, w trans.Writer) error {
+func (r *of13Session) setDefaultTableMiss(f openflow.Factory, w transceiver.Writer) error {
 	inst, err := f.NewInstruction()
 	if err != nil {
 		return err
@@ -192,7 +192,7 @@ func (r *of13Session) setDefaultTableMiss(f openflow.Factory, w trans.Writer) er
 	return nil
 }
 
-func (r *of13Session) OnDescReply(f openflow.Factory, w trans.Writer, v openflow.DescReply) error {
+func (r *of13Session) OnDescReply(f openflow.Factory, w transceiver.Writer, v openflow.DescReply) error {
 	var err error
 
 	// FIXME:
@@ -210,7 +210,7 @@ func (r *of13Session) OnDescReply(f openflow.Factory, w trans.Writer, v openflow
 	return err
 }
 
-func (r *of13Session) OnPortDescReply(f openflow.Factory, w trans.Writer, v openflow.PortDescReply) error {
+func (r *of13Session) OnPortDescReply(f openflow.Factory, w transceiver.Writer, v openflow.PortDescReply) error {
 	ports := v.Ports()
 	for _, p := range ports {
 		if p.Number() > of13.OFPP_MAX {
@@ -233,14 +233,14 @@ func (r *of13Session) OnPortDescReply(f openflow.Factory, w trans.Writer, v open
 	return nil
 }
 
-func (r *of13Session) OnPortStatus(f openflow.Factory, w trans.Writer, v openflow.PortStatus) error {
+func (r *of13Session) OnPortStatus(f openflow.Factory, w transceiver.Writer, v openflow.PortStatus) error {
 	return nil
 }
 
-func (r *of13Session) OnFlowRemoved(f openflow.Factory, w trans.Writer, v openflow.FlowRemoved) error {
+func (r *of13Session) OnFlowRemoved(f openflow.Factory, w transceiver.Writer, v openflow.FlowRemoved) error {
 	return nil
 }
 
-func (r *of13Session) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.PacketIn) error {
+func (r *of13Session) OnPacketIn(f openflow.Factory, w transceiver.Writer, v openflow.PacketIn) error {
 	return nil
 }

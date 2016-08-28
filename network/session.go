@@ -33,7 +33,7 @@ import (
 	"github.com/superkkt/cherry/openflow"
 	"github.com/superkkt/cherry/openflow/of10"
 	"github.com/superkkt/cherry/openflow/of13"
-	"github.com/superkkt/cherry/openflow/trans"
+	"github.com/superkkt/cherry/openflow/transceiver"
 	"github.com/superkkt/cherry/protocol"
 
 	"golang.org/x/net/context"
@@ -44,13 +44,13 @@ var (
 )
 
 type session struct {
-	negotiated bool
-	device     *Device
-	trans      *trans.Transceiver
-	handler    trans.Handler
-	watcher    watcher
-	finder     Finder
-	listener   ControllerEventListener
+	negotiated  bool
+	device      *Device
+	transceiver *transceiver.Transceiver
+	handler     transceiver.Handler
+	watcher     watcher
+	finder      Finder
+	listener    ControllerEventListener
 	// A cancel function to disconnect this session.
 	canceller context.CancelFunc
 }
@@ -80,18 +80,18 @@ func checkParam(c sessionConfig) {
 func newSession(c sessionConfig) *session {
 	checkParam(c)
 
-	stream := trans.NewStream(c.conn)
+	stream := transceiver.NewStream(c.conn)
 	v := new(session)
 	v.watcher = c.watcher
 	v.finder = c.finder
 	v.listener = c.listener
 	v.device = newDevice(v)
-	v.trans = trans.NewTransceiver(stream, v)
+	v.transceiver = transceiver.NewTransceiver(stream, v)
 
 	return v
 }
 
-func (r *session) OnHello(f openflow.Factory, w trans.Writer, v openflow.Hello) error {
+func (r *session) OnHello(f openflow.Factory, w transceiver.Writer, v openflow.Hello) error {
 	logger.Debugf("HELLO (ver=%v) is received", v.Version())
 
 	// Ignore duplicated HELLO messages
@@ -113,7 +113,7 @@ func (r *session) OnHello(f openflow.Factory, w trans.Writer, v openflow.Hello) 
 	return r.handler.OnHello(f, w, v)
 }
 
-func (r *session) OnError(f openflow.Factory, w trans.Writer, v openflow.Error) error {
+func (r *session) OnError(f openflow.Factory, w transceiver.Writer, v openflow.Error) error {
 	// Is this the CHECK_OVERLAP error?
 	if v.Class() == 3 && v.Code() == 1 {
 		// Ignore this CHECK_OVERLAP error
@@ -129,7 +129,7 @@ func (r *session) OnError(f openflow.Factory, w trans.Writer, v openflow.Error) 
 	return r.handler.OnError(f, w, v)
 }
 
-func (r *session) OnFeaturesReply(f openflow.Factory, w trans.Writer, v openflow.FeaturesReply) error {
+func (r *session) OnFeaturesReply(f openflow.Factory, w transceiver.Writer, v openflow.FeaturesReply) error {
 	logger.Debugf("FEATURES_REPLY (DPID=%v, NumBufs=%v, NumTables=%v)", v.DPID(), v.NumBuffers(), v.NumTables())
 
 	if !r.negotiated {
@@ -169,7 +169,7 @@ func (r *session) OnFeaturesReply(f openflow.Factory, w trans.Writer, v openflow
 	return r.handler.OnFeaturesReply(f, w, v)
 }
 
-func (r *session) OnGetConfigReply(f openflow.Factory, w trans.Writer, v openflow.GetConfigReply) error {
+func (r *session) OnGetConfigReply(f openflow.Factory, w transceiver.Writer, v openflow.GetConfigReply) error {
 	logger.Debug("GET_CONFIG_REPLY is received")
 
 	if !r.negotiated {
@@ -179,7 +179,7 @@ func (r *session) OnGetConfigReply(f openflow.Factory, w trans.Writer, v openflo
 	return r.handler.OnGetConfigReply(f, w, v)
 }
 
-func (r *session) OnDescReply(f openflow.Factory, w trans.Writer, v openflow.DescReply) error {
+func (r *session) OnDescReply(f openflow.Factory, w transceiver.Writer, v openflow.DescReply) error {
 	logger.Debug("DESC_REPLY is received")
 
 	if !r.negotiated {
@@ -204,7 +204,7 @@ func (r *session) OnDescReply(f openflow.Factory, w trans.Writer, v openflow.Des
 	return r.handler.OnDescReply(f, w, v)
 }
 
-func (r *session) OnPortDescReply(f openflow.Factory, w trans.Writer, v openflow.PortDescReply) error {
+func (r *session) OnPortDescReply(f openflow.Factory, w transceiver.Writer, v openflow.PortDescReply) error {
 	logger.Debugf("PORT_DESC_REPLY is received (# of ports=%v)", len(v.Ports()))
 
 	if !r.negotiated {
@@ -247,7 +247,7 @@ func newLLDPEtherFrame(deviceID string, port openflow.Port) ([]byte, error) {
 	return frame, nil
 }
 
-func sendLLDP(deviceID string, f openflow.Factory, w trans.Writer, p openflow.Port) error {
+func sendLLDP(deviceID string, f openflow.Factory, w transceiver.Writer, p openflow.Port) error {
 	lldp, err := newLLDPEtherFrame(deviceID, p)
 	if err != nil {
 		return err
@@ -312,7 +312,7 @@ func (r *session) updatePort(v openflow.PortStatus) {
 	r.device.updatePort(port.Number(), port)
 }
 
-func (r *session) OnPortStatus(f openflow.Factory, w trans.Writer, v openflow.PortStatus) error {
+func (r *session) OnPortStatus(f openflow.Factory, w transceiver.Writer, v openflow.PortStatus) error {
 	logger.Debug("PORT_STATUS is received")
 
 	if !r.negotiated {
@@ -344,7 +344,7 @@ func (r *session) OnPortStatus(f openflow.Factory, w trans.Writer, v openflow.Po
 	return r.handler.OnPortStatus(f, w, v)
 }
 
-func (r *session) OnFlowRemoved(f openflow.Factory, w trans.Writer, v openflow.FlowRemoved) error {
+func (r *session) OnFlowRemoved(f openflow.Factory, w transceiver.Writer, v openflow.FlowRemoved) error {
 	logger.Debugf("FLOW_REMOVED is received (cookie=%v)", v.Cookie())
 
 	if !r.negotiated {
@@ -449,7 +449,7 @@ func (r *session) isActivatedPort(p *Port) bool {
 	return p.duration().Seconds() > 1.5
 }
 
-func (r *session) OnPacketIn(f openflow.Factory, w trans.Writer, v openflow.PacketIn) error {
+func (r *session) OnPacketIn(f openflow.Factory, w transceiver.Writer, v openflow.PacketIn) error {
 	if !r.negotiated {
 		return errNotNegotiated
 	}
@@ -491,10 +491,10 @@ func (r *session) Run(ctx context.Context) {
 	sessionCtx, canceller := context.WithCancel(ctx)
 	// This canceller will be used to disconnect this session when it is necessary.
 	r.canceller = canceller
-	if err := r.trans.Run(sessionCtx); err != nil && err != io.EOF {
+	if err := r.transceiver.Run(sessionCtx); err != nil && err != io.EOF {
 		logger.Errorf("openflow transceiver is unexpectedly closed: %v", err)
 	}
-	r.trans.Close()
+	r.transceiver.Close()
 	r.device.Close()
 	logger.Infof("disconnected device (DPID=%v)", r.device.ID())
 
@@ -508,10 +508,10 @@ func (r *session) Run(ctx context.Context) {
 }
 
 func (r *session) Write(msg encoding.BinaryMarshaler) error {
-	return r.trans.Write(msg)
+	return r.transceiver.Write(msg)
 }
 
-func sendHello(f openflow.Factory, w trans.Writer) error {
+func sendHello(f openflow.Factory, w transceiver.Writer) error {
 	msg, err := f.NewHello()
 	if err != nil {
 		return err
@@ -520,7 +520,7 @@ func sendHello(f openflow.Factory, w trans.Writer) error {
 	return w.Write(msg)
 }
 
-func sendSetConfig(f openflow.Factory, w trans.Writer) error {
+func sendSetConfig(f openflow.Factory, w transceiver.Writer) error {
 	msg, err := f.NewSetConfig()
 	if err != nil {
 		return err
@@ -531,7 +531,7 @@ func sendSetConfig(f openflow.Factory, w trans.Writer) error {
 	return w.Write(msg)
 }
 
-func sendFeaturesRequest(f openflow.Factory, w trans.Writer) error {
+func sendFeaturesRequest(f openflow.Factory, w transceiver.Writer) error {
 	msg, err := f.NewFeaturesRequest()
 	if err != nil {
 		return err
@@ -540,7 +540,7 @@ func sendFeaturesRequest(f openflow.Factory, w trans.Writer) error {
 	return w.Write(msg)
 }
 
-func sendDescriptionRequest(f openflow.Factory, w trans.Writer) error {
+func sendDescriptionRequest(f openflow.Factory, w transceiver.Writer) error {
 	msg, err := f.NewDescRequest()
 	if err != nil {
 		return err
@@ -549,7 +549,7 @@ func sendDescriptionRequest(f openflow.Factory, w trans.Writer) error {
 	return w.Write(msg)
 }
 
-func sendBarrierRequest(f openflow.Factory, w trans.Writer) error {
+func sendBarrierRequest(f openflow.Factory, w transceiver.Writer) error {
 	msg, err := f.NewBarrierRequest()
 	if err != nil {
 		return err
@@ -558,7 +558,7 @@ func sendBarrierRequest(f openflow.Factory, w trans.Writer) error {
 	return w.Write(msg)
 }
 
-func sendPortDescriptionRequest(f openflow.Factory, w trans.Writer) error {
+func sendPortDescriptionRequest(f openflow.Factory, w transceiver.Writer) error {
 	msg, err := f.NewPortDescRequest()
 	if err != nil {
 		return err
@@ -567,7 +567,7 @@ func sendPortDescriptionRequest(f openflow.Factory, w trans.Writer) error {
 	return w.Write(msg)
 }
 
-func setARPSender(f openflow.Factory, w trans.Writer) error {
+func setARPSender(f openflow.Factory, w transceiver.Writer) error {
 	match, err := f.NewMatch()
 	if err != nil {
 		return err
@@ -606,7 +606,7 @@ func setARPSender(f openflow.Factory, w trans.Writer) error {
 	return sendBarrierRequest(f, w)
 }
 
-func sendRemovingAllFlows(f openflow.Factory, w trans.Writer) error {
+func sendRemovingAllFlows(f openflow.Factory, w transceiver.Writer) error {
 	match, err := f.NewMatch() // Wildcard
 	if err != nil {
 		return err
@@ -623,7 +623,7 @@ func sendRemovingAllFlows(f openflow.Factory, w trans.Writer) error {
 	return w.Write(msg)
 }
 
-func sendQueueConfigRequest(f openflow.Factory, w trans.Writer, port uint32) error {
+func sendQueueConfigRequest(f openflow.Factory, w transceiver.Writer, port uint32) error {
 	msg, err := f.NewQueueGetConfigRequest()
 	if err != nil {
 		return err
