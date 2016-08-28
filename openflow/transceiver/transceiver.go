@@ -62,8 +62,6 @@ type Transceiver struct {
 	observer    Handler
 	version     uint8
 	factory     openflow.Factory
-	timestamp   time.Time     // Last activated time
-	latency     time.Duration // Network latency measured by echo request and reply
 	pingCounter uint
 	closed      bool
 }
@@ -103,40 +101,6 @@ func (r *Transceiver) Version() (negotiated bool, version uint8) {
 	return true, r.version
 }
 
-func (r *Transceiver) Latency() time.Duration {
-	return r.latency
-}
-
-func (r *Transceiver) negotiate(packet []byte) error {
-	// The first message should be HELLO
-	if packet[1] != 0x00 {
-		return errors.New("negotiation error: missing HELLO message")
-	}
-
-	// Version negotiation
-	if packet[0] < openflow.OF13_VERSION {
-		r.version = openflow.OF10_VERSION
-		r.factory = of10.NewFactory()
-	} else {
-		r.version = openflow.OF13_VERSION
-		r.factory = of13.NewFactory()
-	}
-
-	return nil
-}
-
-func (r *Transceiver) updateTimestamp() {
-	r.timestamp = time.Now()
-}
-
-func (r *Transceiver) ping() error {
-	// Max idle time is exceeded?
-	if time.Now().Before(r.timestamp.Add(maxIdleTime * time.Second)) {
-		return nil
-	}
-	return r.sendEchoRequest()
-}
-
 func isTimeout(err error) bool {
 	type Timeout interface {
 		Timeout() bool
@@ -164,6 +128,7 @@ func (r *Transceiver) sendEchoRequest() error {
 		return err
 	}
 	echo.SetData(timestamp)
+
 	if err := r.Write(echo); err != nil {
 		return errors.Wrap(err, "failed to send ECHO_REQUEST message")
 	}
@@ -173,21 +138,23 @@ func (r *Transceiver) sendEchoRequest() error {
 }
 
 func (r *Transceiver) Run(ctx context.Context) error {
+	defer logger.Info("transceiver is closed")
 	r.stream.SetReadTimeout(readTimeout * time.Second)
 	r.stream.SetWriteTimeout(writeTimeout * time.Second)
 
-	// Read initial packet
-	packet, err := r.readPacket()
-	if err != nil {
-		return err
-	}
+	readerCtx, cancelReader := context.WithCancel(ctx)
+	defer cancelReader()
+	reader := r.runReader(readerCtx)
 
-	if err := r.negotiate(packet); err != nil {
-		return err
+	// Negotiate the protocol version
+	packet, err := r.negotiate(ctx, reader)
+	if err != nil {
+		return errors.Wrap(err, "failed to negotiate the protocol version")
 	}
 
 	// Infinite loop
 	for {
+		// Dispatch the incoming packet
 		if err := r.dispatch(packet); err != nil {
 			if !isTemporaryErr(err) {
 				return err
@@ -195,35 +162,110 @@ func (r *Transceiver) Run(ctx context.Context) error {
 			// Ignore the temporary error. Just log the error and keep go on.
 			logger.Errorf("failed to dispatch the packet: %v", err)
 		}
-		r.updateTimestamp()
 
-	retry:
-		// Check shutdown signal
+		// Read the next packet
+		var ok bool
 		select {
 		case <-ctx.Done():
-			return errors.New("closed by the context done signal")
-		default:
+			logger.Info("context done")
+			return nil
+		case packet, ok = <-reader:
+			if !ok {
+				logger.Info("the reader channel is closed")
+				return nil
+			}
 		}
-
-		// Read next packet
-		packet, err = r.readPacket()
-		if err == nil {
-			// Go to dispatch the next packet
-			continue
-		}
-		// Ignore timeout error
-		if !isTimeout(err) {
-			return err
-		}
-		if err := r.ping(); err != nil {
-			return err
-		}
-		// Read again
-		goto retry
 	}
+}
 
-	// Never reached
-	return nil
+func (r *Transceiver) negotiate(ctx context.Context, reader <-chan []byte) (packet []byte, err error) {
+	select {
+	case <-ctx.Done():
+		return nil, errors.New("context done")
+	case <-time.After(30 * time.Second):
+		return nil, errors.New("inactive for too long")
+	case packet, ok := <-reader:
+		if !ok {
+			return nil, errors.New("the reader channel is closed")
+		}
+		// The first message should be HELLO.
+		if packet[1] != 0x00 {
+			return nil, errors.New("missing HELLO message")
+		}
+
+		// Version negotiation
+		if packet[0] < openflow.OF13_VERSION {
+			r.version = openflow.OF10_VERSION
+			r.factory = of10.NewFactory()
+			logger.Info("negotiated to openflow version 1.0")
+		} else {
+			r.version = openflow.OF13_VERSION
+			r.factory = of13.NewFactory()
+			logger.Info("negotiated to openflow version 1.3")
+		}
+
+		// Return the initial packet to dispatch it.
+		return packet, nil
+	}
+}
+
+func (r *Transceiver) runReader(ctx context.Context) <-chan []byte {
+	// Buffered channel
+	c := make(chan []byte, 16384)
+	go func() {
+		defer close(c)
+		defer logger.Info("transceiver reader is closed")
+
+		lastActivated := time.Now()
+		for {
+			select {
+			case <-ctx.Done():
+				logger.Info("context done")
+				return
+			default:
+			}
+
+			// Read the next packet
+			packet, err := r.readPacket()
+			if err != nil {
+				if !isTimeout(err) {
+					logger.Errorf("failed to read the next packet: %v", err)
+					return
+				}
+				// Timeout occurrs. Send a ping request if necessary.
+				if time.Now().After(lastActivated.Add(maxIdleTime * time.Second)) {
+					if err := r.sendEchoRequest(); err != nil {
+						logger.Errorf("failed to send an echo request: %v", err)
+						return
+					}
+				}
+				continue
+			}
+			// Update the timestamp
+			lastActivated = time.Now()
+
+			ok, err := r.handleEcho(packet)
+			if err != nil {
+				logger.Errorf("failed to handle the echo request or response: %v", err)
+				return
+			}
+			if ok {
+				// Do not forward the echo request and response
+				// packets because this reader handles them.
+				continue
+			}
+
+			// Forward messages except the echo request and response.
+			select {
+			case c <- packet:
+			default:
+				// Drop the packet if we cannot immediately carry it.
+				logger.Error("transceiver buffer full: drop the incoming packet!")
+			}
+		}
+	}()
+
+	return c
 }
 
 func isTemporaryErr(err error) bool {
@@ -264,32 +306,74 @@ func (r *Transceiver) Write(msg encoding.BinaryMarshaler) error {
 	return nil
 }
 
-func (r *Transceiver) dispatch(packet []byte) error {
-	if packet[0] != r.version {
-		m := fmt.Sprintf("mis-matched OpenFlow version: negotiated=%v, packet=%v", r.version, packet[0])
-		return errors.New(m)
+func (r *Transceiver) handleEcho(packet []byte) (ok bool, err error) {
+	if err := r.validateProtocolVersion(packet[0]); err != nil {
+		return false, err
 	}
 
 	switch r.version {
 	case openflow.OF10_VERSION:
-		return r.parseOF10Message(packet)
+		return r.handleOF10Echo(packet)
 	case openflow.OF13_VERSION:
-		return r.parseOF13Message(packet)
+		return r.handleOF13Echo(packet)
+	default:
+		return false, openflow.ErrUnsupportedVersion
+	}
+}
+
+func (r *Transceiver) handleOF10Echo(packet []byte) (ok bool, err error) {
+	switch packet[1] {
+	case of10.OFPT_ECHO_REQUEST:
+		return true, r.handleEchoRequest(packet)
+	case of10.OFPT_ECHO_REPLY:
+		return true, r.handleEchoReply(packet)
+	default:
+		// Do not anything for other types of the message
+		return false, nil
+	}
+}
+
+func (r *Transceiver) handleOF13Echo(packet []byte) (handled bool, err error) {
+	switch packet[1] {
+	case of13.OFPT_ECHO_REQUEST:
+		return true, r.handleEchoRequest(packet)
+	case of13.OFPT_ECHO_REPLY:
+		return true, r.handleEchoReply(packet)
+	default:
+		// Do not anything for other types of the message
+		return false, nil
+	}
+}
+
+func (r *Transceiver) dispatch(packet []byte) error {
+	if err := r.validateProtocolVersion(packet[0]); err != nil {
+		return err
+	}
+
+	switch r.version {
+	case openflow.OF10_VERSION:
+		return r.handleOF10Message(packet)
+	case openflow.OF13_VERSION:
+		return r.handleOF13Message(packet)
 	default:
 		return openflow.ErrUnsupportedVersion
 	}
 }
 
-func (r *Transceiver) parseOF10Message(packet []byte) error {
+func (r *Transceiver) validateProtocolVersion(version uint8) error {
+	if version != r.version {
+		return fmt.Errorf("mis-matched OpenFlow version: negotiated=%v, packet=%v", r.version, version)
+	}
+
+	return nil
+}
+
+func (r *Transceiver) handleOF10Message(packet []byte) error {
 	switch packet[1] {
 	case of10.OFPT_HELLO:
 		return r.handleHello(packet)
 	case of10.OFPT_ERROR:
 		return r.handleError(packet)
-	case of10.OFPT_ECHO_REQUEST:
-		return r.handleEchoRequest(packet)
-	case of10.OFPT_ECHO_REPLY:
-		return r.handleEchoReply(packet)
 	case of10.OFPT_FEATURES_REPLY:
 		return r.handleFeaturesReply(packet)
 	case of10.OFPT_GET_CONFIG_REPLY:
@@ -314,16 +398,12 @@ func (r *Transceiver) parseOF10Message(packet []byte) error {
 	}
 }
 
-func (r *Transceiver) parseOF13Message(packet []byte) error {
+func (r *Transceiver) handleOF13Message(packet []byte) error {
 	switch packet[1] {
 	case of13.OFPT_HELLO:
 		return r.handleHello(packet)
 	case of13.OFPT_ERROR:
 		return r.handleError(packet)
-	case of13.OFPT_ECHO_REQUEST:
-		return r.handleEchoRequest(packet)
-	case of13.OFPT_ECHO_REPLY:
-		return r.handleEchoReply(packet)
 	case of13.OFPT_FEATURES_REPLY:
 		return r.handleFeaturesReply(packet)
 	case of13.OFPT_GET_CONFIG_REPLY:
@@ -359,7 +439,6 @@ func (r *Transceiver) handleEchoRequest(packet []byte) error {
 		return err
 	}
 
-	// Send echo reply
 	reply, err := r.factory.NewEchoReply()
 	if err != nil {
 		return err
@@ -367,6 +446,8 @@ func (r *Transceiver) handleEchoRequest(packet []byte) error {
 	// Copy transaction ID and data from the incoming echo request message
 	reply.SetTransactionID(msg.TransactionID())
 	reply.SetData(msg.Data())
+
+	// Send the echo reply
 	if err := r.Write(reply); err != nil {
 		return errors.Wrap(err, "failed to send ECHO_REPLY message")
 	}
@@ -391,9 +472,10 @@ func (r *Transceiver) handleEchoReply(packet []byte) error {
 	if err := timestamp.GobDecode(data); err != nil {
 		return err
 	}
-	// Update network latency
-	r.latency = time.Now().Sub(timestamp)
-	// Reset ping counter to zero
+
+	// Network latency
+	logger.Debugf("transceiver latency: %v", time.Now().Sub(timestamp))
+	// Reset the ping counter
 	r.pingCounter = 0
 
 	return nil

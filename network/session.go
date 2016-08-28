@@ -26,7 +26,6 @@ import (
 	"encoding"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"strconv"
 
@@ -491,7 +490,7 @@ func (r *session) Run(ctx context.Context) {
 	sessionCtx, canceller := context.WithCancel(ctx)
 	// This canceller will be used to disconnect this session when it is necessary.
 	r.canceller = canceller
-	if err := r.transceiver.Run(sessionCtx); err != nil && err != io.EOF {
+	if err := r.transceiver.Run(sessionCtx); err != nil {
 		logger.Errorf("openflow transceiver is unexpectedly closed: %v", err)
 	}
 	r.transceiver.Close()
