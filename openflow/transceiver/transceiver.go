@@ -307,11 +307,7 @@ func (r *Transceiver) Write(msg encoding.BinaryMarshaler) error {
 }
 
 func (r *Transceiver) handleEcho(packet []byte) (ok bool, err error) {
-	if err := r.validateProtocolVersion(packet[0]); err != nil {
-		return false, err
-	}
-
-	switch r.version {
+	switch packet[0] {
 	case openflow.OF10_VERSION:
 		return r.handleOF10Echo(packet)
 	case openflow.OF13_VERSION:
@@ -346,8 +342,8 @@ func (r *Transceiver) handleOF13Echo(packet []byte) (handled bool, err error) {
 }
 
 func (r *Transceiver) dispatch(packet []byte) error {
-	if err := r.validateProtocolVersion(packet[0]); err != nil {
-		return err
+	if packet[0] != r.version {
+		return fmt.Errorf("mis-matched OpenFlow version: negotiated=%v, packet=%v", r.version, packet[0])
 	}
 
 	switch r.version {
@@ -358,14 +354,6 @@ func (r *Transceiver) dispatch(packet []byte) error {
 	default:
 		return openflow.ErrUnsupportedVersion
 	}
-}
-
-func (r *Transceiver) validateProtocolVersion(version uint8) error {
-	if version != r.version {
-		return fmt.Errorf("mis-matched OpenFlow version: negotiated=%v, packet=%v", r.version, version)
-	}
-
-	return nil
 }
 
 func (r *Transceiver) handleOF10Message(packet []byte) error {
