@@ -15,6 +15,13 @@ Cherry is an OpenFlow controller written in Go that supports OpenFlow 1.0 and 1.
 
 * Dell Force10 S4810
 * Dell Force10 S3048-ON
+* Dell Force10 S3148
+
+## Tested OpenFlow Switches
+
+* HP 2920G
+* Pica8 P-3295
+* Quanta T1048-LB9
 
 ## Requirements
 
