@@ -11,11 +11,12 @@ Cherry is an OpenFlow controller written in Go that supports OpenFlow 1.0 and 1.
 * Provides simple plugin system for northbound applications
 * RESTful API to manage the controller itself
 
-## Supported (Fully Tested) OpenFlow Switches
+## Supported OpenFlow Switches (Fully Tested)
 
 * Dell Force10 S4810
 * Dell Force10 S3048-ON
 * Dell Force10 S3148
+* Open vSwitch
 
 ## Tested OpenFlow Switches
 
