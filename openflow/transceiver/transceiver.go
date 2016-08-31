@@ -215,7 +215,7 @@ func (r *Transceiver) negotiate(ctx context.Context, reader <-chan []byte) (pack
 
 func (r *Transceiver) runReader(ctx context.Context) <-chan []byte {
 	// Buffered channel
-	c := make(chan []byte, 16384)
+	c := make(chan []byte, 4096)
 	go func() {
 		defer close(c)
 		defer logger.Info("transceiver reader is closed")
