@@ -430,6 +430,7 @@ func (r *Transceiver) handleEchoRequest(packet []byte) error {
 	if err := msg.UnmarshalBinary(packet); err != nil {
 		return err
 	}
+	logger.Debug("received an ECHO_REQUEST packet")
 
 	reply, err := r.factory.NewEchoReply()
 	if err != nil {
@@ -443,6 +444,7 @@ func (r *Transceiver) handleEchoRequest(packet []byte) error {
 	if err := r.Write(reply); err != nil {
 		return errors.Wrap(err, "failed to send ECHO_REPLY message")
 	}
+	logger.Debug("sent an ECHO_REPLY packet")
 
 	return nil
 }
@@ -455,6 +457,7 @@ func (r *Transceiver) handleEchoReply(packet []byte) error {
 	if err := msg.UnmarshalBinary(packet); err != nil {
 		return err
 	}
+	logger.Debug("received an ECHO_REPLY packet")
 
 	data := msg.Data()
 	if data == nil || len(data) != 8 {
