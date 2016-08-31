@@ -174,6 +174,10 @@ func (r *Transceiver) Run(ctx context.Context) error {
 				logger.Info("the reader channel is closed")
 				return nil
 			}
+			remain := len(reader)
+			if remain > 0 {
+				logger.Debugf("%v remaining unread packet(s) in the reader channel", remain)
+			}
 		}
 	}
 }

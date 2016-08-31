@@ -1,3 +1,9 @@
+* v0.12.1 (Wed Aug 31 15:06:31 2016 +0900)
+
+3d35bfb Log the number of unread remaining packets in the reader channel
+e1cfa8b Ignore soft errors from OpenFlow EchoReply
+6d6e729 Fix the incorrect log levels of the config file
+
 * v0.12.0 (Sun Aug 28 18:57:08 2016 +0900)
 
 46a636c Fix the bug caused by unnecessary protocol vercion checking
