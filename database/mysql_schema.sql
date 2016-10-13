@@ -114,7 +114,7 @@ CREATE TABLE IF NOT EXISTS `ip` (
   UNIQUE KEY `address` (`address`),
   KEY `used` (`used`),
   KEY `network_id` (`network_id`),
-  CONSTRAINT `ip_ibfk_1` FOREIGN KEY (`network_id`) REFERENCES `network` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE
+  CONSTRAINT `ip_ibfk_1` FOREIGN KEY (`network_id`) REFERENCES `network` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
