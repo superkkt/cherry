@@ -23,12 +23,14 @@ package network
 
 import (
 	"fmt"
-	"github.com/superkkt/cherry/graph"
-	"github.com/superkkt/cherry/openflow"
 	"sync"
 	"time"
+
+	"github.com/superkkt/cherry/graph"
+	"github.com/superkkt/cherry/openflow"
 )
 
+// Port represents a switch port and also implements the graph.Point interface.
 type Port struct {
 	mutex     sync.RWMutex
 	device    *Device

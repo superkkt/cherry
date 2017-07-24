@@ -28,7 +28,6 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/superkkt/cherry/openflow"
 	"github.com/superkkt/cherry/protocol"
 
 	"github.com/ant0ine/go-json-rest/rest"
@@ -49,7 +48,7 @@ type database interface {
 	Host(hostID uint64) (host Host, ok bool, err error)
 	Hosts() ([]Host, error)
 	IPAddrs(networkID uint64) ([]IP, error)
-	Location(mac net.HardwareAddr) (dpid string, port uint32, ok bool, err error)
+	Location(mac net.HardwareAddr) (dpid string, port uint32, status LocationStatus, err error)
 	Network(net.IP) (n Network, ok bool, err error)
 	Networks() ([]Network, error)
 	RemoveHost(id uint64) (ok bool, err error)
@@ -62,6 +61,17 @@ type database interface {
 	ToggleVIP(id uint64) (net.IP, net.HardwareAddr, error)
 	VIPs() ([]VIP, error)
 }
+
+type LocationStatus int
+
+const (
+	// Unregistered MAC address.
+	LocationUnregistered LocationStatus = iota
+	// Registered MAC address, but we don't know its physical location yet.
+	LocationUndiscovered
+	// Registered MAC address, and we know its physical location.
+	LocationDiscovered
+)
 
 type EventListener interface {
 	ControllerEventListener
@@ -474,7 +484,6 @@ func (r *Controller) listIP(w rest.ResponseWriter, req *rest.Request) {
 
 type HostParam struct {
 	IPID        uint64 `json:"ip_id"`
-	PortID      uint64 `json:"port_id"`
 	MAC         string `json:"mac"`
 	Description string `json:"description"`
 }
@@ -489,11 +498,12 @@ func (r *HostParam) validate() error {
 }
 
 type Host struct {
-	ID          string `json:"id"`
-	IP          string `json:"ip"`
-	Port        string `json:"port"`
-	MAC         string `json:"mac"`
-	Description string `json:"description"`
+	ID             string `json:"id"`
+	IP             string `json:"ip"`
+	Port           string `json:"port"`
+	MAC            string `json:"mac"`
+	Description    string `json:"description"`
+	LastDiscovered uint64 `json:"last_discovered"` // UNIX Timestamp.
 }
 
 func (r *Controller) listHost(w rest.ResponseWriter, req *rest.Request) {
@@ -718,22 +728,12 @@ func (r *Controller) removeVIP(w rest.ResponseWriter, req *rest.Request) {
 }
 
 func (r *Controller) removeFlows(mac net.HardwareAddr) {
-	for _, sw := range r.topo.Devices() {
-		f := sw.Factory()
-		match, err := f.NewMatch()
-		if err != nil {
-			logger.Errorf("failed to create an OpenFlow match: %v", err)
+	for _, device := range r.topo.Devices() {
+		if err := device.RemoveFlowByMAC(mac); err != nil {
+			logger.Errorf("failed to remove flows from %v: %v", device.ID(), err)
 			continue
 		}
-		match.SetDstMAC(mac)
-		outPort := openflow.NewOutPort()
-		outPort.SetNone()
-
-		logger.Debugf("removing flows whose destinatcion MAC address is %v on %v", mac, sw.ID())
-		if err := sw.RemoveFlow(match, outPort); err != nil {
-			logger.Errorf("failed to remove a flow from %v: %v", sw.ID(), err)
-			continue
-		}
+		logger.Debugf("removed flows whose destination MAC address is %v on %v", mac, device.ID())
 	}
 }
 

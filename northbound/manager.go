@@ -30,6 +30,7 @@ import (
 	"github.com/superkkt/cherry/database"
 	"github.com/superkkt/cherry/network"
 	"github.com/superkkt/cherry/northbound/app"
+	"github.com/superkkt/cherry/northbound/app/discovery"
 	"github.com/superkkt/cherry/northbound/app/l2switch"
 	"github.com/superkkt/cherry/northbound/app/monitor"
 	"github.com/superkkt/cherry/northbound/app/proxyarp"
@@ -71,6 +72,7 @@ func NewManager(conf *goconf.ConfigFile, db *database.MySQL) (*Manager, error) {
 		db:   db,
 	}
 	// Registering north-bound applications
+	v.register(discovery.New(db))
 	v.register(l2switch.New(conf))
 	v.register(proxyarp.New(conf, db))
 	v.register(monitor.New(conf))

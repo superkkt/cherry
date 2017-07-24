@@ -32,10 +32,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dlintw/goconf"
-	"github.com/go-sql-driver/mysql"
 	"github.com/superkkt/cherry/network"
 	"github.com/superkkt/cherry/northbound/app/proxyarp"
+
+	"github.com/dlintw/goconf"
+	"github.com/go-sql-driver/mysql"
 )
 
 const (
@@ -206,44 +207,55 @@ func (r *MySQL) MAC(ip net.IP) (mac net.HardwareAddr, ok bool, err error) {
 	return mac, ok, err
 }
 
-func (r *MySQL) Location(mac net.HardwareAddr) (dpid string, port uint32, ok bool, err error) {
+func (r *MySQL) Location(mac net.HardwareAddr) (dpid string, port uint32, status network.LocationStatus, err error) {
 	if mac == nil {
 		panic("MAC address is nil")
 	}
 
 	f := func(db *sql.DB) error {
-		qry := `SELECT A.dpid, B.number 
-			FROM switch A 
-			JOIN port B 
-			ON B.switch_id = A.id 
-			JOIN host C 
-			ON C.port_id = B.id 
-			WHERE C.mac = ?
-			GROUP BY(A.dpid)`
-		row, err := db.Query(qry, []byte(mac))
+		// Initial value.
+		status = network.LocationUnregistered
+
+		tx, err := db.Begin()
 		if err != nil {
 			return err
 		}
-		defer row.Close()
+		defer tx.Rollback()
 
-		// Unknown MAC address?
-		if !row.Next() {
+		var portID sql.NullInt64
+		qry := "SELECT `port_id` FROM `host` WHERE `mac` = ? LOCK IN SHARE MODE"
+		if err := tx.QueryRow(qry, []byte(mac)).Scan(&portID); err != nil {
+			// Unregistered host?
+			if err == sql.ErrNoRows {
+				return nil
+			} else {
+				return err
+			}
+		}
+		// NULL port ID?
+		if portID.Valid == false {
+			// The node is registered, but we don't know its physical location yet.
+			status = network.LocationUndiscovered
 			return nil
 		}
-		if err := row.Err(); err != nil {
-			return err
-		}
 
-		if err := row.Scan(&dpid, &port); err != nil {
-			return err
+		qry = "SELECT B.`dpid`, A.`number` FROM `port` A JOIN `switch` B ON A.`switch_id` = B.`id` WHERE A.`id` = ?"
+		if err := tx.QueryRow(qry, portID.Int64).Scan(&dpid, &port); err != nil {
+			if err == sql.ErrNoRows { // FIXME: Is this possible?
+				return nil
+			} else {
+				return err
+			}
 		}
-		ok = true
+		status = network.LocationDiscovered
 
-		return nil
+		return tx.Commit()
 	}
-	err = r.query(f)
+	if err := r.query(f); err != nil {
+		return "", 0, network.LocationUnregistered, err
+	}
 
-	return dpid, port, ok, err
+	return dpid, port, status, nil
 }
 
 func (r *MySQL) Switches() (sw []network.Switch, err error) {
@@ -556,7 +568,7 @@ func (r *MySQL) RemoveNetwork(id uint64) (ok bool, err error) {
 
 func (r *MySQL) IPAddrs(networkID uint64) (addresses []network.IP, err error) {
 	f := func(db *sql.DB) error {
-		qry := `SELECT A.id, INET_NTOA(A.address), A.used, C.description, CONCAT(E.description, '/', D.number) 
+		qry := `SELECT A.id, INET_NTOA(A.address), A.used, C.description, IFNULL(CONCAT(E.description, '/', D.number), '')  
 			FROM ip A 
 			JOIN network B ON A.network_id = B.id 
 			LEFT JOIN host C ON C.ip_id = A.id 
@@ -603,11 +615,13 @@ func decodeMAC(s string) (net.HardwareAddr, error) {
 
 func (r *MySQL) Hosts() (hosts []network.Host, err error) {
 	f := func(db *sql.DB) error {
-		qry := `SELECT A.id, CONCAT(INET_NTOA(B.address), '/', E.mask), CONCAT(D.description, '/', C.number), HEX(mac), A.description 
+		qry := `SELECT A.id, CONCAT(INET_NTOA(B.address), '/', E.mask), 
+				IFNULL(CONCAT(D.description, '/', C.number), ''), 
+				HEX(A.mac), A.description, UNIX_TIMESTAMP(A.last_updated_timestamp) 
 			FROM host A 
 			JOIN ip B ON A.ip_id = B.id 
-			JOIN port C ON A.port_id = C.id 
-			JOIN switch D ON C.switch_id = D.id 
+			LEFT JOIN port C ON A.port_id = C.id 
+			LEFT JOIN switch D ON C.switch_id = D.id 
 			JOIN network E ON B.network_id = E.id 
 			ORDER by A.id DESC`
 		rows, err := db.Query(qry)
@@ -618,7 +632,7 @@ func (r *MySQL) Hosts() (hosts []network.Host, err error) {
 
 		for rows.Next() {
 			v := network.Host{}
-			if err := rows.Scan(&v.ID, &v.IP, &v.Port, &v.MAC, &v.Description); err != nil {
+			if err := rows.Scan(&v.ID, &v.IP, &v.Port, &v.MAC, &v.Description, &v.LastDiscovered); err != nil {
 				return err
 			}
 			mac, err := decodeMAC(v.MAC)
@@ -640,11 +654,13 @@ func (r *MySQL) Hosts() (hosts []network.Host, err error) {
 
 func (r *MySQL) Host(id uint64) (host network.Host, ok bool, err error) {
 	f := func(db *sql.DB) error {
-		qry := `SELECT A.id, CONCAT(INET_NTOA(B.address), '/', E.mask), CONCAT(D.description, '/', C.number), HEX(mac), A.description 
+		qry := `SELECT A.id, CONCAT(INET_NTOA(B.address), '/', E.mask), 
+				IFNULL(CONCAT(D.description, '/', C.number), ''), 
+				HEX(A.mac), A.description, UNIX_TIMESTAMP(A.last_updated_timestamp) 
 			FROM host A 
 			JOIN ip B ON A.ip_id = B.id 
-			JOIN port C ON A.port_id = C.id 
-			JOIN switch D ON C.switch_id = D.id 
+			LEFT JOIN port C ON A.port_id = C.id 
+			LEFT JOIN switch D ON C.switch_id = D.id 
 			JOIN network E ON B.network_id = E.id 
 			WHERE A.id = ?`
 		row, err := db.Query(qry, id)
@@ -656,7 +672,7 @@ func (r *MySQL) Host(id uint64) (host network.Host, ok bool, err error) {
 		if !row.Next() {
 			return nil
 		}
-		if err := row.Scan(&host.ID, &host.IP, &host.Port, &host.MAC, &host.Description); err != nil {
+		if err := row.Scan(&host.ID, &host.IP, &host.Port, &host.MAC, &host.Description, &host.LastDiscovered); err != nil {
 			return err
 		}
 		mac, err := decodeMAC(host.MAC)
@@ -709,8 +725,8 @@ func (r *MySQL) AddHost(host network.HostParam) (hostID uint64, err error) {
 }
 
 func addNewHost(tx *sql.Tx, host network.HostParam) (uint64, error) {
-	qry := "INSERT INTO host (ip_id, port_id, mac, description) VALUES (?, ?, UNHEX(?), ?)"
-	result, err := tx.Exec(qry, host.IPID, host.PortID, normalizeMAC(host.MAC), host.Description)
+	qry := "INSERT INTO host (ip_id, mac, description, last_updated_timestamp) VALUES (?, UNHEX(?), ?, NOW())"
+	result, err := tx.Exec(qry, host.IPID, normalizeMAC(host.MAC), host.Description)
 	if err != nil {
 		return 0, err
 	}
@@ -918,7 +934,8 @@ func portID(tx *sql.Tx, swDPID uint64, portNum uint16) (uint64, error) {
 	qry := `SELECT A.id 
 		FROM port A 
 		JOIN switch B ON A.switch_id = B.id 
-		WHERE A.number = ? AND B.dpid = ?`
+		WHERE A.number = ? AND B.dpid = ? 
+		LOCK IN SHARE MODE`
 	row, err := tx.Query(qry, portNum, swDPID)
 	if err != nil {
 		return 0, err
@@ -1212,4 +1229,188 @@ func (r *MySQL) RemoveVIP(id uint64) (ok bool, err error) {
 	}
 
 	return ok, nil
+}
+
+// GetUndiscoveredHosts returns IP addresses whose physical location is still
+// undiscovered or staled more than expiration. result can be nil on empty result.
+func (r *MySQL) GetUndiscoveredHosts(expiration time.Duration) (result []net.IP, err error) {
+	f := func(db *sql.DB) error {
+		// NOTE: Do not include VIP addresses!
+		qry := "SELECT IFNULL(INET_NTOA(B.`address`), '0.0.0.0') "
+		qry += "FROM `host` A "
+		qry += "JOIN `ip` B "
+		qry += "ON A.`ip_id` = B.`id` "
+		qry += "WHERE A.`port_id` IS NULL OR A.`last_updated_timestamp` < NOW() - INTERVAL ? SECOND"
+
+		rows, err := db.Query(qry, uint64(expiration.Seconds()))
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var addr string
+			if err := rows.Scan(&addr); err != nil {
+				return err
+			}
+			ip := net.ParseIP(addr)
+			if ip == nil {
+				return fmt.Errorf("invalid IP address: %v", addr)
+			}
+			if ip.IsUnspecified() {
+				continue
+			}
+			result = append(result, ip)
+		}
+
+		return rows.Err()
+	}
+
+	if err = r.query(f); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+// UpdateHostLocation updates the physical location of a host, whose MAC and IP
+// addresses are matched with mac and ip, to the port identified by swDPID and
+// portNum. updated will be true if its location has been actually updated.
+func (r *MySQL) UpdateHostLocation(mac net.HardwareAddr, ip net.IP, swDPID uint64, portNum uint16) (updated bool, err error) {
+	f := func(db *sql.DB) error {
+		tx, err := db.Begin()
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+
+		hostID, ok, err := getHostID(tx, mac, ip)
+		if err != nil {
+			return err
+		}
+		// Unknown host?
+		if !ok {
+			updated = false
+			return nil
+		}
+
+		portID, err := portID(tx, swDPID, portNum)
+		if err != nil {
+			return err
+		}
+
+		updated, err = updateLocation(tx, hostID, portID)
+		if err != nil {
+			return err
+		}
+
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+
+		return nil
+	}
+	if err = r.query(f); err != nil {
+		return false, err
+	}
+
+	return updated, nil
+}
+
+func getHostID(tx *sql.Tx, mac net.HardwareAddr, ip net.IP) (hostID uint64, ok bool, err error) {
+	qry := "SELECT A.`id` "
+	qry += "FROM `host` A "
+	qry += "JOIN `ip` B "
+	qry += "ON A.`ip_id` = B.`id` "
+	qry += "WHERE A.`mac` = ? AND B.`address` = INET_ATON(?) "
+	qry += "LOCK IN SHARE MODE"
+
+	row, err := tx.Query(qry, []byte(mac), ip.String())
+	if err != nil {
+		return 0, false, err
+	}
+	defer row.Close()
+
+	// Emptry row?
+	if !row.Next() {
+		return 0, false, nil
+	}
+	if err := row.Scan(&hostID); err != nil {
+		return 0, false, err
+	}
+
+	return hostID, true, nil
+}
+
+func updateLocation(tx *sql.Tx, hostID, portID uint64) (updated bool, err error) {
+	var id uint64
+	qry := "SELECT `id` FROM `host` WHERE `id` = ? AND `port_id` = ?"
+	err = tx.QueryRow(qry, hostID, portID).Scan(&id)
+	// Real error?
+	if err != nil && err != sql.ErrNoRows {
+		return false, err
+	}
+
+	// Need to update?
+	if err == sql.ErrNoRows {
+		updated = true
+	}
+	qry = "UPDATE `host` SET `port_id` = ?, `last_updated_timestamp` = NOW() WHERE `id` = ?"
+	_, err = tx.Exec(qry, portID, hostID)
+	if err != nil {
+		return false, err
+	}
+
+	return updated, nil
+}
+
+// ResetHostLocationsByPort sets NULL to the host locations that belong to the
+// port specified by swDPID and portNum.
+func (r *MySQL) ResetHostLocationsByPort(swDPID uint64, portNum uint16) error {
+	f := func(db *sql.DB) error {
+		tx, err := db.Begin()
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+
+		portID, err := portID(tx, swDPID, portNum)
+		if err != nil {
+			return err
+		}
+
+		qry := "UPDATE `host` SET `port_id` = NULL WHERE `port_id` = ?"
+		if _, err := tx.Exec(qry, portID); err != nil {
+			return err
+		}
+
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	return r.query(f)
+}
+
+// ResetHostLocationsByDevice sets NULL to the host locations that belong to the
+// device specified by swDPID.
+func (r *MySQL) ResetHostLocationsByDevice(swDPID uint64) error {
+	f := func(db *sql.DB) error {
+		qry := "UPDATE `host` A "
+		qry += "JOIN `port` B ON A.`port_id` = B.`id` "
+		qry += "JOIN `switch` C ON B.`switch_id` = C.`id` "
+		qry += "SET A.`port_id` = NULL "
+		qry += "WHERE C.`dpid` = ?"
+
+		_, err := db.Exec(qry, swDPID)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	return r.query(f)
 }

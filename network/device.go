@@ -314,6 +314,37 @@ func (r *Device) RemoveFlow(match openflow.Match, port openflow.OutPort) error {
 	return r.session.Write(flowmod)
 }
 
+func (r *Device) RemoveFlowByMAC(mac net.HardwareAddr) error {
+	// Write lock
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	if r.closed {
+		return ErrClosedDevice
+	}
+
+	match, err := r.factory.NewMatch()
+	if err != nil {
+		return err
+	}
+	match.SetDstMAC(mac)
+
+	port := openflow.NewOutPort()
+	port.SetNone()
+
+	flowmod, err := r.factory.NewFlowMod(openflow.FlowDelete)
+	if err != nil {
+		return err
+	}
+	// Remove flows except the table miss flows (Note that MSB of the cookie is a marker)
+	flowmod.SetCookieMask(0x1 << 63)
+	flowmod.SetTableID(0xFF) // ALL
+	flowmod.SetFlowMatch(match)
+	flowmod.SetOutPort(port)
+
+	return r.session.Write(flowmod)
+}
+
 func makeARPAnnouncement(ip net.IP, mac net.HardwareAddr) ([]byte, error) {
 	v := protocol.NewARPRequest(mac, ip, ip)
 	anon, err := v.MarshalBinary()
@@ -361,6 +392,97 @@ func (r *Device) SendARPAnnouncement(ip net.IP, mac net.HardwareAddr) error {
 	out.SetInPort(inPort)
 	out.SetAction(action)
 	out.SetData(announcement)
+
+	return r.session.Write(out)
+}
+
+func (r *Device) SendARPProbe(sha net.HardwareAddr, tpa net.IP) error {
+	// Write lock
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	if r.closed {
+		return ErrClosedDevice
+	}
+
+	probe, err := makeARPProbe(sha, tpa)
+	if err != nil {
+		return err
+	}
+
+	inPort := openflow.NewInPort()
+	inPort.SetController()
+
+	action, err := r.factory.NewAction()
+	if err != nil {
+		return err
+	}
+	// Flood
+	action.SetOutPort(openflow.NewOutPort())
+
+	out, err := r.factory.NewPacketOut()
+	if err != nil {
+		return err
+	}
+	out.SetInPort(inPort)
+	out.SetAction(action)
+	out.SetData(probe)
+
+	return r.session.Write(out)
+}
+
+// https://en.wikipedia.org/wiki/Address_Resolution_Protocol#ARP_probe
+//
+// An ARP probe is an ARP request constructed with an all-zero sender IP address (SPA).
+// The term is used in the IPv4 Address Conflict Detection specification (RFC 5227).
+// Before beginning to use an IPv4 address (whether received from manual configuration,
+// DHCP, or some other means), a host implementing this specification must test to see
+// if the address is already in use, by broadcasting ARP probe packets.
+func makeARPProbe(sha net.HardwareAddr, tpa net.IP) ([]byte, error) {
+	arp := protocol.NewARPRequest(sha, net.IPv4(0, 0, 0, 0), tpa)
+	probe, err := arp.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	eth := protocol.Ethernet{
+		SrcMAC:  sha,
+		DstMAC:  net.HardwareAddr([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}),
+		Type:    0x0806,
+		Payload: probe,
+	}
+
+	return eth.MarshalBinary()
+}
+
+func (r *Device) Flood(ingress *Port, packet []byte) error {
+	// Write lock
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	if r.closed {
+		return ErrClosedDevice
+	}
+
+	inPort := openflow.NewInPort()
+	inPort.SetValue(ingress.Number())
+
+	outPort := openflow.NewOutPort()
+	// FLOOD means all ports except the ingress one.
+	outPort.SetFlood()
+
+	action, err := r.factory.NewAction()
+	if err != nil {
+		return err
+	}
+	action.SetOutPort(outPort)
+
+	out, err := r.factory.NewPacketOut()
+	if err != nil {
+		return err
+	}
+	out.SetInPort(inPort)
+	out.SetAction(action)
+	out.SetData(packet)
 
 	return r.session.Write(out)
 }

@@ -39,12 +39,15 @@ CREATE TABLE IF NOT EXISTS `acl` (
 CREATE TABLE IF NOT EXISTS `host` (
   `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   `ip_id` bigint(20) unsigned NOT NULL,
-  `port_id` bigint(20) unsigned NOT NULL,
+  `port_id` bigint(20) unsigned default NULL,
   `mac` binary(6) NOT NULL,
   `description` varchar(255) NOT NULL,
+  `last_updated_timestamp` datetime NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `ip` (`ip_id`),
   KEY `port_id` (`port_id`),
+  KEY `mac` (`mac`),
+  KEY `last_updated_timestamp` (`last_updated_timestamp`),
   CONSTRAINT `host_ibfk_1` FOREIGN KEY (`ip_id`) REFERENCES `ip` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `host_ibfk_2` FOREIGN KEY (`port_id`) REFERENCES `port` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;

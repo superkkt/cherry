@@ -30,17 +30,18 @@ import (
 	"sync"
 )
 
+// Vertex is a node (e.g., switch) that consists of at least one or more points.
 type Vertex interface {
 	ID() string
 }
 
-// Point is a spot on a vertex. We need this to represent multiple links among two vertexies.
+// Point is a spot (e.g., switch port) on a vertex. We need this to represent multiple links among two vertexies.
 type Point interface {
 	ID() string
 	Vertex() Vertex
 }
 
-// Edge is a link, which has a weight, among two points.
+// Edge is a bi-directional link, which has a weight, among two points.
 type Edge interface {
 	ID() string
 	Points() [2]Point
