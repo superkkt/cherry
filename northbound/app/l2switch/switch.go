@@ -97,6 +97,7 @@ func New(conf *goconf.ConfigFile) *L2Switch {
 
 type flooder struct{}
 
+// flood broadcasts packet to all ports on the ingress device, except the ingress port itself.
 func (r *flooder) flood(ingress *network.Port, packet []byte) error {
 	f := ingress.Device().Factory()
 
@@ -104,6 +105,7 @@ func (r *flooder) flood(ingress *network.Port, packet []byte) error {
 	inPort.SetValue(ingress.Number())
 
 	outPort := openflow.NewOutPort()
+	// FLOOD means all ports except the ingress one.
 	outPort.SetFlood()
 
 	action, err := f.NewAction()
