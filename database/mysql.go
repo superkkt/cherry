@@ -32,10 +32,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dlintw/goconf"
-	"github.com/go-sql-driver/mysql"
 	"github.com/superkkt/cherry/network"
 	"github.com/superkkt/cherry/northbound/app/proxyarp"
+
+	"github.com/dlintw/goconf"
+	"github.com/go-sql-driver/mysql"
 )
 
 const (
@@ -556,7 +557,7 @@ func (r *MySQL) RemoveNetwork(id uint64) (ok bool, err error) {
 
 func (r *MySQL) IPAddrs(networkID uint64) (addresses []network.IP, err error) {
 	f := func(db *sql.DB) error {
-		qry := `SELECT A.id, INET_NTOA(A.address), A.used, C.description, CONCAT(E.description, '/', D.number) 
+		qry := `SELECT A.id, INET_NTOA(A.address), A.used, C.description, IFNULL(CONCAT(E.description, '/', D.number), '')  
 			FROM ip A 
 			JOIN network B ON A.network_id = B.id 
 			LEFT JOIN host C ON C.ip_id = A.id 
@@ -603,11 +604,11 @@ func decodeMAC(s string) (net.HardwareAddr, error) {
 
 func (r *MySQL) Hosts() (hosts []network.Host, err error) {
 	f := func(db *sql.DB) error {
-		qry := `SELECT A.id, CONCAT(INET_NTOA(B.address), '/', E.mask), CONCAT(D.description, '/', C.number), HEX(mac), A.description 
+		qry := `SELECT A.id, CONCAT(INET_NTOA(B.address), '/', E.mask), IFNULL(CONCAT(D.description, '/', C.number), ''), HEX(A.mac), A.description 
 			FROM host A 
 			JOIN ip B ON A.ip_id = B.id 
-			JOIN port C ON A.port_id = C.id 
-			JOIN switch D ON C.switch_id = D.id 
+			LEFT JOIN port C ON A.port_id = C.id 
+			LEFT JOIN switch D ON C.switch_id = D.id 
 			JOIN network E ON B.network_id = E.id 
 			ORDER by A.id DESC`
 		rows, err := db.Query(qry)
@@ -640,11 +641,11 @@ func (r *MySQL) Hosts() (hosts []network.Host, err error) {
 
 func (r *MySQL) Host(id uint64) (host network.Host, ok bool, err error) {
 	f := func(db *sql.DB) error {
-		qry := `SELECT A.id, CONCAT(INET_NTOA(B.address), '/', E.mask), CONCAT(D.description, '/', C.number), HEX(mac), A.description 
+		qry := `SELECT A.id, CONCAT(INET_NTOA(B.address), '/', E.mask), IFNULL(CONCAT(D.description, '/', C.number), ''), HEX(A.mac), A.description 
 			FROM host A 
 			JOIN ip B ON A.ip_id = B.id 
-			JOIN port C ON A.port_id = C.id 
-			JOIN switch D ON C.switch_id = D.id 
+			LEFT JOIN port C ON A.port_id = C.id 
+			LEFT JOIN switch D ON C.switch_id = D.id 
 			JOIN network E ON B.network_id = E.id 
 			WHERE A.id = ?`
 		row, err := db.Query(qry, id)
@@ -1327,17 +1328,25 @@ func getHostID(tx *sql.Tx, mac net.HardwareAddr, ip net.IP) (hostID uint64, ok b
 }
 
 func updateLocation(tx *sql.Tx, hostID, portID uint64) (updated bool, err error) {
-	qry := "UPDATE `host` SET `port_id` = ? WHERE `id` = ?"
-	result, err := tx.Exec(qry, portID, hostID)
-	if err != nil {
+	var id uint64
+	qry := "SELECT `id` FROM `host` WHERE `id` = ? AND `port_id` = ?"
+	err = tx.QueryRow(qry, hostID, portID).Scan(&id)
+	// Real error?
+	if err != nil && err != sql.ErrNoRows {
 		return false, err
 	}
-	n, err := result.RowsAffected()
+
+	// Need to update?
+	if err == sql.ErrNoRows {
+		updated = true
+	}
+	qry = "UPDATE `host` SET `port_id` = ?, `last_updated_timestamp` = NOW() WHERE `id` = ?"
+	_, err = tx.Exec(qry, portID, hostID)
 	if err != nil {
 		return false, err
 	}
 
-	return n > 0, nil
+	return updated, nil
 }
 
 // ResetHostLocationsByPort sets NULL to the host locations that belong to the

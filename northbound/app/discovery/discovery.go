@@ -134,7 +134,7 @@ func (r *processor) sendARPProbes(device *network.Device) error {
 		if err := device.SendARPProbe(myMAC, ip); err != nil {
 			return err
 		}
-		logger.Debugf("sent an ARP probe for %v", ip)
+		logger.Debugf("sent an ARP probe for %v on %v", ip, device.ID())
 	}
 
 	return nil
@@ -157,21 +157,41 @@ func (r *processor) OnPacketIn(finder network.Finder, ingress *network.Port, eth
 	if eth.Type != 0x0806 {
 		return r.BaseProcessor.OnPacketIn(finder, ingress, eth)
 	}
-	logger.Debugf("received ARP packet.. ingress=%v, srcEthMAC=%v, dstEthMAC=%v", ingress.ID(), eth.SrcMAC, eth.DstMAC)
 
 	arp := new(protocol.ARP)
 	if err := arp.UnmarshalBinary(eth.Payload); err != nil {
 		return err
 	}
-	// ARP reply?
-	if arp.Operation != 2 {
-		// Do nothing.
-		logger.Debugf("ignoring the ARP packet that is not a reply packet: ingress=%v, srcEthMAC=%v, dstEthMAC=%v", ingress.ID(), eth.SrcMAC, eth.DstMAC)
+	logger.Debugf("received ARP packet: %v", arp)
+
+	switch arp.Operation {
+	case 1:
+		return r.processARPRequest(finder, ingress, eth, arp)
+	case 2:
+		return r.processARPReply(finder, ingress, eth, arp)
+	default:
+		logger.Warningf("dropping the ARP packet that has invalid operaion code: %v", arp)
+		// Drop this packet. Do not pass it to the next processors.
+		return nil
+	}
+}
+
+func (r *processor) processARPRequest(finder network.Finder, ingress *network.Port, eth *protocol.Ethernet, arp *protocol.ARP) error {
+	// Our ARP probe?
+	if bytes.Equal(arp.SHA, myMAC) {
+		// Drop this packet! This packet should not be propagated among switches.
+		logger.Debugf("dropping our ARP probe that was propagated via an edge among switches: deviceID=%v", ingress.Device().ID())
+		return nil
+	} else {
+		// Propagate this ARP request, wich is raised from a host, to the next processors.
 		return r.BaseProcessor.OnPacketIn(finder, ingress, eth)
 	}
+}
 
-	// The source hardware address of this ARP reply packet should be equal to the myMAC address.
-	if bytes.Equal(arp.SHA, myMAC) == false {
+func (r *processor) processARPReply(finder network.Finder, ingress *network.Port, eth *protocol.Ethernet, arp *protocol.ARP) error {
+	// The target (not source!) hardware address of the ARP reply packet should be
+	// equal to the myMAC address if it is a counterpart for our ARP probe.
+	if bytes.Equal(arp.THA, myMAC) == false {
 		logger.Warningf("unexpected ARP reply: %v", arp)
 		// Drop this packet. Do not pass it to the next processors.
 		return nil
@@ -182,36 +202,26 @@ func (r *processor) OnPacketIn(finder network.Finder, ingress *network.Port, eth
 		return fmt.Errorf("invalid device ID: %v", ingress.Device().ID())
 	}
 
-	// Update the host location in the database if THA and TPA are matched.
-	updated, err := r.db.UpdateHostLocation(arp.THA, arp.TPA, swDPID, uint16(ingress.Number()))
+	// Update the host location in the database if SHA and SPA are matched.
+	updated, err := r.db.UpdateHostLocation(arp.SHA, arp.SPA, swDPID, uint16(ingress.Number()))
 	if err != nil {
 		return err
 	}
 	// Remove installed flows for this host if the location has been changed.
 	if updated {
-		logger.Infof("host location updated: IP=%v, MAC=%v, deviceID=%v, portNum=%v", arp.TPA, arp.THA, swDPID, ingress.Number())
+		logger.Infof("host location updated: IP=%v, MAC=%v, deviceID=%v, portNum=%v", arp.SPA, arp.SHA, swDPID, ingress.Number())
 		// Remove flows from all devices.
 		for _, device := range finder.Devices() {
-			if err := device.RemoveFlowByMAC(arp.THA); err != nil {
+			if err := device.RemoveFlowByMAC(arp.SHA); err != nil {
 				logger.Errorf("failed to remove flows from %v: %v", device.ID(), err)
 				continue
 			}
-			logger.Infof("removed flows whose destination MAC address is %v on %v", arp.THA, device.ID())
+			logger.Infof("removed flows whose destination MAC address is %v on %v", arp.SHA, device.ID())
 		}
 	}
 
 	// This ARP reply packet has been processed. Do not pass it to the next processors.
 	return nil
-}
-
-func (r *processor) OnPortUp(finder network.Finder, port *network.Port) error {
-	if err := r.sendARPProbes(port.Device()); err != nil {
-		logger.Errorf("failed to send ARP probes: %v", err)
-		// Ignore this error and keep go on.
-	}
-
-	// Propagate this event to the next processors.
-	return r.BaseProcessor.OnPortUp(finder, port)
 }
 
 func (r *processor) OnPortDown(finder network.Finder, port *network.Port) error {
