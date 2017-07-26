@@ -99,30 +99,7 @@ type flooder struct{}
 
 // flood broadcasts packet to all ports on the ingress device, except the ingress port itself.
 func (r *flooder) flood(ingress *network.Port, packet []byte) error {
-	f := ingress.Device().Factory()
-
-	inPort := openflow.NewInPort()
-	inPort.SetValue(ingress.Number())
-
-	outPort := openflow.NewOutPort()
-	// FLOOD means all ports except the ingress one.
-	outPort.SetFlood()
-
-	action, err := f.NewAction()
-	if err != nil {
-		return err
-	}
-	action.SetOutPort(outPort)
-
-	out, err := f.NewPacketOut()
-	if err != nil {
-		return err
-	}
-	out.SetInPort(inPort)
-	out.SetAction(action)
-	out.SetData(packet)
-
-	return ingress.Device().SendMessage(out)
+	return ingress.Device().Flood(ingress, packet)
 }
 
 func (r *L2Switch) Init() error {
@@ -269,7 +246,11 @@ func (r *L2Switch) processPacket(finder network.Finder, ingress *network.Port, e
 	}
 	// Unknown node?
 	if dstNode == nil {
-		logger.Debugf("unknown node! dropping.. SrcMAC=%v, DstMAC=%v", eth.SrcMAC, eth.DstMAC)
+		logger.Debugf("unknown node! broadcasting.. SrcMAC=%v, DstMAC=%v", eth.SrcMAC, eth.DstMAC)
+		// Broadcast!
+		if err := ingress.Device().Flood(ingress, packet); err != nil {
+			return true, err
+		}
 		return true, nil
 	}
 	// Disconnected node?

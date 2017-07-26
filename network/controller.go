@@ -28,7 +28,6 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/superkkt/cherry/openflow"
 	"github.com/superkkt/cherry/protocol"
 
 	"github.com/ant0ine/go-json-rest/rest"
@@ -474,7 +473,6 @@ func (r *Controller) listIP(w rest.ResponseWriter, req *rest.Request) {
 
 type HostParam struct {
 	IPID        uint64 `json:"ip_id"`
-	PortID      uint64 `json:"port_id"`
 	MAC         string `json:"mac"`
 	Description string `json:"description"`
 }
@@ -718,22 +716,12 @@ func (r *Controller) removeVIP(w rest.ResponseWriter, req *rest.Request) {
 }
 
 func (r *Controller) removeFlows(mac net.HardwareAddr) {
-	for _, sw := range r.topo.Devices() {
-		f := sw.Factory()
-		match, err := f.NewMatch()
-		if err != nil {
-			logger.Errorf("failed to create an OpenFlow match: %v", err)
+	for _, device := range r.topo.Devices() {
+		if err := device.RemoveFlowByMAC(mac); err != nil {
+			logger.Errorf("failed to remove flows from %v: %v", device.ID(), err)
 			continue
 		}
-		match.SetDstMAC(mac)
-		outPort := openflow.NewOutPort()
-		outPort.SetNone()
-
-		logger.Debugf("removing flows whose destinatcion MAC address is %v on %v", mac, sw.ID())
-		if err := sw.RemoveFlow(match, outPort); err != nil {
-			logger.Errorf("failed to remove a flow from %v: %v", sw.ID(), err)
-			continue
-		}
+		logger.Debugf("removed flows whose destination MAC address is %v on %v", mac, device.ID())
 	}
 }
 
