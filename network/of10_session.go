@@ -81,7 +81,7 @@ func (r *of10Session) OnFeaturesReply(f openflow.Factory, w transceiver.Writer, 
 		r.device.addPort(p.Number(), p)
 		if !p.IsPortDown() && !p.IsLinkDown() && r.device.isValid() {
 			// Send LLDP to update network topology
-			if err := sendLLDP(r.device.ID(), f, w, p); err != nil {
+			if err := sendLLDP(r.device, p); err != nil {
 				logger.Errorf("failed to send LLDP: %v", err)
 			}
 		}

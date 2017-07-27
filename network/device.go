@@ -375,25 +375,7 @@ func (r *Device) SendARPAnnouncement(ip net.IP, mac net.HardwareAddr) error {
 		return err
 	}
 
-	inPort := openflow.NewInPort()
-	inPort.SetController()
-
-	action, err := r.factory.NewAction()
-	if err != nil {
-		return err
-	}
-	// Flood
-	action.SetOutPort(openflow.NewOutPort())
-
-	out, err := r.factory.NewPacketOut()
-	if err != nil {
-		return err
-	}
-	out.SetInPort(inPort)
-	out.SetAction(action)
-	out.SetData(announcement)
-
-	return r.session.Write(out)
+	return r.flood(nil, announcement)
 }
 
 func (r *Device) SendARPProbe(sha net.HardwareAddr, tpa net.IP) error {
@@ -410,25 +392,7 @@ func (r *Device) SendARPProbe(sha net.HardwareAddr, tpa net.IP) error {
 		return err
 	}
 
-	inPort := openflow.NewInPort()
-	inPort.SetController()
-
-	action, err := r.factory.NewAction()
-	if err != nil {
-		return err
-	}
-	// Flood
-	action.SetOutPort(openflow.NewOutPort())
-
-	out, err := r.factory.NewPacketOut()
-	if err != nil {
-		return err
-	}
-	out.SetInPort(inPort)
-	out.SetAction(action)
-	out.SetData(probe)
-
-	return r.session.Write(out)
+	return r.flood(nil, probe)
 }
 
 // https://en.wikipedia.org/wiki/Address_Resolution_Protocol#ARP_probe
@@ -454,6 +418,7 @@ func makeARPProbe(sha net.HardwareAddr, tpa net.IP) ([]byte, error) {
 	return eth.MarshalBinary()
 }
 
+// Flood broadcasts the packet to all ports of this device, except the ingress port if ingress is not nil.
 func (r *Device) Flood(ingress *Port, packet []byte) error {
 	// Write lock
 	r.mutex.Lock()
@@ -463,8 +428,17 @@ func (r *Device) Flood(ingress *Port, packet []byte) error {
 		return ErrClosedDevice
 	}
 
+	return r.flood(ingress, packet)
+}
+
+// flood broadcasts the packet to all ports of this device, except the ingress port if ingress is not nil.
+func (r *Device) flood(ingress *Port, packet []byte) error {
 	inPort := openflow.NewInPort()
-	inPort.SetValue(ingress.Number())
+	if ingress != nil {
+		inPort.SetValue(ingress.Number())
+	} else {
+		inPort.SetController()
+	}
 
 	outPort := openflow.NewOutPort()
 	// FLOOD means all ports except the ingress one.

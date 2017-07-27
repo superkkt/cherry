@@ -28,6 +28,13 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"time"
+
+	"github.com/op/go-logging"
+)
+
+var (
+	logger = logging.MustGetLogger("graph")
 )
 
 // Vertex is a node (e.g., switch) that consists of at least one or more points.
@@ -49,8 +56,9 @@ type Edge interface {
 }
 
 type edge struct {
-	value   Edge
-	enabled bool
+	value     Edge
+	enabled   bool
+	timestamp time.Time
 }
 
 type vertex struct {
@@ -81,7 +89,7 @@ func (r *Graph) String() string {
 	var buf bytes.Buffer
 	for _, v := range r.edges {
 		e := v.value
-		buf.WriteString(fmt.Sprintf("Edge ID=%v, Enabled=%v\n", e.ID(), v.enabled))
+		buf.WriteString(fmt.Sprintf("Edge ID=%v, Enabled=%v, Timestamp=%v\n", e.ID(), v.enabled, v.timestamp))
 	}
 
 	return buf.String()
@@ -141,7 +149,7 @@ func (r *Graph) RemoveVertex(v Vertex) {
 	r.calculateMST()
 }
 
-func (r *Graph) AddEdge(e Edge) error {
+func (r *Graph) AddEdge(e Edge) (added bool, err error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -149,9 +157,12 @@ func (r *Graph) AddEdge(e Edge) error {
 		panic("adding nil edge")
 	}
 	// Check duplication
-	_, ok := r.edges[e.ID()]
+	elem, ok := r.edges[e.ID()]
 	if ok {
-		return nil
+		// Update the timestamp if we already have same one.
+		elem.timestamp = time.Now()
+		logger.Debugf("updated the edge timestamp: id=%v", e.ID())
+		return false, nil
 	}
 
 	points := e.Points()
@@ -161,18 +172,19 @@ func (r *Graph) AddEdge(e Edge) error {
 	first, ok1 := r.vertexies[points[0].Vertex().ID()]
 	second, ok2 := r.vertexies[points[1].Vertex().ID()]
 	if !ok1 || !ok2 {
-		return errors.New("AddEdge: adding an edge to unknown vertex")
+		return false, errors.New("AddEdge: adding an edge to unknown vertex")
 	}
 
-	edge := &edge{value: e}
+	edge := &edge{value: e, timestamp: time.Now()}
 	r.edges[e.ID()] = edge
 	first.edges[e.ID()] = edge
 	second.edges[e.ID()] = edge
 	r.points[points[0].ID()] = edge
 	r.points[points[1].ID()] = edge
 	r.calculateMST()
+	logger.Debugf("added a new edge: id=%v", e.ID())
 
-	return nil
+	return true, nil
 }
 
 func (r *Graph) RemoveEdge(p Point) {
@@ -185,6 +197,7 @@ func (r *Graph) RemoveEdge(p Point) {
 	}
 	r.removeEdge(e.value)
 	r.calculateMST()
+	logger.Debugf("removed an edge: id=%v", e.value.ID())
 }
 
 // IsEdge returns whether p is on an edge between two vertexeis.
@@ -444,4 +457,23 @@ func reverse(data []Path) []Path {
 	}
 
 	return result
+}
+
+func (r *Graph) RemoveStaleEdges(expiration time.Duration) (removed bool) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	for _, edge := range r.edges {
+		if time.Now().Sub(edge.timestamp) < expiration {
+			continue
+		}
+		logger.Infof("removing a stale edge from the topology: id=%v", edge.value.ID())
+		r.removeEdge(edge.value)
+		removed = true
+	}
+	if removed {
+		r.calculateMST()
+	}
+
+	return removed
 }

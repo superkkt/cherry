@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"time"
 
 	"github.com/superkkt/cherry/openflow"
 	"github.com/superkkt/cherry/openflow/of10"
@@ -246,8 +247,8 @@ func newLLDPEtherFrame(deviceID string, port openflow.Port) ([]byte, error) {
 	return frame, nil
 }
 
-func sendLLDP(deviceID string, f openflow.Factory, w transceiver.Writer, p openflow.Port) error {
-	lldp, err := newLLDPEtherFrame(deviceID, p)
+func sendLLDP(device *Device, p openflow.Port) error {
+	lldp, err := newLLDPEtherFrame(device.ID(), p)
 	if err != nil {
 		return err
 	}
@@ -256,13 +257,13 @@ func sendLLDP(deviceID string, f openflow.Factory, w transceiver.Writer, p openf
 	outPort.SetValue(p.Number())
 
 	// Packet out to the port
-	action, err := f.NewAction()
+	action, err := device.Factory().NewAction()
 	if err != nil {
 		return err
 	}
 	action.SetOutPort(outPort)
 
-	out, err := f.NewPacketOut()
+	out, err := device.Factory().NewPacketOut()
 	if err != nil {
 		return err
 	}
@@ -271,7 +272,7 @@ func sendLLDP(deviceID string, f openflow.Factory, w transceiver.Writer, p openf
 	out.SetAction(action)
 	out.SetData(lldp)
 
-	return w.Write(out)
+	return device.SendMessage(out)
 }
 
 func (r *session) sendPortEvent(portNum uint32, up bool) {
@@ -329,7 +330,7 @@ func (r *session) OnPortStatus(f openflow.Factory, w transceiver.Writer, v openf
 	// Is this an enabled port?
 	if up && r.device.isValid() {
 		// Send LLDP to update network topology
-		if err := sendLLDP(r.device.ID(), f, w, port); err != nil {
+		if err := sendLLDP(r.device, port); err != nil {
 			return err
 		}
 	} else {
@@ -487,16 +488,21 @@ func (r *session) OnPacketIn(f openflow.Factory, w transceiver.Writer, v openflo
 }
 
 func (r *session) Run(ctx context.Context) {
+	stopExplorer := r.runDeviceExplorer(ctx)
+	logger.Debugf("started a new device explorer")
+
 	sessionCtx, canceller := context.WithCancel(ctx)
 	// This canceller will be used to disconnect this session when it is necessary.
 	r.canceller = canceller
+
 	if err := r.transceiver.Run(sessionCtx); err != nil {
 		logger.Errorf("openflow transceiver is unexpectedly closed: %v", err)
 	}
-	r.transceiver.Close()
-	r.device.Close()
 	logger.Infof("disconnected device (DPID=%v)", r.device.ID())
 
+	stopExplorer()
+	r.transceiver.Close()
+	r.device.Close()
 	if r.device.isValid() {
 		popCanceller(r.device.ID())
 		if err := r.listener.OnDeviceDown(r.finder, r.device); err != nil {
@@ -504,6 +510,48 @@ func (r *session) Run(ctx context.Context) {
 		}
 		r.watcher.DeviceRemoved(r.device)
 	}
+}
+
+func (r *session) runDeviceExplorer(ctx context.Context) context.CancelFunc {
+	subCtx, canceller := context.WithCancel(ctx)
+
+	go func() {
+		ticker := time.Tick(1 * time.Minute)
+
+		// Infinite loop. Note taht ticker will deliver the first tick after specified duration.
+		for range ticker {
+			select {
+			case <-subCtx.Done():
+				logger.Debugf("terminating the device explorer: deviceID=%v", r.device.ID())
+				return
+			default:
+			}
+
+			if r.device.isValid() == false {
+				logger.Debug("skip to execute the device explorer due to incomplete device status")
+				continue
+			}
+			logger.Debugf("executing the device explorer: deviceID=%v", r.device.ID())
+
+			// Send LLDPs to all the enabled ports of this device.
+			for _, p := range r.device.Ports() {
+				port := p.Value()
+				if port.IsPortDown() || port.IsLinkDown() {
+					logger.Debugf("skip to send a LLDP packet due to port (or link) down: deviceID=%v, portNum=%v", r.device.ID(), p.Number())
+					continue
+				}
+				if err := sendLLDP(r.device, port); err != nil {
+					logger.Errorf("failed to send a LLDP packet to %v: %v", r.device.ID(), err)
+					continue
+				}
+				logger.Debugf("sent the LLDP packet to %v:%v", r.device.ID(), p.Number())
+			}
+
+			// TODO: Send a PortDescReq.
+		}
+	}()
+
+	return canceller
 }
 
 func (r *session) Write(msg encoding.BinaryMarshaler) error {
