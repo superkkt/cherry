@@ -207,44 +207,55 @@ func (r *MySQL) MAC(ip net.IP) (mac net.HardwareAddr, ok bool, err error) {
 	return mac, ok, err
 }
 
-func (r *MySQL) Location(mac net.HardwareAddr) (dpid string, port uint32, ok bool, err error) {
+func (r *MySQL) Location(mac net.HardwareAddr) (dpid string, port uint32, status network.LocationStatus, err error) {
 	if mac == nil {
 		panic("MAC address is nil")
 	}
 
 	f := func(db *sql.DB) error {
-		qry := `SELECT A.dpid, B.number 
-			FROM switch A 
-			JOIN port B 
-			ON B.switch_id = A.id 
-			JOIN host C 
-			ON C.port_id = B.id 
-			WHERE C.mac = ?
-			GROUP BY(A.dpid)`
-		row, err := db.Query(qry, []byte(mac))
+		// Initial value.
+		status = network.LocationUnregistered
+
+		tx, err := db.Begin()
 		if err != nil {
 			return err
 		}
-		defer row.Close()
+		defer tx.Rollback()
 
-		// Unknown or undiscovered MAC address?
-		if !row.Next() {
+		var portID sql.NullInt64
+		qry := "SELECT `port_id` FROM `host` WHERE `mac` = ? LOCK IN SHARE MODE"
+		if err := tx.QueryRow(qry, []byte(mac)).Scan(&portID); err != nil {
+			// Unregistered host?
+			if err == sql.ErrNoRows {
+				return nil
+			} else {
+				return err
+			}
+		}
+		// NULL port ID?
+		if portID.Valid == false {
+			// The node is registered, but we don't know its physical location yet.
+			status = network.LocationUndiscovered
 			return nil
 		}
-		if err := row.Err(); err != nil {
-			return err
-		}
 
-		if err := row.Scan(&dpid, &port); err != nil {
-			return err
+		qry = "SELECT B.`dpid`, A.`number` FROM `port` A JOIN `switch` B ON A.`switch_id` = B.`id` WHERE A.`id` = ?"
+		if err := tx.QueryRow(qry, portID.Int64).Scan(&dpid, &port); err != nil {
+			if err == sql.ErrNoRows { // FIXME: Is this possible?
+				return nil
+			} else {
+				return err
+			}
 		}
-		ok = true
+		status = network.LocationDiscovered
 
-		return nil
+		return tx.Commit()
 	}
-	err = r.query(f)
+	if err := r.query(f); err != nil {
+		return "", 0, network.LocationUnregistered, err
+	}
 
-	return dpid, port, ok, err
+	return dpid, port, status, nil
 }
 
 func (r *MySQL) Switches() (sw []network.Switch, err error) {

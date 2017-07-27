@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS `host` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `ip` (`ip_id`),
   KEY `port_id` (`port_id`),
+  KEY `mac` (`mac`),
   KEY `last_updated_timestamp` (`last_updated_timestamp`),
   CONSTRAINT `host_ibfk_1` FOREIGN KEY (`ip_id`) REFERENCES `ip` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `host_ibfk_2` FOREIGN KEY (`port_id`) REFERENCES `port` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE

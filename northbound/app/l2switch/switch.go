@@ -240,19 +240,26 @@ func (r *L2Switch) processPacket(finder network.Finder, ingress *network.Port, e
 		return true, r.stormCtrl.broadcast(ingress, packet)
 	}
 
-	dstNode, err := finder.Node(eth.DstMAC)
+	logger.Debugf("finding node for %v...", eth.DstMAC)
+	dstNode, status, err := finder.Node(eth.DstMAC)
 	if err != nil {
 		return true, errors.Wrap(err, fmt.Sprintf("locating a node (MAC=%v)", eth.DstMAC))
 	}
-	// Unknown node?
-	if dstNode == nil {
-		logger.Debugf("unknown node! broadcasting.. SrcMAC=%v, DstMAC=%v", eth.SrcMAC, eth.DstMAC)
-		// Broadcast!
-		if err := ingress.Device().Flood(ingress, packet); err != nil {
-			return true, err
+	if status != network.LocationDiscovered {
+		if status == network.LocationUndiscovered {
+			// Broadcast!
+			logger.Debugf("undiscovered node! broadcasting.. SrcMAC=%v, DstMAC=%v", eth.SrcMAC, eth.DstMAC)
+			return true, ingress.Device().Flood(ingress, packet)
+		} else if status == network.LocationUnregistered {
+			// Drop!
+			logger.Debugf("unknown node! dropping.. SrcMAC=%v, DstMAC=%v", eth.SrcMAC, eth.DstMAC)
+			return true, nil
+		} else {
+			panic(fmt.Sprintf("unexpected location status: %v", status))
 		}
-		return true, nil
 	}
+	logger.Debugf("found the node for %v: deviceID=%v, portNum=%v", eth.DstMAC, dstNode.Port().Device().ID(), dstNode.Port().Number())
+
 	// Disconnected node?
 	port := dstNode.Port().Value()
 	if port.IsPortDown() || port.IsLinkDown() {

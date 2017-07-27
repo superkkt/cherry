@@ -48,7 +48,7 @@ type database interface {
 	Host(hostID uint64) (host Host, ok bool, err error)
 	Hosts() ([]Host, error)
 	IPAddrs(networkID uint64) ([]IP, error)
-	Location(mac net.HardwareAddr) (dpid string, port uint32, ok bool, err error)
+	Location(mac net.HardwareAddr) (dpid string, port uint32, status LocationStatus, err error)
 	Network(net.IP) (n Network, ok bool, err error)
 	Networks() ([]Network, error)
 	RemoveHost(id uint64) (ok bool, err error)
@@ -61,6 +61,17 @@ type database interface {
 	ToggleVIP(id uint64) (net.IP, net.HardwareAddr, error)
 	VIPs() ([]VIP, error)
 }
+
+type LocationStatus int
+
+const (
+	// Unregistered MAC address.
+	LocationUnregistered LocationStatus = iota
+	// Registered MAC address, but we don't know its physical location yet.
+	LocationUndiscovered
+	// Registered MAC address, and we know its physical location.
+	LocationDiscovered
+)
 
 type EventListener interface {
 	ControllerEventListener

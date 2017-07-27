@@ -46,7 +46,7 @@ type Finder interface {
 	IsEnabledBySTP(p *Port) bool
 	// IsEdge returns whether p is an edge among two switches
 	IsEdge(p *Port) bool
-	Node(mac net.HardwareAddr) (*Node, error)
+	Node(mac net.HardwareAddr) (*Node, LocationStatus, error)
 	Path(srcDeviceID, dstDeviceID string) [][2]*Port
 }
 
@@ -165,30 +165,30 @@ func (r *topology) DeviceLinked(ports [2]*Port) {
 	r.sendEvent()
 }
 
-// Node may return nil if a node whose MAC is mac does not exist
-func (r *topology) Node(mac net.HardwareAddr) (*Node, error) {
+// Node may return nil if the node is unregistered or still undiscovered.
+func (r *topology) Node(mac net.HardwareAddr) (*Node, LocationStatus, error) {
 	// Read lock
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 
-	dpid, portNum, ok, err := r.db.Location(mac)
+	dpid, portNum, status, err := r.db.Location(mac)
 	if err != nil {
-		return nil, errors.Wrap(&networkErr{temporary: true, err: err}, "querying host location to the database")
+		return nil, status, errors.Wrap(&networkErr{temporary: true, err: err}, "querying host location to the database")
 	}
-	if !ok {
-		return nil, nil
+	if status != LocationDiscovered {
+		return nil, status, nil
 	}
 
 	device, ok := r.devices[dpid]
 	if !ok {
-		return nil, nil
+		return nil, LocationUnregistered, nil
 	}
 	port := device.Port(portNum)
 	if port == nil {
-		return nil, nil
+		return nil, LocationUnregistered, nil
 	}
 
-	return NewNode(port, mac), nil
+	return NewNode(port, mac), LocationDiscovered, nil
 }
 
 func (r *topology) PortRemoved(p *Port) {
