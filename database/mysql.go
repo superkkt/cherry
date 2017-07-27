@@ -615,7 +615,9 @@ func decodeMAC(s string) (net.HardwareAddr, error) {
 
 func (r *MySQL) Hosts() (hosts []network.Host, err error) {
 	f := func(db *sql.DB) error {
-		qry := `SELECT A.id, CONCAT(INET_NTOA(B.address), '/', E.mask), IFNULL(CONCAT(D.description, '/', C.number), ''), HEX(A.mac), A.description 
+		qry := `SELECT A.id, CONCAT(INET_NTOA(B.address), '/', E.mask), 
+				IFNULL(CONCAT(D.description, '/', C.number), ''), 
+				HEX(A.mac), A.description, UNIX_TIMESTAMP(A.last_updated_timestamp) 
 			FROM host A 
 			JOIN ip B ON A.ip_id = B.id 
 			LEFT JOIN port C ON A.port_id = C.id 
@@ -630,7 +632,7 @@ func (r *MySQL) Hosts() (hosts []network.Host, err error) {
 
 		for rows.Next() {
 			v := network.Host{}
-			if err := rows.Scan(&v.ID, &v.IP, &v.Port, &v.MAC, &v.Description); err != nil {
+			if err := rows.Scan(&v.ID, &v.IP, &v.Port, &v.MAC, &v.Description, &v.LastDiscovered); err != nil {
 				return err
 			}
 			mac, err := decodeMAC(v.MAC)
@@ -652,7 +654,9 @@ func (r *MySQL) Hosts() (hosts []network.Host, err error) {
 
 func (r *MySQL) Host(id uint64) (host network.Host, ok bool, err error) {
 	f := func(db *sql.DB) error {
-		qry := `SELECT A.id, CONCAT(INET_NTOA(B.address), '/', E.mask), IFNULL(CONCAT(D.description, '/', C.number), ''), HEX(A.mac), A.description 
+		qry := `SELECT A.id, CONCAT(INET_NTOA(B.address), '/', E.mask), 
+				IFNULL(CONCAT(D.description, '/', C.number), ''), 
+				HEX(A.mac), A.description, UNIX_TIMESTAMP(A.last_updated_timestamp) 
 			FROM host A 
 			JOIN ip B ON A.ip_id = B.id 
 			LEFT JOIN port C ON A.port_id = C.id 
@@ -668,7 +672,7 @@ func (r *MySQL) Host(id uint64) (host network.Host, ok bool, err error) {
 		if !row.Next() {
 			return nil
 		}
-		if err := row.Scan(&host.ID, &host.IP, &host.Port, &host.MAC, &host.Description); err != nil {
+		if err := row.Scan(&host.ID, &host.IP, &host.Port, &host.MAC, &host.Description, &host.LastDiscovered); err != nil {
 			return err
 		}
 		mac, err := decodeMAC(host.MAC)
