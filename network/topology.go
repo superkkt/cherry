@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/superkkt/cherry/graph"
 
@@ -60,11 +61,14 @@ type topology struct {
 }
 
 func newTopology(db database) *topology {
-	return &topology{
+	v := &topology{
 		devices: make(map[string]*Device),
 		graph:   graph.New(),
 		db:      db,
 	}
+	go v.staleEdgeRemover()
+
+	return v
 }
 
 func (r *topology) String() string {
@@ -121,6 +125,7 @@ func (r *topology) Device(id string) *Device {
 }
 
 func (r *topology) DeviceAdded(d *Device) {
+	// NOTE: This is an anonymous function (NOT a goroutine!) that has a critical section.
 	func() {
 		// Write lock
 		r.mutex.Lock()
@@ -129,6 +134,7 @@ func (r *topology) DeviceAdded(d *Device) {
 		r.devices[d.ID()] = d
 		r.graph.AddVertex(d)
 	}()
+	// XXX: Make sure the mutex is unlocked before calling sendEvent().
 	r.sendEvent()
 }
 
@@ -139,6 +145,7 @@ func (r *topology) removeDevice(d *Device) {
 }
 
 func (r *topology) DeviceRemoved(d *Device) {
+	// NOTE: This is an anonymous function (NOT a goroutine!) that has a critical section.
 	func() {
 		// Write lock
 		r.mutex.Lock()
@@ -147,22 +154,33 @@ func (r *topology) DeviceRemoved(d *Device) {
 		r.removeDevice(d)
 		r.graph.RemoveVertex(d)
 	}()
+	// XXX: Make sure the mutex is unlocked before calling sendEvent().
 	r.sendEvent()
 }
 
 func (r *topology) DeviceLinked(ports [2]*Port) {
+	var added bool
+	var err error
+
+	// NOTE: This is an anonymous function (NOT a goroutine!) that has a critical section.
 	func() {
 		// Write lock
 		r.mutex.Lock()
 		defer r.mutex.Unlock()
 
 		link := newLink(ports)
-		if err := r.graph.AddEdge(link); err != nil {
+		added, err = r.graph.AddEdge(link)
+		if err != nil {
 			logger.Errorf("failed to add a new graph edge: %v", err)
 			return
 		}
 	}()
-	r.sendEvent()
+
+	// Send the event only if the topology has been changed.
+	if err == nil && added {
+		// XXX: Make sure the mutex is unlocked before calling sendEvent().
+		r.sendEvent()
+	}
 }
 
 // Node may return nil if the node is unregistered or still undiscovered.
@@ -194,6 +212,7 @@ func (r *topology) Node(mac net.HardwareAddr) (*Node, LocationStatus, error) {
 func (r *topology) PortRemoved(p *Port) {
 	edge := false
 
+	// NOTE: This is an anonymous function (NOT a goroutine!) that has a critical section.
 	func() {
 		// Write lock
 		r.mutex.Lock()
@@ -206,7 +225,7 @@ func (r *topology) PortRemoved(p *Port) {
 	}()
 
 	if edge {
-		// XXX: Make sure the mutex is unlocked before calling sendEvent()
+		// XXX: Make sure the mutex is unlocked before calling sendEvent().
 		r.sendEvent()
 	}
 }
@@ -250,4 +269,31 @@ func (r *topology) IsEdge(p *Port) bool {
 
 func (r *topology) IsEnabledBySTP(p *Port) bool {
 	return r.graph.IsEnabledPoint(p)
+}
+
+// staleEdgeRemover removes stale edges that have not been updated for a long time.
+func (r *topology) staleEdgeRemover() {
+	ticker := time.Tick(1 * time.Minute)
+
+	// Infinite loop.
+	for range ticker {
+		var removed bool
+
+		// NOTE: This is an anonymous function (NOT a goroutine!) that has a critical section.
+		func() {
+			// Write lock
+			r.mutex.Lock()
+			defer r.mutex.Unlock()
+
+			logger.Debug("trying to remove stale edges from the topology...")
+			removed = r.graph.RemoveStaleEdges(5 * time.Minute)
+		}()
+
+		// Send the event only if the topology has been changed.
+		if removed {
+			logger.Debug("removed stale edge(s) from the topology")
+			// XXX: Make sure the mutex is unlocked before calling sendEvent().
+			r.sendEvent()
+		}
+	}
 }
