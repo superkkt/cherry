@@ -273,7 +273,7 @@ func (r *topology) IsEnabledBySTP(p *Port) bool {
 
 // staleEdgeRemover removes stale edges that have not been updated for a long time.
 func (r *topology) staleEdgeRemover() {
-	ticker := time.Tick(1 * time.Minute)
+	ticker := time.Tick(10 * time.Second)
 
 	// Infinite loop.
 	for range ticker {

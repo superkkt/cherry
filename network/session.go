@@ -534,14 +534,13 @@ func (r *session) runDeviceExplorer(ctx context.Context) context.CancelFunc {
 			logger.Debugf("executing the device explorer: deviceID=%v", r.device.ID())
 
 			// Send LLDPs to all the enabled ports of this device.
-			ports := r.device.Ports()
-			for _, p := range ports {
-				ofPort := p.Value()
-				if ofPort.IsPortDown() || ofPort.IsLinkDown() {
-					logger.Debugf("skip to send a LLDP packet due to link down: deviceID=%v, portNum=%v", r.device.ID(), p.Number())
+			for _, p := range r.device.Ports() {
+				port := p.Value()
+				if port.IsPortDown() || port.IsLinkDown() {
+					logger.Debugf("skip to send a LLDP packet due to port (or link) down: deviceID=%v, portNum=%v", r.device.ID(), p.Number())
 					continue
 				}
-				if err := sendLLDP(r.device, ofPort); err != nil {
+				if err := sendLLDP(r.device, port); err != nil {
 					logger.Errorf("failed to send a LLDP packet to %v: %v", r.device.ID(), err)
 					continue
 				}
