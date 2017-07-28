@@ -518,7 +518,7 @@ func (r *session) runDeviceExplorer(ctx context.Context) context.CancelFunc {
 	go func() {
 		ticker := time.Tick(1 * time.Minute)
 
-		// Infinite loop.
+		// Infinite loop. Note taht ticker will deliver the first tick after specified duration.
 		for range ticker {
 			select {
 			case <-subCtx.Done():
