@@ -114,7 +114,8 @@ func (r *processor) addARPSender(device *network.Device) {
 				logger.Errorf("failed to send ARP probes: %v", err)
 				// Ignore this error and keep go on.
 			}
-			time.Sleep(time.Duration((100 + rand.Intn(5000))) * time.Millisecond)
+			// 5 <= interval <= 15 (seccond)
+			time.Sleep(time.Duration((5000 + rand.Intn(10000))) * time.Millisecond)
 		}
 	}()
 	r.canceller[device.ID()] = cancel
@@ -125,7 +126,7 @@ func (r *processor) sendARPProbes(device *network.Device) error {
 		return fmt.Errorf("already closed deivce: id=%v", device.ID())
 	}
 
-	hosts, err := r.db.GetUndiscoveredHosts(1 * time.Minute)
+	hosts, err := r.db.GetUndiscoveredHosts(3 * time.Minute)
 	if err != nil {
 		return err
 	}
