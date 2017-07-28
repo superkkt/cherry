@@ -24,7 +24,6 @@ package network
 import (
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/superkkt/cherry/graph"
 	"github.com/superkkt/cherry/openflow"
@@ -32,11 +31,10 @@ import (
 
 // Port represents a switch port and also implements the graph.Point interface.
 type Port struct {
-	mutex     sync.RWMutex
-	device    *Device
-	number    uint32
-	value     openflow.Port
-	timestamp time.Time
+	mutex  sync.RWMutex
+	device *Device
+	number uint32
+	value  openflow.Port
 }
 
 func NewPort(d *Device, num uint32) *Port {
@@ -84,18 +82,4 @@ func (r *Port) SetValue(p openflow.Port) {
 	defer r.mutex.Unlock()
 
 	r.value = p
-	r.timestamp = time.Now()
-}
-
-// Duration returns the time during which this port activated
-func (r *Port) duration() time.Duration {
-	// Read lock
-	r.mutex.RLock()
-	defer r.mutex.RUnlock()
-
-	if r.timestamp.IsZero() {
-		return time.Duration(0)
-	}
-
-	return time.Now().Sub(r.timestamp)
 }

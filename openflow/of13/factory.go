@@ -37,6 +37,10 @@ func NewFactory() openflow.Factory {
 	return &Factory{}
 }
 
+func (r *Factory) ProtocolVersion() uint8 {
+	return openflow.OF13_VERSION
+}
+
 func (r *Factory) getTransactionID() uint32 {
 	// Transaction ID will be started from 1, not 0.
 	return atomic.AddUint32(&r.xid, 1)

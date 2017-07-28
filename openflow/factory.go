@@ -41,6 +41,7 @@ var (
 
 // Abstract factory
 type Factory interface {
+	ProtocolVersion() uint8
 	NewAction() (Action, error)
 	NewBarrierRequest() (BarrierRequest, error)
 	NewBarrierReply() (BarrierReply, error)

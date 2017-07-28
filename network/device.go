@@ -29,6 +29,7 @@ import (
 	"sync"
 
 	"github.com/superkkt/cherry/openflow"
+	"github.com/superkkt/cherry/openflow/transceiver"
 	"github.com/superkkt/cherry/protocol"
 )
 
@@ -129,6 +130,14 @@ func (r *Device) setFactory(f openflow.Factory) {
 	r.factory = f
 }
 
+func (r *Device) Writer() transceiver.Writer {
+	// Read lock
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	return r.session
+}
+
 func (r *Device) Descriptions() Descriptions {
 	// Read lock
 	r.mutex.RLock()
@@ -183,25 +192,7 @@ func (r *Device) Ports() []*Port {
 	return p
 }
 
-// A caller should make sure the mutex is locked before calling this function
 func (r *Device) setPort(num uint32, p openflow.Port) {
-	port := NewPort(r, num)
-	port.SetValue(p)
-	r.ports[num] = port
-}
-
-func (r *Device) addPort(num uint32, p openflow.Port) {
-	// Write lock
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	if p == nil {
-		panic("Port is nil")
-	}
-	r.setPort(num, p)
-}
-
-func (r *Device) updatePort(num uint32, p openflow.Port) {
 	// Write lock
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -211,11 +202,13 @@ func (r *Device) updatePort(num uint32, p openflow.Port) {
 	}
 	logger.Debugf("Device=%v, PortNum=%v, AdminUp=%v, LinkUp=%v", r.id, p.Number(), !p.IsPortDown(), !p.IsLinkDown())
 
-	port := r.ports[num]
-	if port == nil {
-		r.setPort(num, p)
-	} else {
+	port, ok := r.ports[num]
+	if ok {
 		port.SetValue(p)
+	} else {
+		v := NewPort(r, num)
+		v.SetValue(p)
+		r.ports[num] = v
 	}
 }
 

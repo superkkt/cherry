@@ -75,20 +75,22 @@ func (r *of10Session) OnError(f openflow.Factory, w transceiver.Writer, v openfl
 func (r *of10Session) OnFeaturesReply(f openflow.Factory, w transceiver.Writer, v openflow.FeaturesReply) error {
 	ports := v.Ports()
 	for _, p := range ports {
+		logger.Debugf("PortNum=%v, AdminUp=%v, LinkUp=%v", p.Number(), !p.IsPortDown(), !p.IsLinkDown())
+
 		if p.Number() > of10.OFPP_MAX {
+			logger.Warningf("invalid port number: %v", p.Number())
 			continue
 		}
-		r.device.addPort(p.Number(), p)
+
+		r.device.setPort(p.Number(), p)
+
 		if !p.IsPortDown() && !p.IsLinkDown() && r.device.isValid() {
 			// Send LLDP to update network topology
 			if err := sendLLDP(r.device, p); err != nil {
 				logger.Errorf("failed to send LLDP: %v", err)
+				continue
 			}
-		}
-		logger.Debugf("PortNum=%v, AdminUp=%v, LinkUp=%v", p.Number(), !p.IsPortDown(), !p.IsLinkDown())
-
-		if err := sendQueueConfigRequest(f, w, p.Number()); err != nil {
-			logger.Errorf("failed to send the queue config request: %v", err)
+			logger.Debugf("sent a LLDP packet to %v:%v", r.device.ID(), p.Number())
 		}
 	}
 
@@ -104,6 +106,7 @@ func (r *of10Session) OnDescReply(f openflow.Factory, w transceiver.Writer, v op
 }
 
 func (r *of10Session) OnPortDescReply(f openflow.Factory, w transceiver.Writer, v openflow.PortDescReply) error {
+	// Do nothing because OpenFlow 1.0 uses FeaturesReply instead of PortDescReply.
 	return nil
 }
 

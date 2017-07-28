@@ -140,6 +140,16 @@ func (r *session) OnFeaturesReply(f openflow.Factory, w transceiver.Writer, v op
 		return errNotNegotiated
 	}
 
+	// First FeaturesReply packet?
+	if r.device.isValid() {
+		// No, the device already has been initialized that means this is not the first
+		// FeaturesReply packet. This additional FeaturesReply packet is raised by our
+		// device explorer. So, we have to skip the following device initialization routine.
+		logger.Debug("received FEATURES_REPLY that is a response for our device explorer's probe")
+		return r.handler.OnFeaturesReply(f, w, v)
+	}
+
+	// We got a first FeaturesReply packet! Let's initialize this device.
 	dpid := strconv.FormatUint(v.DPID(), 10)
 	// Already connected device?
 	if r.finder.Device(dpid) != nil {
@@ -313,7 +323,7 @@ func (r *session) updatePort(v openflow.PortStatus) {
 	default:
 		panic("unsupported OpenFlow version")
 	}
-	r.device.updatePort(port.Number(), port)
+	r.device.setPort(port.Number(), port)
 }
 
 func (r *session) OnPortStatus(f openflow.Factory, w transceiver.Writer, v openflow.PortStatus) error {
@@ -447,12 +457,6 @@ func (r *session) handleLLDP(inPort *Port, ethernet *protocol.Ethernet) error {
 	return nil
 }
 
-func (r *session) isActivatedPort(p *Port) bool {
-	// We assume that a port is in inactive state during specified time after
-	// setting its value to avoid broadcast storm.
-	return p.duration().Seconds() > 1.5
-}
-
 func (r *session) OnPacketIn(f openflow.Factory, w transceiver.Writer, v openflow.PacketIn) error {
 	if !r.negotiated {
 		return errNotNegotiated
@@ -472,11 +476,6 @@ func (r *session) OnPacketIn(f openflow.Factory, w transceiver.Writer, v openflo
 	// Process LLDP, and then add an edge among two switches
 	if isLLDP(ethernet) {
 		return r.handleLLDP(inPort, ethernet)
-	}
-	// Do nothing if the ingress port is in inactive state
-	if !r.isActivatedPort(inPort) {
-		logger.Debugf("ignoring PACKET_IN from %v:%v because the ingress port is not in active state yet", r.device.ID(), v.InPort())
-		return nil
 	}
 	// Do nothing if the ingress port is an edge between switches and is disabled by STP.
 	if r.finder.IsEdge(inPort) && !r.finder.IsEnabledBySTP(inPort) {
@@ -537,21 +536,25 @@ func (r *session) runDeviceExplorer(ctx context.Context) context.CancelFunc {
 			}
 			logger.Debugf("executing the device explorer: deviceID=%v", r.device.ID())
 
-			// Send LLDPs to all the enabled ports of this device.
-			for _, p := range r.device.Ports() {
-				port := p.Value()
-				if port.IsPortDown() || port.IsLinkDown() {
-					logger.Debugf("skip to send a LLDP packet due to port (or link) down: deviceID=%v, portNum=%v", r.device.ID(), p.Number())
+			// Query switch ports information. LLDP will also be delivered to the ports in the query reply handlers.
+			switch r.device.Factory().ProtocolVersion() {
+			case openflow.OF10_VERSION:
+				// OF10 provides ports information in the FeaturesReply packet.
+				if err := sendFeaturesRequest(r.device.Factory(), r.device.Writer()); err != nil {
+					logger.Errorf("failed to send a feature request: %v", err)
 					continue
 				}
-				if err := sendLLDP(r.device, port); err != nil {
-					logger.Errorf("failed to send a LLDP packet to %v: %v", r.device.ID(), err)
+				logger.Debugf("sent a FeaturesRequest packet to %v", r.device.ID())
+			case openflow.OF13_VERSION:
+				// OF13 provides ports information in the PortDescriptionReply packet.
+				if err := sendPortDescriptionRequest(r.device.Factory(), r.device.Writer()); err != nil {
+					logger.Errorf("failed to send a port description request: %v", err)
 					continue
 				}
-				logger.Debugf("sent the LLDP packet to %v:%v", r.device.ID(), p.Number())
+				logger.Debugf("sent a PortDescriptionRequest packet to %v", r.device.ID())
+			default:
+				panic(fmt.Sprintf("unexpected OpenFlow protocol version: %v", r.device.Factory().ProtocolVersion()))
 			}
-
-			// TODO: Send a PortDescReq.
 		}
 	}()
 
@@ -670,18 +673,6 @@ func sendRemovingAllFlows(f openflow.Factory, w transceiver.Writer) error {
 	// Wildcard
 	msg.SetTableID(0xFF)
 	msg.SetFlowMatch(match)
-
-	return w.Write(msg)
-}
-
-func sendQueueConfigRequest(f openflow.Factory, w transceiver.Writer, port uint32) error {
-	msg, err := f.NewQueueGetConfigRequest()
-	if err != nil {
-		return err
-	}
-	p := openflow.NewOutPort()
-	p.SetValue(port)
-	msg.SetPort(p)
 
 	return w.Write(msg)
 }
