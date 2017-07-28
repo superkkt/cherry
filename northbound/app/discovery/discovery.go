@@ -45,7 +45,6 @@ var (
 	myMAC = net.HardwareAddr([]byte{0x06, 0xff, 0x29, 0x34, 0x82, 0x87})
 )
 
-// XXX: The router should have gateway IP addresses on its interfaces to respond to our ARP probes.
 type processor struct {
 	app.BaseProcessor
 	db Database
