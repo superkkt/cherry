@@ -286,7 +286,7 @@ func (r *topology) staleEdgeRemover() {
 			defer r.mutex.Unlock()
 
 			logger.Debug("trying to remove stale edges from the topology...")
-			removed = r.graph.RemoveStaleEdges(5 * time.Minute)
+			removed = r.graph.RemoveStaleEdges(deviceExplorerInterval * 3)
 		}()
 
 		// Send the event only if the topology has been changed.

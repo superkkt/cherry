@@ -43,6 +43,10 @@ var (
 	errNotNegotiated = errors.New("invalid command on non-negotiated session")
 )
 
+const (
+	deviceExplorerInterval = 1 * time.Minute
+)
+
 type session struct {
 	negotiated  bool
 	device      *Device
@@ -516,7 +520,7 @@ func (r *session) runDeviceExplorer(ctx context.Context) context.CancelFunc {
 	subCtx, canceller := context.WithCancel(ctx)
 
 	go func() {
-		ticker := time.Tick(1 * time.Minute)
+		ticker := time.Tick(deviceExplorerInterval)
 
 		// Infinite loop. Note taht ticker will deliver the first tick after specified duration.
 		for range ticker {
