@@ -519,41 +519,42 @@ func (r *session) runDeviceExplorer(ctx context.Context) context.CancelFunc {
 	subCtx, canceller := context.WithCancel(ctx)
 
 	go func() {
+		// Note taht ticker will deliver the first tick after specified duration.
 		ticker := time.Tick(deviceExplorerInterval)
 
-		// Infinite loop. Note taht ticker will deliver the first tick after specified duration.
-		for range ticker {
+		// Infinite loop.
+		for {
+			// Wait the context cancels or the ticker rasises.
 			select {
 			case <-subCtx.Done():
 				logger.Debugf("terminating the device explorer: deviceID=%v", r.device.ID())
 				return
-			default:
-			}
-
-			if r.device.isValid() == false {
-				logger.Debug("skip to execute the device explorer due to incomplete device status")
-				continue
-			}
-			logger.Debugf("executing the device explorer: deviceID=%v", r.device.ID())
-
-			// Query switch ports information. LLDP will also be delivered to the ports in the query reply handlers.
-			switch r.device.Factory().ProtocolVersion() {
-			case openflow.OF10_VERSION:
-				// OF10 provides ports information in the FeaturesReply packet.
-				if err := sendFeaturesRequest(r.device.Factory(), r.device.Writer()); err != nil {
-					logger.Errorf("failed to send a feature request: %v", err)
+			case <-ticker:
+				if r.device.isValid() == false {
+					logger.Debug("skip to execute the device explorer due to incomplete device status")
 					continue
 				}
-				logger.Debugf("sent a FeaturesRequest packet to %v", r.device.ID())
-			case openflow.OF13_VERSION:
-				// OF13 provides ports information in the PortDescriptionReply packet.
-				if err := sendPortDescriptionRequest(r.device.Factory(), r.device.Writer()); err != nil {
-					logger.Errorf("failed to send a port description request: %v", err)
-					continue
+				logger.Debugf("executing the device explorer: deviceID=%v", r.device.ID())
+
+				// Query switch ports information. LLDP will also be delivered to the ports in the query reply handlers.
+				switch r.device.Factory().ProtocolVersion() {
+				case openflow.OF10_VERSION:
+					// OF10 provides ports information in the FeaturesReply packet.
+					if err := sendFeaturesRequest(r.device.Factory(), r.device.Writer()); err != nil {
+						logger.Errorf("failed to send a feature request: %v", err)
+						continue
+					}
+					logger.Debugf("sent a FeaturesRequest packet to %v", r.device.ID())
+				case openflow.OF13_VERSION:
+					// OF13 provides ports information in the PortDescriptionReply packet.
+					if err := sendPortDescriptionRequest(r.device.Factory(), r.device.Writer()); err != nil {
+						logger.Errorf("failed to send a port description request: %v", err)
+						continue
+					}
+					logger.Debugf("sent a PortDescriptionRequest packet to %v", r.device.ID())
+				default:
+					panic(fmt.Sprintf("unexpected OpenFlow protocol version: %v", r.device.Factory().ProtocolVersion()))
 				}
-				logger.Debugf("sent a PortDescriptionRequest packet to %v", r.device.ID())
-			default:
-				panic(fmt.Sprintf("unexpected OpenFlow protocol version: %v", r.device.Factory().ProtocolVersion()))
 			}
 		}
 	}()

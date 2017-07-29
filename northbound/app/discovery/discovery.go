@@ -126,7 +126,7 @@ func (r *processor) sendARPProbes(device *network.Device) error {
 		return fmt.Errorf("already closed deivce: id=%v", device.ID())
 	}
 
-	hosts, err := r.db.GetUndiscoveredHosts(3 * time.Minute)
+	hosts, err := r.db.GetUndiscoveredHosts(5 * time.Minute)
 	if err != nil {
 		return err
 	}
