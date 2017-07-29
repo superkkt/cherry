@@ -174,7 +174,7 @@ func (r *processor) OnPacketIn(finder network.Finder, ingress *network.Port, eth
 	case 2:
 		return r.processARPReply(finder, ingress, eth, arp)
 	default:
-		logger.Warningf("dropping the ARP packet that has invalid operaion code: %v", arp)
+		logger.Debugf("dropping the ARP packet that has invalid operaion code: %v", arp)
 		// Drop this packet. Do not pass it to the next processors.
 		return nil
 	}
@@ -196,7 +196,7 @@ func (r *processor) processARPReply(finder network.Finder, ingress *network.Port
 	// The target (not source!) hardware address of the ARP reply packet should be
 	// equal to the myMAC address if it is a counterpart for our ARP probe.
 	if bytes.Equal(arp.THA, myMAC) == false {
-		logger.Warningf("unexpected ARP reply: %v", arp)
+		logger.Debugf("unexpected ARP reply: %v", arp)
 		// Drop this packet. Do not pass it to the next processors.
 		return nil
 	}

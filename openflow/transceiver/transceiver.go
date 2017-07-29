@@ -463,12 +463,12 @@ func (r *Transceiver) handleEchoReply(packet []byte) error {
 	if data == nil || len(data) != 8 {
 		// I notice some broken switch sends an unexpected echo reply data.
 		// So, ignores the soft error to avoid switch disconnection.
-		logger.Warning("unexpected ECHO_REPLY data")
+		logger.Debug("unexpected ECHO_REPLY data")
 		return nil
 	}
 	timestamp := time.Time{}
 	if err := timestamp.GobDecode(data); err != nil {
-		logger.Warning("unexpected timestamp data in the ECHO_REPLY packet")
+		logger.Debug("unexpected timestamp data in the ECHO_REPLY packet")
 		return nil
 	}
 

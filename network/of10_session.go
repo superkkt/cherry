@@ -78,7 +78,7 @@ func (r *of10Session) OnFeaturesReply(f openflow.Factory, w transceiver.Writer, 
 		logger.Debugf("PortNum=%v, AdminUp=%v, LinkUp=%v", p.Number(), !p.IsPortDown(), !p.IsLinkDown())
 
 		if p.Number() > of10.OFPP_MAX {
-			logger.Warningf("invalid port number: %v", p.Number())
+			logger.Debugf("invalid port number: %v", p.Number())
 			continue
 		}
 

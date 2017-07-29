@@ -449,7 +449,7 @@ func (r *session) handleLLDP(inPort *Port, ethernet *protocol.Ethernet) error {
 	port, err := r.findNeighborPort(deviceID, portNum)
 	if err != nil {
 		// Do nothing if we cannot find neighbor device and its port
-		logger.Warningf("ignoring a LLDP packet: %v", err)
+		logger.Debugf("ignoring a LLDP packet: %v", err)
 		return nil
 	}
 	r.watcher.DeviceLinked([2]*Port{inPort, port})
