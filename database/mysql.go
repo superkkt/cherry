@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"github.com/superkkt/cherry/network"
+	"github.com/superkkt/cherry/northbound/app/discovery"
 	"github.com/superkkt/cherry/northbound/app/proxyarp"
 
 	"github.com/dlintw/goconf"
@@ -110,7 +111,8 @@ func NewMySQL(conf *goconf.ConfigFile) (*MySQL, error) {
 }
 
 func newDBConn(host, username, password, dbname string, port uint16) (*sql.DB, error) {
-	db, err := sql.Open("mysql", fmt.Sprintf("%v:%v@tcp(%v:%v)/%v?timeout=5s&wait_timeout=120", username, password, host, port, dbname))
+	dsn := fmt.Sprintf("%v:%v@tcp(%v:%v)/%v?timeout=5s&wait_timeout=120&parseTime=true&loc=Local", username, password, host, port, dbname)
+	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		return nil, err
 	}
@@ -617,7 +619,7 @@ func (r *MySQL) Hosts() (hosts []network.Host, err error) {
 	f := func(db *sql.DB) error {
 		qry := `SELECT A.id, CONCAT(INET_NTOA(B.address), '/', E.mask), 
 				IFNULL(CONCAT(D.description, '/', C.number), ''), 
-				HEX(A.mac), A.description, UNIX_TIMESTAMP(A.last_updated_timestamp) 
+				HEX(A.mac), A.description, A.last_updated_timestamp 
 			FROM host A 
 			JOIN ip B ON A.ip_id = B.id 
 			LEFT JOIN port C ON A.port_id = C.id 
@@ -632,14 +634,23 @@ func (r *MySQL) Hosts() (hosts []network.Host, err error) {
 
 		for rows.Next() {
 			v := network.Host{}
-			if err := rows.Scan(&v.ID, &v.IP, &v.Port, &v.MAC, &v.Description, &v.LastDiscovered); err != nil {
+			var timestamp time.Time
+
+			if err := rows.Scan(&v.ID, &v.IP, &v.Port, &v.MAC, &v.Description, &timestamp); err != nil {
 				return err
 			}
+
+			// Parse the MAC address.
 			mac, err := decodeMAC(v.MAC)
 			if err != nil {
 				return err
 			}
 			v.MAC = mac.String()
+			// Check its freshness.
+			if time.Now().Sub(timestamp) > discovery.ProbeInterval*3 {
+				v.Stale = true
+			}
+
 			hosts = append(hosts, v)
 		}
 
@@ -656,7 +667,7 @@ func (r *MySQL) Host(id uint64) (host network.Host, ok bool, err error) {
 	f := func(db *sql.DB) error {
 		qry := `SELECT A.id, CONCAT(INET_NTOA(B.address), '/', E.mask), 
 				IFNULL(CONCAT(D.description, '/', C.number), ''), 
-				HEX(A.mac), A.description, UNIX_TIMESTAMP(A.last_updated_timestamp) 
+				HEX(A.mac), A.description, A.last_updated_timestamp 
 			FROM host A 
 			JOIN ip B ON A.ip_id = B.id 
 			LEFT JOIN port C ON A.port_id = C.id 
@@ -672,14 +683,23 @@ func (r *MySQL) Host(id uint64) (host network.Host, ok bool, err error) {
 		if !row.Next() {
 			return nil
 		}
-		if err := row.Scan(&host.ID, &host.IP, &host.Port, &host.MAC, &host.Description, &host.LastDiscovered); err != nil {
+
+		var timestamp time.Time
+		if err := row.Scan(&host.ID, &host.IP, &host.Port, &host.MAC, &host.Description, &timestamp); err != nil {
 			return err
 		}
+
+		// Parse the MAC address.
 		mac, err := decodeMAC(host.MAC)
 		if err != nil {
 			return err
 		}
 		host.MAC = mac.String()
+		// Check its freshness.
+		if time.Now().Sub(timestamp) > discovery.ProbeInterval*3 {
+			host.Stale = true
+		}
+
 		ok = true
 
 		return nil

@@ -498,12 +498,12 @@ func (r *HostParam) validate() error {
 }
 
 type Host struct {
-	ID             string `json:"id"`
-	IP             string `json:"ip"`
-	Port           string `json:"port"`
-	MAC            string `json:"mac"`
-	Description    string `json:"description"`
-	LastDiscovered uint64 `json:"last_discovered"` // UNIX Timestamp.
+	ID          string `json:"id"`
+	IP          string `json:"ip"`
+	Port        string `json:"port"`
+	MAC         string `json:"mac"`
+	Description string `json:"description"`
+	Stale       bool   `json:"stale"`
 }
 
 func (r *Controller) listHost(w rest.ResponseWriter, req *rest.Request) {

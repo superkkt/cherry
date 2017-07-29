@@ -45,6 +45,10 @@ var (
 	myMAC = net.HardwareAddr([]byte{0x06, 0xff, 0x29, 0x34, 0x82, 0x87})
 )
 
+const (
+	ProbeInterval = 5 * time.Minute
+)
+
 type processor struct {
 	app.BaseProcessor
 	db Database
@@ -126,7 +130,7 @@ func (r *processor) sendARPProbes(device *network.Device) error {
 		return fmt.Errorf("already closed deivce: id=%v", device.ID())
 	}
 
-	hosts, err := r.db.GetUndiscoveredHosts(5 * time.Minute)
+	hosts, err := r.db.GetUndiscoveredHosts(ProbeInterval)
 	if err != nil {
 		return err
 	}
