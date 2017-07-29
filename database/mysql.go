@@ -1434,3 +1434,56 @@ func (r *MySQL) ResetHostLocationsByDevice(swDPID uint64) error {
 
 	return r.query(f)
 }
+
+// Elect selects a new master as uid if there is a no existing master that has
+// been updated within expiration. elected will be true if this uid has been
+// elected as the new master or was already elected.
+func (r *MySQL) Elect(uid string, expiration time.Duration) (elected bool, err error) {
+	f := func(db *sql.DB) error {
+		tx, err := db.Begin()
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+
+		var name string
+		var timestamp time.Time
+		qry := "SELECT `name`, `timestamp` "
+		qry += "FROM `election` "
+		qry += "WHERE `type` = 'MASTER' "
+		qry += "FOR UPDATE" // Lock the selected row even if there is a no exsiting one.
+		err = tx.QueryRow(qry).Scan(&name, &timestamp)
+		// Real error?
+		if err != nil && err != sql.ErrNoRows {
+			return err
+		}
+
+		// No existing master?
+		if err == sql.ErrNoRows {
+			// I am the newly elected master!
+			qry = "INSERT INTO `election` (`name`, `type`, `timestamp`) "
+			qry += "VALUES (?, 'MASTER', NOW())"
+			if _, err := tx.Exec(qry, uid); err != nil {
+				return err
+			}
+			elected = true
+		} else {
+			// Already elected or another stale master?
+			if name == uid || time.Now().Sub(timestamp) > expiration {
+				qry = "UPDATE `election` SET `name` = ?, `timestamp` = NOW() WHERE `type` = 'MASTER'"
+				if _, err := tx.Exec(qry, uid); err != nil {
+					return err
+				}
+				elected = true
+			}
+		}
+
+		return tx.Commit()
+	}
+
+	if err := r.query(f); err != nil {
+		return false, err
+	}
+
+	return elected, nil
+}

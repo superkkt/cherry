@@ -22,6 +22,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"net"
@@ -33,12 +34,12 @@ import (
 	"time"
 
 	"github.com/superkkt/cherry/database"
+	"github.com/superkkt/cherry/election"
 	"github.com/superkkt/cherry/network"
 	"github.com/superkkt/cherry/northbound"
 
 	"github.com/op/go-logging"
 	"github.com/pkg/errors"
-	"golang.org/x/net/context"
 )
 
 const (
@@ -74,6 +75,9 @@ func main() {
 	if err != nil {
 		logger.Fatalf("failed to init MySQL database: %v", err)
 	}
+
+	observer := initElectionObserver(ctx, db)
+
 	controller := network.NewController(db, conf.RawConfig())
 	manager, err := createAppManager(conf, db)
 	if err != nil {
@@ -81,12 +85,30 @@ func main() {
 	}
 	manager.AddEventSender(controller)
 
-	// Signal handler
+	initSignalHandler(controller, manager, cancel)
+
+	listen(ctx, conf.Port, controller, observer)
+}
+
+func initElectionObserver(ctx context.Context, db *database.MySQL) *election.Observer {
+	observer := election.New(db)
+	go func() {
+		if err := observer.Run(ctx); err != nil {
+			logger.Fatalf("failed to run the election observer: %v", err)
+		}
+		logger.Debugf("election observer terminated")
+	}()
+
+	return observer
+}
+
+func initSignalHandler(controller *network.Controller, manager *northbound.Manager, cancel context.CancelFunc) {
 	go func() {
 		c := make(chan os.Signal, 5)
 		// All incoming signals will be transferred to the channel
 		signal.Notify(c)
 
+		// Infinte loop.
 		for {
 			s := <-c
 			if s == syscall.SIGTERM || s == syscall.SIGINT {
@@ -104,8 +126,6 @@ func main() {
 			}
 		}
 	}()
-
-	listen(ctx, conf.Port, controller)
 }
 
 func initLog(level logging.Level) error {
@@ -134,7 +154,7 @@ func getLogLevel(level string) logging.Level {
 	return ret
 }
 
-func listen(ctx context.Context, port int, controller *network.Controller) {
+func listen(ctx context.Context, port int, controller *network.Controller, observer *election.Observer) {
 	type KeepAliver interface {
 		SetKeepAlive(keepalive bool) error
 		SetKeepAlivePeriod(d time.Duration) error
@@ -147,24 +167,25 @@ func listen(ctx context.Context, port int, controller *network.Controller) {
 	}
 	defer listener.Close()
 
+	// Connection dispatcher.
 	f := func(c chan<- net.Conn) {
 		for {
 			conn, err := listener.Accept()
-
-			// Check shutdown signal
-			select {
-			case <-ctx.Done():
-				logger.Info("socket listener is finished by the shutdown signal")
-				return
-			default:
-			}
-
 			if err != nil {
 				logger.Errorf("failed to accept a new connection: %v", err)
 				continue
 			}
-			c <- conn
 			logger.Infof("new device is connected from %v", conn.RemoteAddr())
+
+			// Only the master controller can serve the connections!
+			if observer.IsMaster() == false {
+				logger.Warningf("disconnecting the newly connected device (%v) because we are not the master controller!", conn.RemoteAddr())
+				conn.Close()
+				continue
+			}
+
+			// Pass the new connection into the backlog queue.
+			c <- conn
 		}
 	}
 	backlog := make(chan net.Conn, 32)
@@ -173,6 +194,9 @@ func listen(ctx context.Context, port int, controller *network.Controller) {
 	// Infinite loop
 	for {
 		select {
+		case <-ctx.Done():
+			logger.Info("terminating the main listener loop...")
+			return
 		case conn := <-backlog:
 			logger.Debug("fetching a new connection from the backlog..")
 			if v, ok := conn.(KeepAliver); ok {
@@ -187,8 +211,6 @@ func listen(ctx context.Context, port int, controller *network.Controller) {
 				}
 			}
 			controller.AddConnection(ctx, conn)
-		case <-ctx.Done():
-			return
 		}
 	}
 }
