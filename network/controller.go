@@ -22,6 +22,7 @@
 package network
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -33,7 +34,6 @@ import (
 	"github.com/ant0ine/go-json-rest/rest"
 	"github.com/dlintw/goconf"
 	"github.com/op/go-logging"
-	"golang.org/x/net/context"
 )
 
 var (

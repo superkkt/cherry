@@ -23,6 +23,7 @@ package network
 
 import (
 	"bytes"
+	"context"
 	"encoding"
 	"errors"
 	"fmt"
@@ -35,8 +36,6 @@ import (
 	"github.com/superkkt/cherry/openflow/of13"
 	"github.com/superkkt/cherry/openflow/transceiver"
 	"github.com/superkkt/cherry/protocol"
-
-	"golang.org/x/net/context"
 )
 
 var (

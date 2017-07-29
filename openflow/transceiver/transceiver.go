@@ -22,6 +22,7 @@
 package transceiver
 
 import (
+	"context"
 	"encoding"
 	"encoding/binary"
 	"fmt"
@@ -33,7 +34,6 @@ import (
 
 	"github.com/op/go-logging"
 	"github.com/pkg/errors"
-	"golang.org/x/net/context"
 )
 
 var (

@@ -22,9 +22,8 @@
 package network
 
 import (
+	"context"
 	"sync"
-
-	"golang.org/x/net/context"
 )
 
 var sessionCanceller *canceller = &canceller{elems: make(map[string]context.CancelFunc)}

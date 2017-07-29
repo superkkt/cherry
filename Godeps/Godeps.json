@@ -1,7 +1,7 @@
 {
 	"ImportPath": "github.com/superkkt/cherry",
-	"GoVersion": "go1.7",
-	"GodepVersion": "v74",
+	"GoVersion": "go1.8",
+	"GodepVersion": "v79",
 	"Deps": [
 		{
 			"ImportPath": "github.com/ant0ine/go-json-rest/rest",
@@ -39,10 +39,6 @@
 			"ImportPath": "github.com/pkg/errors",
 			"Comment": "v0.7.1",
 			"Rev": "17b591df37844cde689f4d5813e5cea0927d8dd2"
-		},
-		{
-			"ImportPath": "golang.org/x/net/context",
-			"Rev": "3f122ce3dbbe488b7e6a8bdb26f41edec852a40b"
 		}
 	]
 }
