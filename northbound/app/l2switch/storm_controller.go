@@ -26,7 +26,6 @@ import (
 	"time"
 
 	"github.com/superkkt/cherry/network"
-	"github.com/superkkt/logger"
 )
 
 type stormController struct {
