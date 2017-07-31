@@ -217,6 +217,6 @@ func (r *ProxyARP) broadcastARPAnnouncement(finder network.Finder, vips []VIP) {
 				continue
 			}
 		}
-		logger.Infof("toggled VIP %v to %v", v.Address, v.MAC)
+		logger.Warningf("VIP toggled: IP=%v, MAC=%v", v.Address, v.MAC)
 	}
 }
