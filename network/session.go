@@ -364,6 +364,11 @@ func (r *session) OnFlowRemoved(f openflow.Factory, w transceiver.Writer, v open
 		return errNotNegotiated
 	}
 
+	if err := r.listener.OnFlowRemoved(r.finder, v); err != nil {
+		logger.Errorf("error on OnFlowRemoved listeners: %v", err)
+		// Ignore this error and keep go on.
+	}
+
 	return r.handler.OnFlowRemoved(f, w, v)
 }
 

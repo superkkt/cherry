@@ -29,6 +29,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/superkkt/cherry/openflow"
 	"github.com/superkkt/cherry/protocol"
 
 	"github.com/ant0ine/go-json-rest/rest"
@@ -84,6 +85,7 @@ type ControllerEventListener interface {
 	OnPortDown(Finder, *Port) error
 	OnDeviceUp(Finder, *Device) error
 	OnDeviceDown(Finder, *Device) error
+	OnFlowRemoved(Finder, openflow.FlowRemoved) error
 }
 
 type TopologyEventListener interface {

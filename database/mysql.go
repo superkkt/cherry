@@ -1444,3 +1444,56 @@ func (r *MySQL) Elect(uid string, expiration time.Duration) (elected bool, err e
 
 	return elected, nil
 }
+
+// AddFlow adds a new flow into the database and returns its unique ID.
+func (r *MySQL) AddFlow(swDPID uint64, dstMAC net.HardwareAddr, outPort uint32) (flowID uint64, err error) {
+	f := func(db *sql.DB) error {
+		tx, err := db.Begin()
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+
+		var switchID uint64
+		qry := "SELECT `id` FROM `switch` WHERE `dpid` = ? FOR UPDATE"
+		err = tx.QueryRow(qry, swDPID).Scan(&switchID)
+		if err != nil {
+			return err
+		}
+
+		qry = "INSERT INTO `flow` (`switch_id`, `dst_mac`, `out_port`, `timestamp`) VALUES (?, ?, ?, NOW())"
+		result, err := tx.Exec(qry, switchID, dstMAC.String(), outPort)
+		if err != nil {
+			return err
+		}
+
+		id, err := result.LastInsertId()
+		if err != nil {
+			return err
+		}
+		flowID = uint64(id)
+
+		return tx.Commit()
+	}
+
+	if err := r.query(f); err != nil {
+		return 0, err
+	}
+
+	return flowID, nil
+}
+
+// RemoveFlow removes the flow specified by flowID from the database.
+func (r *MySQL) RemoveFlow(flowID uint64) error {
+	f := func(db *sql.DB) error {
+		qry := "UPDATE `flow` SET `removed` = TRUE WHERE `id` = ?"
+		_, err := db.Exec(qry, flowID)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	return r.query(f)
+}

@@ -25,6 +25,7 @@ import (
 	"bytes"
 	"fmt"
 	"net"
+	"strconv"
 	"time"
 
 	"github.com/superkkt/cherry/network"
@@ -47,6 +48,7 @@ type L2Switch struct {
 	vlanID    uint16
 	cache     *flowCache
 	stormCtrl *stormController
+	db        Database
 }
 
 type flowCache struct {
@@ -86,10 +88,19 @@ func (r *flowCache) add(flow flowParam) {
 	r.cache.Add(r.getKeyString(flow), time.Now())
 }
 
-func New() *L2Switch {
+type Database interface {
+	// AddFlow adds a new flow into the database and returns its unique ID.
+	AddFlow(swDPID uint64, dstMAC net.HardwareAddr, outPort uint32) (flowID uint64, err error)
+
+	// RemoveFlow removes the flow specified by flowID from the database.
+	RemoveFlow(flowID uint64) error
+}
+
+func New(db Database) *L2Switch {
 	return &L2Switch{
 		cache:     newFlowCache(),
 		stormCtrl: newStormController(100, new(flooder)),
+		db:        db,
 	}
 }
 
@@ -165,6 +176,7 @@ func (r *L2Switch) installFlow(p flowParam) error {
 	if err != nil {
 		return err
 	}
+	flow.SetCookie(r.getFlowID(p))
 	flow.SetTableID(p.device.FlowTableID())
 	flow.SetIdleTimeout(30)
 	flow.SetPriority(10)
@@ -186,6 +198,24 @@ func (r *L2Switch) installFlow(p flowParam) error {
 	logger.Debugf("added a flow cache entry: deviceID=%v, dstMAC=%v, outPort=%v", p.device.ID(), p.dstMAC, p.outPort)
 
 	return nil
+}
+
+func (r *L2Switch) getFlowID(p flowParam) uint64 {
+	dpid, err := strconv.ParseUint(p.device.ID(), 10, 64)
+	if err != nil {
+		logger.Errorf("failed to parse the switch DPID: %v", err)
+		// Fallback.
+		return 0
+	}
+
+	flowID, err := r.db.AddFlow(dpid, p.dstMAC, p.outPort)
+	if err != nil {
+		logger.Errorf("failed to add a new flow: %v", err)
+		// Fallback.
+		return 0
+	}
+
+	return flowID
 }
 
 type switchParam struct {
@@ -349,4 +379,13 @@ func (r *L2Switch) OnPortDown(finder network.Finder, port *network.Port) error {
 	}
 
 	return r.BaseProcessor.OnPortDown(finder, port)
+}
+
+func (r *L2Switch) OnFlowRemoved(finder network.Finder, flow openflow.FlowRemoved) error {
+	if err := r.db.RemoveFlow(flow.Cookie()); err != nil {
+		logger.Errorf("failed to remove a flow: %v", err)
+		// Ignore this error and keep go on.
+	}
+
+	return r.BaseProcessor.OnFlowRemoved(finder, flow)
 }

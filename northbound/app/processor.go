@@ -111,6 +111,15 @@ func (r *BaseProcessor) OnTopologyChange(finder network.Finder) error {
 	return next.OnTopologyChange(finder)
 }
 
+func (r *BaseProcessor) OnFlowRemoved(finder network.Finder, flow openflow.FlowRemoved) error {
+	// Do nothging and execute the next processor if it exists
+	next, ok := r.Next()
+	if !ok {
+		return nil
+	}
+	return next.OnFlowRemoved(finder, flow)
+}
+
 func (r *BaseProcessor) Next() (next Processor, ok bool) {
 	if r.next != nil {
 		return r.next, true

@@ -187,6 +187,25 @@ CREATE TABLE IF NOT EXISTS `switch` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `flow`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE IF NOT EXISTS `flow` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `switch_id` bigint(20) unsigned NOT NULL,
+  `dst_mac` varchar(255) NOT NULL,
+  `out_port` int(5) unsigned NOT NULL,
+  `removed` boolean NOT NULL DEFAULT FALSE,
+  `timestamp` datetime NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `dst_mac` (`dst_mac`),
+  CONSTRAINT `flow_ibfk_1` FOREIGN KEY (`switch_id`) REFERENCES `switch` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `vip`
 --
 

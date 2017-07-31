@@ -66,7 +66,7 @@ func NewManager(db *database.MySQL) (*Manager, error) {
 	}
 	// Registering north-bound applications
 	v.register(discovery.New(db))
-	v.register(l2switch.New())
+	v.register(l2switch.New(db))
 	v.register(proxyarp.New(db))
 	v.register(monitor.New())
 
