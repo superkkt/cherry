@@ -35,9 +35,8 @@ import (
 	"github.com/superkkt/cherry/northbound/app/monitor"
 	"github.com/superkkt/cherry/northbound/app/proxyarp"
 
-	"github.com/dlintw/goconf"
-	"github.com/op/go-logging"
 	"github.com/pkg/errors"
+	"github.com/superkkt/go-logging"
 )
 
 var (
@@ -55,27 +54,21 @@ type application struct {
 
 type Manager struct {
 	mutex      sync.Mutex
-	conf       *goconf.ConfigFile
 	apps       map[string]*application // Registered applications
 	head, tail app.Processor
 	db         *database.MySQL
 }
 
-func NewManager(conf *goconf.ConfigFile, db *database.MySQL) (*Manager, error) {
-	if conf == nil {
-		panic("nil config")
-	}
-
+func NewManager(db *database.MySQL) (*Manager, error) {
 	v := &Manager{
-		conf: conf,
 		apps: make(map[string]*application),
 		db:   db,
 	}
 	// Registering north-bound applications
 	v.register(discovery.New(db))
-	v.register(l2switch.New(conf))
-	v.register(proxyarp.New(conf, db))
-	v.register(monitor.New(conf))
+	v.register(l2switch.New())
+	v.register(proxyarp.New(db))
+	v.register(monitor.New())
 
 	return v, nil
 }

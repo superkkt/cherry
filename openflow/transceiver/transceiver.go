@@ -32,8 +32,8 @@ import (
 	"github.com/superkkt/cherry/openflow/of10"
 	"github.com/superkkt/cherry/openflow/of13"
 
-	"github.com/op/go-logging"
 	"github.com/pkg/errors"
+	"github.com/superkkt/go-logging"
 )
 
 var (

@@ -32,10 +32,10 @@ import (
 	"github.com/superkkt/cherry/openflow"
 	"github.com/superkkt/cherry/protocol"
 
-	"github.com/dlintw/goconf"
 	lru "github.com/hashicorp/golang-lru"
-	"github.com/op/go-logging"
 	"github.com/pkg/errors"
+	"github.com/superkkt/go-logging"
+	"github.com/superkkt/viper"
 )
 
 var (
@@ -44,7 +44,6 @@ var (
 
 type L2Switch struct {
 	app.BaseProcessor
-	conf      *goconf.ConfigFile
 	vlanID    uint16
 	cache     *flowCache
 	stormCtrl *stormController
@@ -87,9 +86,8 @@ func (r *flowCache) add(flow flowParam) {
 	r.cache.Add(r.getKeyString(flow), time.Now())
 }
 
-func New(conf *goconf.ConfigFile) *L2Switch {
+func New() *L2Switch {
 	return &L2Switch{
-		conf:      conf,
 		cache:     newFlowCache(),
 		stormCtrl: newStormController(100, new(flooder)),
 	}
@@ -103,8 +101,8 @@ func (r *flooder) flood(ingress *network.Port, packet []byte) error {
 }
 
 func (r *L2Switch) Init() error {
-	vlanID, err := r.conf.GetInt("default", "vlan_id")
-	if err != nil || vlanID < 0 || vlanID > 4095 {
+	vlanID := viper.GetInt("default.vlan_id")
+	if vlanID < 0 || vlanID > 4095 {
 		return errors.New("invalid default VLAN ID in the config file")
 	}
 	r.vlanID = uint16(vlanID)

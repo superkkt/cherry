@@ -32,8 +32,8 @@ import (
 	"github.com/superkkt/cherry/protocol"
 
 	"github.com/ant0ine/go-json-rest/rest"
-	"github.com/dlintw/goconf"
-	"github.com/op/go-logging"
+	"github.com/superkkt/go-logging"
+	"github.com/superkkt/viper"
 )
 
 var (
@@ -96,23 +96,17 @@ type Controller struct {
 	db       database
 }
 
-func NewController(db database, conf *goconf.ConfigFile) *Controller {
+func NewController(db database) *Controller {
 	v := &Controller{
 		topo: newTopology(db),
 		db:   db,
 	}
-	go v.serveREST(conf)
+	go v.serveREST()
 
 	return v
 }
 
-func (r *Controller) serveREST(conf *goconf.ConfigFile) {
-	c, err := parseRESTConfig(conf)
-	if err != nil {
-		logger.Errorf("failed to parse REST configurations: %v", err)
-		return
-	}
-
+func (r *Controller) serveREST() {
 	api := rest.NewApi()
 	router, err := rest.MakeRouter(
 		rest.Get("/api/v1/switch", r.listSwitch),
@@ -141,9 +135,9 @@ func (r *Controller) serveREST(conf *goconf.ConfigFile) {
 	}
 	api.SetApp(router)
 
-	addr := fmt.Sprintf(":%v", c.port)
-	if c.tls.enable {
-		err = http.ListenAndServeTLS(addr, c.tls.certFile, c.tls.keyFile, api.MakeHandler())
+	addr := fmt.Sprintf(":%v", viper.GetInt("rest.port"))
+	if viper.GetBool("rest.tls") {
+		err = http.ListenAndServeTLS(addr, viper.GetString("rest.cert_file"), viper.GetString("rest.key_file"), api.MakeHandler())
 	} else {
 		err = http.ListenAndServe(addr, api.MakeHandler())
 	}
@@ -152,49 +146,6 @@ func (r *Controller) serveREST(conf *goconf.ConfigFile) {
 		logger.Errorf("failed to listen on HTTP(S): %v", err)
 		return
 	}
-}
-
-type restConfig struct {
-	port uint16
-	tls  struct {
-		enable   bool
-		certFile string
-		keyFile  string
-	}
-}
-
-func parseRESTConfig(conf *goconf.ConfigFile) (*restConfig, error) {
-	var err error
-	c := &restConfig{}
-
-	c.tls.enable, err = conf.GetBool("rest", "tls")
-	if err != nil {
-		return nil, errors.New("invalid rest/tls value")
-	}
-
-	port, err := conf.GetInt("rest", "port")
-	if err != nil || port <= 0 || port > 65535 {
-		return nil, errors.New("empty or invalid rest/port value")
-	}
-	c.port = uint16(port)
-
-	c.tls.certFile, err = conf.GetString("rest", "cert_file")
-	if err != nil || len(c.tls.certFile) == 0 {
-		return nil, errors.New("empty rest/cert_file value")
-	}
-	if c.tls.certFile[0] != '/' {
-		return nil, errors.New("rest/cert_file should be specified as an absolute path")
-	}
-
-	c.tls.keyFile, err = conf.GetString("rest", "key_file")
-	if err != nil || len(c.tls.keyFile) == 0 {
-		return nil, errors.New("empty rest/key_file value")
-	}
-	if c.tls.keyFile[0] != '/' {
-		return nil, errors.New("rest/key_file should be specified as an absolute path")
-	}
-
-	return c, nil
 }
 
 func (r *Controller) allowOrigin(w rest.ResponseWriter, req *rest.Request) {

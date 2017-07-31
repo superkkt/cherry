@@ -1,0 +1,25 @@
+default:
+    port: 6633
+    # The logger will only write log messages whose level is equal to or higher than log_level.
+    # Lower log level is more verbose. (DEBUG < INFO < WARNING < ERROR < CRITICAL)
+    # This log_level value can be dynamically changed without restarting the daemon.
+    log_level: INFO
+    # North-bound applications separated by comma. They will receive a packet in order they appear.
+    applications: Discovery, Monitor, ProxyARP, L2Switch
+    # Default VLAN ID. All switches should have this VLAN ID on all OF ports.
+    vlan_id: 1000
+    # Email address that will be notified when an abnormal events occur.
+    admin_email: name@domain.com
+
+database:
+    host: DB_HOST
+    port: DB_PORT
+    user: DB_USER
+    password: DB_PASSWORD
+    name: DB_NAME
+
+rest:
+    port: 7070
+    tls: true
+    cert_file: /your_tls_cert_file
+    key_file: /your_tls_key_file

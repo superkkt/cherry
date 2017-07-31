@@ -32,9 +32,8 @@ import (
 	"github.com/superkkt/cherry/openflow"
 	"github.com/superkkt/cherry/protocol"
 
-	"github.com/dlintw/goconf"
-	"github.com/op/go-logging"
 	"github.com/pkg/errors"
+	"github.com/superkkt/go-logging"
 )
 
 var (
@@ -43,8 +42,7 @@ var (
 
 type ProxyARP struct {
 	app.BaseProcessor
-	conf *goconf.ConfigFile
-	db   database
+	db database
 }
 
 type database interface {
@@ -53,10 +51,9 @@ type database interface {
 	TogglePortVIP(swDPID uint64, portNum uint16) ([]VIP, error)
 }
 
-func New(conf *goconf.ConfigFile, db database) *ProxyARP {
+func New(db database) *ProxyARP {
 	return &ProxyARP{
-		conf: conf,
-		db:   db,
+		db: db,
 	}
 }
 

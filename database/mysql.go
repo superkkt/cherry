@@ -36,8 +36,8 @@ import (
 	"github.com/superkkt/cherry/northbound/app/discovery"
 	"github.com/superkkt/cherry/northbound/app/proxyarp"
 
-	"github.com/dlintw/goconf"
 	"github.com/go-sql-driver/mysql"
+	"github.com/superkkt/viper"
 )
 
 const (
@@ -51,53 +51,9 @@ type MySQL struct {
 	random *rand.Rand
 }
 
-type config struct {
-	host     string
-	port     uint16
-	username string
-	password string
-	dbName   string
-}
-
-func parseConfig(conf *goconf.ConfigFile) (*config, error) {
-	host, err := conf.GetString("database", "host")
-	if err != nil || len(host) == 0 {
-		return nil, errors.New("empty database host in the config file")
-	}
-	port, err := conf.GetInt("database", "port")
-	if err != nil || port <= 0 || port > 0xFFFF {
-		return nil, errors.New("invalid database port in the config file")
-	}
-	user, err := conf.GetString("database", "user")
-	if err != nil || len(user) == 0 {
-		return nil, errors.New("empty database user in the config file")
-	}
-	password, err := conf.GetString("database", "password")
-	if err != nil || len(password) == 0 {
-		return nil, errors.New("empty database password in the config file")
-	}
-	dbname, err := conf.GetString("database", "name")
-	if err != nil || len(dbname) == 0 {
-		return nil, errors.New("empty database name in the config file")
-	}
-
-	v := &config{
-		host:     host,
-		port:     uint16(port),
-		username: user,
-		password: password,
-		dbName:   dbname,
-	}
-	return v, nil
-}
-
-func NewMySQL(conf *goconf.ConfigFile) (*MySQL, error) {
-	c, err := parseConfig(conf)
-	if err != nil {
-		return nil, err
-	}
-
-	db, err := newDBConn(c.host, c.username, c.password, c.dbName, c.port)
+func NewMySQL() (*MySQL, error) {
+	db, err := newDBConn(viper.GetString("database.host"), viper.GetString("database.user"),
+		viper.GetString("database.password"), viper.GetString("database.name"), uint16(viper.GetInt("database.port")))
 	if err != nil {
 		return nil, err
 	}

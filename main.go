@@ -38,8 +38,10 @@ import (
 	"github.com/superkkt/cherry/network"
 	"github.com/superkkt/cherry/northbound"
 
-	"github.com/op/go-logging"
+	"github.com/fsnotify/fsnotify"
 	"github.com/pkg/errors"
+	"github.com/superkkt/go-logging"
+	"github.com/superkkt/viper"
 )
 
 const (
@@ -50,8 +52,9 @@ const (
 
 var (
 	logger            = logging.MustGetLogger("main")
+	loggerLeveled     logging.LeveledBackend
 	showVersion       = flag.Bool("version", false, "Show program version and exit")
-	defaultConfigFile = flag.String("config", fmt.Sprintf("/usr/local/etc/%v.conf", programName), "absolute path of the configuration file")
+	defaultConfigFile = flag.String("config", fmt.Sprintf("/usr/local/etc/%v.yaml", programName), "absolute path of the configuration file")
 )
 
 func main() {
@@ -62,24 +65,21 @@ func main() {
 		os.Exit(0)
 	}
 
-	conf := NewConfig()
-	if err := conf.Read(); err != nil {
-		logger.Fatalf("failed to read configurations: %v", err)
-	}
-	if err := initLog(getLogLevel(conf.LogLevel)); err != nil {
+	initConfig()
+	if err := initLog(getLogLevel(viper.GetString("default.log_level"))); err != nil {
 		logger.Fatalf("failed to init log: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	db, err := database.NewMySQL(conf.RawConfig())
+	db, err := database.NewMySQL()
 	if err != nil {
 		logger.Fatalf("failed to init MySQL database: %v", err)
 	}
 
 	observer := initElectionObserver(ctx, db)
 
-	controller := network.NewController(db, conf.RawConfig())
-	manager, err := createAppManager(conf, db)
+	controller := network.NewController(db)
+	manager, err := createAppManager(db)
 	if err != nil {
 		logger.Fatalf("failed to create application manager: %v", err)
 	}
@@ -87,7 +87,43 @@ func main() {
 
 	initSignalHandler(controller, manager, cancel)
 
-	listen(ctx, conf.Port, controller, observer)
+	listen(ctx, viper.GetInt("default.port"), controller, observer)
+}
+
+func initConfig() {
+	viper.SetConfigFile(*defaultConfigFile)
+	// Read the config file.
+	if err := viper.ReadInConfig(); err != nil {
+		logger.Fatalf("failed to read the config file: %v", err)
+	}
+	// Watching and re-reading config file whenever it changes.
+	viper.OnConfigChange(func(e fsnotify.Event) {
+		if loggerLeveled != nil {
+			// Set log level for all modules
+			loggerLeveled.SetLevel(getLogLevel(viper.GetString("default.log_level")), "")
+		}
+	})
+	viper.WatchConfig()
+	if err := validateConfig(); err != nil {
+		logger.Fatalf("failed to validate the configuration: %v", err)
+	}
+}
+
+func validateConfig() error {
+	if port := viper.GetInt("default.port"); port <= 0 || port > 0xFFFF {
+		return errors.New("invalid default.port")
+	}
+	if len(viper.GetString("default.log_level")) == 0 {
+		return errors.New("invalid default.log_level")
+	}
+	if len(viper.GetString("default.applications")) == 0 {
+		return errors.New("invalid default.applications")
+	}
+	if len(viper.GetString("default.admin_email")) == 0 {
+		return errors.New("invalid default.admin_email")
+	}
+
+	return nil
 }
 
 func initElectionObserver(ctx context.Context, db *database.MySQL) *election.Observer {
@@ -113,7 +149,7 @@ func initSignalHandler(controller *network.Controller, manager *northbound.Manag
 			s := <-c
 			if s == syscall.SIGTERM || s == syscall.SIGINT {
 				// Graceful shutdown
-				logger.Info("Shutting down...")
+				logger.Warning("Shutting down...")
 				cancel()
 				// Timeout for cancelation
 				time.Sleep(5 * time.Second)
@@ -135,10 +171,10 @@ func initLog(level logging.Level) error {
 	}
 	backend = logging.NewBackendFormatter(backend, logging.MustStringFormatter(`%{level}: %{shortpkg}.%{shortfunc}: %{message}`))
 
-	leveled := logging.AddModuleLevel(backend)
+	loggerLeveled = logging.AddModuleLevel(backend)
 	// Set log level for all modules
-	leveled.SetLevel(level, "")
-	logging.SetBackend(leveled)
+	loggerLeveled.SetLevel(level, "")
+	logging.SetBackend(loggerLeveled)
 
 	return nil
 }
@@ -195,7 +231,7 @@ func listen(ctx context.Context, port int, controller *network.Controller, obser
 	for {
 		select {
 		case <-ctx.Done():
-			logger.Info("terminating the main listener loop...")
+			logger.Debug("terminating the main listener loop...")
 			return
 		case conn := <-backlog:
 			logger.Debug("fetching a new connection from the backlog..")
@@ -215,17 +251,31 @@ func listen(ctx context.Context, port int, controller *network.Controller, obser
 	}
 }
 
-func createAppManager(config *Config, db *database.MySQL) (*northbound.Manager, error) {
-	manager, err := northbound.NewManager(config.RawConfig(), db)
+func createAppManager(db *database.MySQL) (*northbound.Manager, error) {
+	manager, err := northbound.NewManager(db)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, v := range config.Apps {
+	apps, err := parseApplications()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to parse applications")
+	}
+	for _, v := range apps {
 		if err := manager.Enable(v); err != nil {
 			return nil, errors.Wrap(err, fmt.Sprintf("enabling %v", v))
 		}
 	}
 
 	return manager, nil
+}
+
+func parseApplications() ([]string, error) {
+	// Remove spaces, and then split it using comma
+	tokens := strings.Split(strings.Replace(viper.GetString("default.applications"), " ", "", -1), ",")
+	if len(tokens) == 0 {
+		return nil, errors.New("empty application")
+	}
+
+	return tokens, nil
 }

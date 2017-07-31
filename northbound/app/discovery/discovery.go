@@ -35,7 +35,7 @@ import (
 	"github.com/superkkt/cherry/northbound/app"
 	"github.com/superkkt/cherry/protocol"
 
-	"github.com/op/go-logging"
+	"github.com/superkkt/go-logging"
 )
 
 var (

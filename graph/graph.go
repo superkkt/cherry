@@ -30,7 +30,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/op/go-logging"
+	"github.com/superkkt/go-logging"
 )
 
 var (

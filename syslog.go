@@ -27,7 +27,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/op/go-logging"
+	"github.com/superkkt/go-logging"
 )
 
 type syslog struct {

@@ -29,8 +29,8 @@ import (
 	"github.com/superkkt/cherry/network"
 	"github.com/superkkt/cherry/northbound/app"
 
-	"github.com/dlintw/goconf"
-	"github.com/op/go-logging"
+	"github.com/superkkt/go-logging"
+	"github.com/superkkt/viper"
 )
 
 var (
@@ -39,19 +39,16 @@ var (
 
 type Monitor struct {
 	app.BaseProcessor
-	conf  *goconf.ConfigFile
 	email string
 }
 
-func New(conf *goconf.ConfigFile) *Monitor {
-	return &Monitor{
-		conf: conf,
-	}
+func New() *Monitor {
+	return &Monitor{}
 }
 
 func (r *Monitor) Init() error {
-	email, err := r.conf.GetString("default", "admin_email")
-	if err != nil || len(email) == 0 || !strings.Contains(email, "@") {
+	email := viper.GetString("default.admin_email")
+	if len(email) == 0 || !strings.Contains(email, "@") {
 		return errors.New("invalid admin_email in the config file")
 	}
 	r.email = email
