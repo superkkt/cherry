@@ -154,10 +154,11 @@ func (r *Controller) allowOrigin(w rest.ResponseWriter, req *rest.Request) {
 }
 
 type SwitchParam struct {
-	DPID        uint64 `json:"dpid"`
-	NumPorts    uint16 `json:"n_ports"`
-	FirstPort   uint16 `json:"first_port"`
-	Description string `json:"description"`
+	DPID             uint64 `json:"dpid"`
+	NumPorts         uint16 `json:"n_ports"`
+	FirstPort        uint16 `json:"first_port"`
+	FirstPrintedPort uint16 `json:"first_printed_port"`
+	Description      string `json:"description"`
 }
 
 func (r *SwitchParam) validate() error {

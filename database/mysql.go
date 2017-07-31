@@ -218,7 +218,7 @@ func (r *MySQL) Location(mac net.HardwareAddr) (dpid string, port uint32, status
 
 func (r *MySQL) Switches() (sw []network.Switch, err error) {
 	f := func(db *sql.DB) error {
-		rows, err := db.Query("SELECT id, dpid, n_ports, first_port, description FROM switch ORDER BY id DESC")
+		rows, err := db.Query("SELECT id, dpid, n_ports, first_port, first_printed_port, description FROM switch ORDER BY id DESC")
 		if err != nil {
 			return err
 		}
@@ -226,7 +226,7 @@ func (r *MySQL) Switches() (sw []network.Switch, err error) {
 
 		for rows.Next() {
 			v := network.Switch{}
-			if err := rows.Scan(&v.ID, &v.DPID, &v.NumPorts, &v.FirstPort, &v.Description); err != nil {
+			if err := rows.Scan(&v.ID, &v.DPID, &v.NumPorts, &v.FirstPort, &v.FirstPrintedPort, &v.Description); err != nil {
 				return err
 			}
 			sw = append(sw, v)
@@ -270,8 +270,8 @@ func (r *MySQL) AddSwitch(sw network.SwitchParam) (swID uint64, err error) {
 }
 
 func (r *MySQL) addSwitch(tx *sql.Tx, sw network.SwitchParam) (swID uint64, err error) {
-	qry := "INSERT INTO switch (dpid, n_ports, first_port, description) VALUES (?, ?, ?, ?)"
-	result, err := tx.Exec(qry, sw.DPID, sw.NumPorts, sw.FirstPort, sw.Description)
+	qry := "INSERT INTO switch (dpid, n_ports, first_port, first_printed_port, description) VALUES (?, ?, ?, ?, ?)"
+	result, err := tx.Exec(qry, sw.DPID, sw.NumPorts, sw.FirstPort, sw.FirstPrintedPort, sw.Description)
 	if err != nil {
 		return 0, err
 	}
@@ -301,7 +301,7 @@ func (r *MySQL) addPorts(tx *sql.Tx, swID uint64, firstPort, n_ports uint16) err
 
 func (r *MySQL) Switch(dpid uint64) (sw network.Switch, ok bool, err error) {
 	f := func(db *sql.DB) error {
-		row, err := db.Query("SELECT id, dpid, n_ports, first_port, description FROM switch WHERE dpid = ?", dpid)
+		row, err := db.Query("SELECT id, dpid, n_ports, first_port, first_printed_port, description FROM switch WHERE dpid = ?", dpid)
 		if err != nil {
 			return err
 		}
@@ -311,7 +311,7 @@ func (r *MySQL) Switch(dpid uint64) (sw network.Switch, ok bool, err error) {
 		if !row.Next() {
 			return nil
 		}
-		if err := row.Scan(&sw.ID, &sw.DPID, &sw.NumPorts, &sw.FirstPort, &sw.Description); err != nil {
+		if err := row.Scan(&sw.ID, &sw.DPID, &sw.NumPorts, &sw.FirstPort, &sw.FirstPrintedPort, &sw.Description); err != nil {
 			return err
 		}
 		ok = true
@@ -526,7 +526,8 @@ func (r *MySQL) RemoveNetwork(id uint64) (ok bool, err error) {
 
 func (r *MySQL) IPAddrs(networkID uint64) (addresses []network.IP, err error) {
 	f := func(db *sql.DB) error {
-		qry := `SELECT A.id, INET_NTOA(A.address), A.used, C.description, IFNULL(CONCAT(E.description, '/', D.number), '')  
+		qry := `SELECT A.id, INET_NTOA(A.address), A.used, C.description, 
+				IFNULL(CONCAT(E.description, '/', D.number - E.first_port + E.first_printed_port), '') 
 			FROM ip A 
 			JOIN network B ON A.network_id = B.id 
 			LEFT JOIN host C ON C.ip_id = A.id 
@@ -574,7 +575,7 @@ func decodeMAC(s string) (net.HardwareAddr, error) {
 func (r *MySQL) Hosts() (hosts []network.Host, err error) {
 	f := func(db *sql.DB) error {
 		qry := `SELECT A.id, CONCAT(INET_NTOA(B.address), '/', E.mask), 
-				IFNULL(CONCAT(D.description, '/', C.number), ''), 
+				IFNULL(CONCAT(D.description, '/', C.number - D.first_port + D.first_printed_port), ''), 
 				HEX(A.mac), A.description, A.last_updated_timestamp 
 			FROM host A 
 			JOIN ip B ON A.ip_id = B.id 
@@ -622,7 +623,7 @@ func (r *MySQL) Hosts() (hosts []network.Host, err error) {
 func (r *MySQL) Host(id uint64) (host network.Host, ok bool, err error) {
 	f := func(db *sql.DB) error {
 		qry := `SELECT A.id, CONCAT(INET_NTOA(B.address), '/', E.mask), 
-				IFNULL(CONCAT(D.description, '/', C.number), ''), 
+				IFNULL(CONCAT(D.description, '/', C.number - D.first_port + D.first_printed_port), ''), 
 				HEX(A.mac), A.description, A.last_updated_timestamp 
 			FROM host A 
 			JOIN ip B ON A.ip_id = B.id 

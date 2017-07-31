@@ -179,6 +179,7 @@ CREATE TABLE IF NOT EXISTS `switch` (
   `dpid` bigint(20) unsigned NOT NULL,
   `n_ports` smallint(5) unsigned NOT NULL,
   `first_port` smallint(5) unsigned NOT NULL DEFAULT '1',
+  `first_printed_port` smallint(5) unsigned NOT NULL DEFAULT '0',
   `description` varchar(255) NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `dpid` (`dpid`)
