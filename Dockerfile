@@ -6,7 +6,7 @@ MAINTAINER Kitae Kim
 
 # Copy the local package files to the container's workspace.
 ADD . /go/src/github.com/superkkt/cherry/
-COPY ./cherry.conf /usr/local/etc/
+COPY ./cherry.yaml /usr/local/etc/
  
 # Build cherry inside the container.
 RUN go install github.com/superkkt/cherry
