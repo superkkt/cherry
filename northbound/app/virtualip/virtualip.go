@@ -25,6 +25,8 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"sync"
+	"time"
 
 	"github.com/superkkt/cherry/network"
 	"github.com/superkkt/cherry/northbound/app"
@@ -39,12 +41,14 @@ var (
 // NOTE: This VirtualIP module should be executed before the Discovery module.
 type VirtualIP struct {
 	app.BaseProcessor
-	db database
+	db   database
+	once sync.Once
 }
 
 type database interface {
 	ToggleDeviceVIP(swDPID uint64) ([]Address, error)
 	TogglePortVIP(swDPID uint64, portNum uint16) ([]Address, error)
+	GetActivatedVIPs() (vips []Address, err error)
 }
 
 type Address struct {
@@ -62,12 +66,37 @@ func (r *VirtualIP) Init() error {
 	return nil
 }
 
+func (r *VirtualIP) broadcaster(finder network.Finder) {
+	logger.Debug("executed ARP announcement broadcaster")
+
+	ticker := time.Tick(30 * time.Second)
+	// Infinite loop.
+	for range ticker {
+		vips, err := r.db.GetActivatedVIPs()
+		if err != nil {
+			logger.Errorf("failed to get activated VIPs: %v", err)
+			continue
+		}
+
+		broadcastARPAnnouncement(finder, vips, false)
+	}
+}
+
 func (r *VirtualIP) Name() string {
 	return "VirtualIP"
 }
 
 func (r *VirtualIP) String() string {
 	return fmt.Sprintf("%v", r.Name())
+}
+
+func (r *VirtualIP) OnDeviceUp(finder network.Finder, device *network.Device) error {
+	r.once.Do(func() {
+		// Run the background broadcaster for periodic ARP announcement.
+		go r.broadcaster(finder)
+	})
+
+	return r.BaseProcessor.OnDeviceUp(finder, device)
 }
 
 func (r *VirtualIP) OnPortDown(finder network.Finder, port *network.Port) error {
@@ -83,7 +112,7 @@ func (r *VirtualIP) OnPortDown(finder network.Finder, port *network.Port) error 
 		logger.Errorf("failed to toggle VIP hosts: %v", err)
 		return r.BaseProcessor.OnPortDown(finder, port)
 	}
-	broadcastARPAnnouncement(finder, vips)
+	broadcastARPAnnouncement(finder, vips, true)
 
 	return r.BaseProcessor.OnPortDown(finder, port)
 }
@@ -101,19 +130,23 @@ func (r *VirtualIP) OnDeviceDown(finder network.Finder, device *network.Device) 
 		logger.Errorf("failed to toggle VIP hosts: %v", err)
 		return r.BaseProcessor.OnDeviceDown(finder, device)
 	}
-	broadcastARPAnnouncement(finder, vips)
+	broadcastARPAnnouncement(finder, vips, true)
 
 	return r.BaseProcessor.OnDeviceDown(finder, device)
 }
 
-func broadcastARPAnnouncement(finder network.Finder, vips []Address) {
+func broadcastARPAnnouncement(finder network.Finder, vips []Address, toggled bool) {
 	for _, v := range vips {
 		for _, d := range finder.Devices() {
 			if err := d.SendARPAnnouncement(v.IP, v.MAC); err != nil {
 				logger.Errorf("failed to broadcast ARP announcement: %v", err)
 				continue
 			}
+			logger.Debugf("sent an ARP announcement for VIP: DPID=%v, IP=%v, MAC=%v", d.ID(), v.IP, v.MAC)
 		}
-		logger.Warningf("VIP toggled: IP=%v, MAC=%v", v.IP, v.MAC)
+
+		if toggled {
+			logger.Warningf("VIP toggled: IP=%v, MAC=%v", v.IP, v.MAC)
+		}
 	}
 }

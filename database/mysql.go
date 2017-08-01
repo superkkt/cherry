@@ -1112,6 +1112,39 @@ func (r *MySQL) getVIPs() (result []registeredVIP, err error) {
 	return result, nil
 }
 
+func (r *MySQL) GetActivatedVIPs() (result []virtualip.Address, err error) {
+	vips, err := r.getVIPs()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, v := range vips {
+		active, ok, err := r.Host(v.active)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, fmt.Errorf("unknown active host (ID=%v)", v.active)
+		}
+
+		ip, _, err := net.ParseCIDR(v.address)
+		if err != nil {
+			return nil, fmt.Errorf("invalid IP address: %v", v.address)
+		}
+		mac, err := net.ParseMAC(active.MAC)
+		if err != nil {
+			return nil, fmt.Errorf("invalid MAC address: %v", active.MAC)
+		}
+
+		result = append(result, virtualip.Address{
+			IP:  ip,
+			MAC: mac,
+		})
+	}
+
+	return result, nil
+}
+
 func (r *MySQL) AddVIP(vip network.VIPParam) (id uint64, cidr string, err error) {
 	f := func(db *sql.DB) error {
 		tx, err := db.Begin()
