@@ -34,6 +34,7 @@ import (
 	"github.com/superkkt/cherry/northbound/app/l2switch"
 	"github.com/superkkt/cherry/northbound/app/monitor"
 	"github.com/superkkt/cherry/northbound/app/proxyarp"
+	"github.com/superkkt/cherry/northbound/app/virtualip"
 
 	"github.com/pkg/errors"
 	"github.com/superkkt/go-logging"
@@ -69,6 +70,7 @@ func NewManager(db *database.MySQL) (*Manager, error) {
 	v.register(l2switch.New(db))
 	v.register(proxyarp.New(db))
 	v.register(monitor.New())
+	v.register(virtualip.New(db))
 
 	return v, nil
 }

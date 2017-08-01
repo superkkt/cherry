@@ -25,7 +25,6 @@ import (
 	"bytes"
 	"fmt"
 	"net"
-	"strconv"
 
 	"github.com/superkkt/cherry/network"
 	"github.com/superkkt/cherry/northbound/app"
@@ -47,8 +46,6 @@ type ProxyARP struct {
 
 type database interface {
 	MAC(ip net.IP) (mac net.HardwareAddr, ok bool, err error)
-	ToggleDeviceVIP(swDPID uint64) ([]VIP, error)
-	TogglePortVIP(swDPID uint64, portNum uint16) ([]VIP, error)
 }
 
 func New(db database) *ProxyARP {
@@ -167,53 +164,4 @@ func makeARPReply(request *protocol.ARP, mac net.HardwareAddr) ([]byte, error) {
 
 func (r *ProxyARP) String() string {
 	return fmt.Sprintf("%v", r.Name())
-}
-
-type VIP struct {
-	Address net.IP
-	MAC     net.HardwareAddr
-}
-
-func (r *ProxyARP) OnPortDown(finder network.Finder, port *network.Port) error {
-	dpid, err := strconv.ParseUint(port.Device().ID(), 10, 64)
-	if err != nil {
-		logger.Errorf("invalid switch DPID: %v", port.Device().ID())
-		return r.BaseProcessor.OnPortDown(finder, port)
-	}
-	vips, err := r.db.TogglePortVIP(dpid, uint16(port.Number()))
-	if err != nil {
-		logger.Errorf("failed to toggle VIP hosts: %v", err)
-		return r.BaseProcessor.OnPortDown(finder, port)
-	}
-	r.broadcastARPAnnouncement(finder, vips)
-
-	return r.BaseProcessor.OnPortDown(finder, port)
-}
-
-func (r *ProxyARP) OnDeviceDown(finder network.Finder, device *network.Device) error {
-	dpid, err := strconv.ParseUint(device.ID(), 10, 64)
-	if err != nil {
-		logger.Errorf("invalid switch DPID: %v", device.ID())
-		return r.BaseProcessor.OnDeviceDown(finder, device)
-	}
-	vips, err := r.db.ToggleDeviceVIP(dpid)
-	if err != nil {
-		logger.Errorf("failed to toggle VIP hosts: %v", err)
-		return r.BaseProcessor.OnDeviceDown(finder, device)
-	}
-	r.broadcastARPAnnouncement(finder, vips)
-
-	return r.BaseProcessor.OnDeviceDown(finder, device)
-}
-
-func (r *ProxyARP) broadcastARPAnnouncement(finder network.Finder, vips []VIP) {
-	for _, v := range vips {
-		for _, d := range finder.Devices() {
-			if err := d.SendARPAnnouncement(v.Address, v.MAC); err != nil {
-				logger.Errorf("failed to broadcast ARP announcement: %v", err)
-				continue
-			}
-		}
-		logger.Warningf("VIP toggled: IP=%v, MAC=%v", v.Address, v.MAC)
-	}
 }

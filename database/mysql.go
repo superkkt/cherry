@@ -34,7 +34,7 @@ import (
 
 	"github.com/superkkt/cherry/network"
 	"github.com/superkkt/cherry/northbound/app/discovery"
-	"github.com/superkkt/cherry/northbound/app/proxyarp"
+	"github.com/superkkt/cherry/northbound/app/virtualip"
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/superkkt/viper"
@@ -829,7 +829,7 @@ func getVIP(tx *sql.Tx, id uint64) (*vip, error) {
 	return v, nil
 }
 
-func (r *MySQL) TogglePortVIP(swDPID uint64, portNum uint16) (result []proxyarp.VIP, err error) {
+func (r *MySQL) TogglePortVIP(swDPID uint64, portNum uint16) (result []virtualip.Address, err error) {
 	f := func(db *sql.DB) error {
 		tx, err := db.Begin()
 		if err != nil {
@@ -854,7 +854,7 @@ func (r *MySQL) TogglePortVIP(swDPID uint64, portNum uint16) (result []proxyarp.
 			if err != nil {
 				return err
 			}
-			result = append(result, proxyarp.VIP{v.address, mac})
+			result = append(result, virtualip.Address{IP: v.address, MAC: mac})
 		}
 
 		if err := tx.Commit(); err != nil {
@@ -870,7 +870,7 @@ func (r *MySQL) TogglePortVIP(swDPID uint64, portNum uint16) (result []proxyarp.
 	return result, nil
 }
 
-func (r *MySQL) ToggleDeviceVIP(swDPID uint64) (result []proxyarp.VIP, err error) {
+func (r *MySQL) ToggleDeviceVIP(swDPID uint64) (result []virtualip.Address, err error) {
 	f := func(db *sql.DB) error {
 		tx, err := db.Begin()
 		if err != nil {
@@ -891,7 +891,7 @@ func (r *MySQL) ToggleDeviceVIP(swDPID uint64) (result []proxyarp.VIP, err error
 			if err != nil {
 				return err
 			}
-			result = append(result, proxyarp.VIP{v.address, mac})
+			result = append(result, virtualip.Address{IP: v.address, MAC: mac})
 		}
 
 		if err := tx.Commit(); err != nil {
