@@ -92,14 +92,14 @@ func (r *processor) String() string {
 }
 
 func (r *processor) OnDeviceUp(finder network.Finder, device *network.Device) error {
-	r.removeARPSender(device.ID())
-	r.addARPSender(device)
+	r.stopARPSender(device.ID())
+	r.runARPSender(device)
 
 	// Propagate this event to the next processors.
 	return r.BaseProcessor.OnDeviceUp(finder, device)
 }
 
-func (r *processor) addARPSender(device *network.Device) {
+func (r *processor) runARPSender(device *network.Device) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -144,7 +144,7 @@ func (r *processor) sendARPProbes(device *network.Device) error {
 	return nil
 }
 
-func (r *processor) removeARPSender(deviceID string) {
+func (r *processor) stopARPSender(deviceID string) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -246,7 +246,7 @@ func (r *processor) OnPortDown(finder network.Finder, port *network.Port) error 
 
 func (r *processor) OnDeviceDown(finder network.Finder, device *network.Device) error {
 	// Stop the ARP request sender.
-	r.removeARPSender(device.ID())
+	r.stopARPSender(device.ID())
 
 	swDPID, err := strconv.ParseUint(device.ID(), 10, 64)
 	if err != nil {
