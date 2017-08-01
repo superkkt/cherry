@@ -564,18 +564,24 @@ func (r *Controller) removeHost(w rest.ResponseWriter, req *rest.Request) {
 		panic("host.MAC should be valid")
 	}
 
-	logger.Debugf("removing a host whose MAC address is %v", mac)
+	logger.Debugf("removing a host: IP=%v, MAC=%v", host.IP, host.MAC)
 	_, err = r.db.RemoveHost(id)
 	if err != nil {
 		logger.Errorf("failed to query database: %v", err)
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	logger.Infof("removed the host whose MAC address is %v", mac)
+	logger.Infof("removed the host: IP=%v, MAC=%v", host.IP, host.MAC)
 	// Remove flows whose destination MAC is one we are removing when we remove a host
 	r.removeFlows(mac)
 
 	w.WriteJson(&struct{}{})
+
+	// Sends ARP announcement to invalidate the ARP caches for the IP address of the removed host.
+	if err := r.sendARPAnnouncement(host.IP, "00:00:00:00:00:00"); err != nil {
+		logger.Errorf("failed to send ARP announcement for the removed host (ID=%v): %v", id, err)
+		return
+	}
 }
 
 type VIPParam struct {
