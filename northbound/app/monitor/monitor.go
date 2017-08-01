@@ -72,6 +72,7 @@ func (r *Monitor) OnDeviceUp(finder network.Finder, device *network.Device) erro
 			logger.Errorf("failed to send an alarm email: %v", err)
 		}
 	}()
+	logger.Warningf("switch device up: DPID=%v", device.ID())
 
 	return r.BaseProcessor.OnDeviceUp(finder, device)
 }
@@ -84,6 +85,7 @@ func (r *Monitor) OnDeviceDown(finder network.Finder, device *network.Device) er
 			logger.Errorf("failed to send an alarm email: %v", err)
 		}
 	}()
+	logger.Warningf("switch device down: DPID=%v", device.ID())
 
 	return r.BaseProcessor.OnDeviceDown(finder, device)
 }
