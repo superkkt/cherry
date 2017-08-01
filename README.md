@@ -51,7 +51,7 @@ You can install Cherry on Docker or natively from source based on your preferenc
 
 * Run as root:
 
- ```# docker run -d -p 6633:6633 -v /dev/log:/dev/log -v /usr/local/etc/cherry.yaml:/usr/local/etc/cherry.yaml cherry```
+ ```# docker run -d -p 6633:6633 -v /dev/log:/dev/log -v /your/config/cherry.yaml:/usr/local/etc/cherry.yaml cherry```
 
  The bind mount of /dev/log is to collect syslog messages from the container and then write to the host's syslog daemon.
 
