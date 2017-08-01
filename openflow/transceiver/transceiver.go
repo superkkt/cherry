@@ -41,10 +41,10 @@ var (
 )
 
 const (
-	// Allowed idle time before we send an echo request to a switch (in seconds)
-	maxIdleTime = 30
-	// I/O timeouts in second (These timeouts should be less than maxIdleTime)
-	readTimeout  = 1
+	// Allowed idle time before we send an echo request to a switch.
+	maxIdleTime = 10 * time.Second
+	// I/O timeouts (These timeouts should be less than maxIdleTime).
+	readTimeout  = 1 * time.Second
 	writeTimeout = readTimeout * 2
 )
 
@@ -139,8 +139,8 @@ func (r *Transceiver) sendEchoRequest() error {
 
 func (r *Transceiver) Run(ctx context.Context) error {
 	defer logger.Info("transceiver is closed")
-	r.stream.SetReadTimeout(readTimeout * time.Second)
-	r.stream.SetWriteTimeout(writeTimeout * time.Second)
+	r.stream.SetReadTimeout(readTimeout)
+	r.stream.SetWriteTimeout(writeTimeout)
 
 	readerCtx, cancelReader := context.WithCancel(ctx)
 	defer cancelReader()
@@ -217,6 +217,7 @@ func (r *Transceiver) runReader(ctx context.Context) <-chan []byte {
 	// Buffered channel
 	c := make(chan []byte, 4096)
 	go func() {
+		// The channel c will be closed when this goroutine returns in order to notice the connection has been closed.
 		defer close(c)
 		defer logger.Info("transceiver reader is closed")
 
@@ -237,7 +238,7 @@ func (r *Transceiver) runReader(ctx context.Context) <-chan []byte {
 					return
 				}
 				// Timeout occurrs. Send a ping request if necessary.
-				if time.Now().After(lastActivated.Add(maxIdleTime * time.Second)) {
+				if time.Now().After(lastActivated.Add(maxIdleTime)) {
 					if err := r.sendEchoRequest(); err != nil {
 						logger.Errorf("failed to send an echo request: %v", err)
 						return
