@@ -41,18 +41,9 @@ You can install Cherry on Docker or natively from source based on your preferenc
 
 * Copy the template configuration: 
  
- ```$ sudo cp cherry/cherry.conf /usr/local/etc```
+ ```$ sudo cp cherry/cherry.yaml /usr/local/etc```
 
-* Edit MySQL information from */usr/local/etc/cherry.conf*:
-
- ```
-[database]
-host = DB_HOST
-port = DB_PORT
-user = DB_USER
-password = DB_PASSWORD
-name = DB_NAME
-```
+* Edit the configuration file */usr/local/etc/cherry.yaml* as you want.
 
 * Build Docker image as root:
 
@@ -60,7 +51,7 @@ name = DB_NAME
 
 * Run as root:
 
- ```# docker run -d -p 6633:6633 -v /dev/log:/dev/log -v /usr/local/etc/cherry.conf:/usr/local/etc/cherry.conf cherry```
+ ```# docker run -d -p 6633:6633 -v /dev/log:/dev/log -v /usr/local/etc/cherry.yaml:/usr/local/etc/cherry.yaml cherry```
 
  The bind mount of /dev/log is to collect syslog messages from the container and then write to the host's syslog daemon.
 
@@ -77,18 +68,9 @@ name = DB_NAME
  
  ```$ sudo cp $GOPATH/bin/cherry /usr/local/bin```
  
- ```$ sudo cp $GOPATH/src/github.com/superkkt/cherry/cherry.conf /usr/local/etc```
+ ```$ sudo cp $GOPATH/src/github.com/superkkt/cherry/cherry.yaml /usr/local/etc```
 
-* Edit MySQL information from */usr/local/etc/cherry.conf*:
-
- ```
-[database]
-host = DB_HOST
-port = DB_PORT
-user = DB_USER
-password = DB_PASSWORD
-name = DB_NAME
-```
+* Edit the configuration file */usr/local/etc/cherry.yaml* as you want.
 
 * Run:
 
