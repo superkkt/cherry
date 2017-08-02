@@ -30,6 +30,7 @@ import (
 
 	"github.com/superkkt/cherry/network"
 	"github.com/superkkt/cherry/northbound/app"
+	"github.com/superkkt/cherry/northbound/util/announcer"
 
 	"github.com/superkkt/go-logging"
 )
@@ -69,7 +70,9 @@ func (r *VirtualIP) Init() error {
 func (r *VirtualIP) broadcaster(finder network.Finder) {
 	logger.Debug("executed ARP announcement broadcaster")
 
-	ticker := time.Tick(30 * time.Second)
+	backoff := announcer.NewBackoffARPAnnouncer(finder)
+
+	ticker := time.Tick(5 * time.Second)
 	// Infinite loop.
 	for range ticker {
 		vips, err := r.db.GetActivatedVIPs()
@@ -78,7 +81,14 @@ func (r *VirtualIP) broadcaster(finder network.Finder) {
 			continue
 		}
 
-		broadcastARPAnnouncement(finder, vips, false)
+		for _, v := range vips {
+			logger.Debugf("broadcasting an ARP announcement for VIP: IP=%v, MAC=%v", v.IP, v.MAC)
+
+			if err := backoff.Broadcast(v.IP, v.MAC); err != nil {
+				logger.Errorf("failed to broadcast an ARP announcement: %v", err)
+				continue
+			}
+		}
 	}
 }
 
@@ -112,7 +122,7 @@ func (r *VirtualIP) OnPortDown(finder network.Finder, port *network.Port) error 
 		logger.Errorf("failed to toggle VIP hosts: %v", err)
 		return r.BaseProcessor.OnPortDown(finder, port)
 	}
-	broadcastARPAnnouncement(finder, vips, true)
+	broadcastARPAnnouncement(finder, vips)
 
 	return r.BaseProcessor.OnPortDown(finder, port)
 }
@@ -130,23 +140,20 @@ func (r *VirtualIP) OnDeviceDown(finder network.Finder, device *network.Device) 
 		logger.Errorf("failed to toggle VIP hosts: %v", err)
 		return r.BaseProcessor.OnDeviceDown(finder, device)
 	}
-	broadcastARPAnnouncement(finder, vips, true)
+	broadcastARPAnnouncement(finder, vips)
 
 	return r.BaseProcessor.OnDeviceDown(finder, device)
 }
 
-func broadcastARPAnnouncement(finder network.Finder, vips []Address, toggled bool) {
+func broadcastARPAnnouncement(finder network.Finder, vips []Address) {
 	for _, v := range vips {
 		for _, d := range finder.Devices() {
 			if err := d.SendARPAnnouncement(v.IP, v.MAC); err != nil {
 				logger.Errorf("failed to broadcast ARP announcement: %v", err)
 				continue
 			}
-			logger.Debugf("sent an ARP announcement for VIP: DPID=%v, IP=%v, MAC=%v", d.ID(), v.IP, v.MAC)
 		}
 
-		if toggled {
-			logger.Warningf("VIP toggled: IP=%v, MAC=%v", v.IP, v.MAC)
-		}
+		logger.Warningf("VIP toggled: IP=%v, MAC=%v", v.IP, v.MAC)
 	}
 }
