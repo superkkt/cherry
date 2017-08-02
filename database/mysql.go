@@ -34,6 +34,7 @@ import (
 
 	"github.com/superkkt/cherry/network"
 	"github.com/superkkt/cherry/northbound/app/discovery"
+	"github.com/superkkt/cherry/northbound/app/proxyarp"
 	"github.com/superkkt/cherry/northbound/app/virtualip"
 
 	"github.com/go-sql-driver/mysql"
@@ -1529,4 +1530,44 @@ func (r *MySQL) RemoveFlow(flowID uint64) error {
 	}
 
 	return r.query(f)
+}
+
+func (r *MySQL) GetActivatedHosts() (hosts []proxyarp.Host, err error) {
+	f := func(db *sql.DB) error {
+		qry := "SELECT INET_NTOA(B.`address`), HEX(A.`mac`) FROM `host` A JOIN `ip` B ON A.`ip_id` = B.`id`"
+		rows, err := db.Query(qry)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var address, mac string
+			if err := rows.Scan(&address, &mac); err != nil {
+				return err
+			}
+
+			v := proxyarp.Host{}
+			// Parse the IP address.
+			v.IP = net.ParseIP(address)
+			if v.IP == nil {
+				return fmt.Errorf("invalid IP address: %v", address)
+			}
+			// Parse the MAC address.
+			v.MAC, err = decodeMAC(mac)
+			if err != nil {
+				return err
+			}
+
+			hosts = append(hosts, v)
+		}
+
+		return rows.Err()
+	}
+
+	if err = r.query(f); err != nil {
+		return nil, err
+	}
+
+	return hosts, nil
 }
