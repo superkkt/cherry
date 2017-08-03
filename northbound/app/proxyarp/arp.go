@@ -24,6 +24,7 @@ package proxyarp
 import (
 	"bytes"
 	"fmt"
+	"math/rand"
 	"net"
 	"sync"
 	"time"
@@ -102,6 +103,8 @@ func (r *ProxyARP) broadcaster(finder network.Finder) {
 				logger.Errorf("failed to broadcast an ARP announcement: %v", err)
 				continue
 			}
+			// Sleep to mitigate the peak latency of processing PACKET_INs.
+			time.Sleep(time.Duration(10+rand.Intn(100)) * time.Millisecond)
 		}
 	}
 }

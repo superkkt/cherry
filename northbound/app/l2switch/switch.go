@@ -24,6 +24,8 @@ package l2switch
 import (
 	"bytes"
 	"fmt"
+	"math"
+	"math/rand"
 	"net"
 	"strconv"
 	"time"
@@ -49,6 +51,10 @@ type L2Switch struct {
 	cache     *flowCache
 	stormCtrl *stormController
 	db        Database
+	// Idle timeout in second.
+	idleTimeout uint16
+	// Hard timeout in second.
+	hardTimeout uint16
 }
 
 type flowCache struct {
@@ -115,11 +121,26 @@ func (r *flooder) flood(ingress *network.Port, packet []byte) error {
 }
 
 func (r *L2Switch) Init() error {
-	vlanID := viper.GetInt("default.vlan_id")
+	vlanID := viper.GetInt("flow.vlan_id")
 	if vlanID < 0 || vlanID > 4095 {
-		return errors.New("invalid default VLAN ID in the config file")
+		return errors.New("invalid flow.vlan_id in the config file")
 	}
 	r.vlanID = uint16(vlanID)
+
+	idleTimeout := viper.GetInt("flow.idle_timeout")
+	if idleTimeout <= 0 || idleTimeout > math.MaxUint16 {
+		return errors.New("invalid flow.idle_timeout in the config file")
+	}
+	r.idleTimeout = uint16(idleTimeout)
+
+	hardTimeout := viper.GetInt("flow.hard_timeout")
+	if hardTimeout < 0 || hardTimeout > math.MaxUint16 {
+		return errors.New("invalid flow.hard_timeout in the config file")
+	}
+	if hardTimeout > 0 && hardTimeout <= idleTimeout*2 {
+		return fmt.Errorf("flow.hard_timeout should be greater than %v seconds", idleTimeout*2)
+	}
+	r.hardTimeout = uint16(hardTimeout)
 
 	return nil
 }
@@ -181,7 +202,12 @@ func (r *L2Switch) installFlow(p flowParam) error {
 	}
 	flow.SetCookie(r.getFlowID(p))
 	flow.SetTableID(p.device.FlowTableID())
-	flow.SetIdleTimeout(30)
+	flow.SetIdleTimeout(r.idleTimeout)
+	if r.hardTimeout > 0 {
+		// Extra random interval in order to avoid a lot of timed-out flows at once.
+		padding := uint16(rand.Intn(5))
+		flow.SetHardTimeout(r.hardTimeout + padding)
+	}
 	flow.SetPriority(10)
 	flow.SetFlowMatch(match)
 	flow.SetFlowInstruction(inst)
@@ -196,6 +222,7 @@ func (r *L2Switch) installFlow(p flowParam) error {
 	if err := p.device.SendMessage(barrier); err != nil {
 		return err
 	}
+	logger.Debugf("installed a flow rule: %+v", p)
 
 	r.cache.add(p)
 	logger.Debugf("added a flow cache entry: deviceID=%v, dstMAC=%v, outPort=%v", p.device.ID(), p.dstMAC, p.outPort)
@@ -241,7 +268,6 @@ func (r *L2Switch) switching(p switchParam) error {
 	if err := r.installFlow(param); err != nil {
 		return err
 	}
-	logger.Debugf("installed a flow rule: %v", param)
 
 	// Send this ethernet packet directly to the destination node
 	logger.Debugf("sending a packet (Src=%v, Dst=%v) to egress port %v..", p.ethernet.SrcMAC, p.ethernet.DstMAC, p.egress.ID())
