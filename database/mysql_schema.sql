@@ -198,7 +198,8 @@ CREATE TABLE IF NOT EXISTS `flow` (
   `dst_mac` varchar(255) NOT NULL,
   `out_port` int(5) unsigned NOT NULL,
   `removed` boolean NOT NULL DEFAULT FALSE,
-  `timestamp` datetime NOT NULL,
+  `created_timestamp` datetime NOT NULL,
+  `removed_timestamp` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `dst_mac` (`dst_mac`),
   CONSTRAINT `flow_ibfk_1` FOREIGN KEY (`switch_id`) REFERENCES `switch` (`id`) ON DELETE CASCADE ON UPDATE CASCADE

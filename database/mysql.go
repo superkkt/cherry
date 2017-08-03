@@ -1495,7 +1495,7 @@ func (r *MySQL) AddFlow(swDPID uint64, dstMAC net.HardwareAddr, outPort uint32) 
 			return err
 		}
 
-		qry = "INSERT INTO `flow` (`switch_id`, `dst_mac`, `out_port`, `timestamp`) VALUES (?, ?, ?, NOW())"
+		qry = "INSERT INTO `flow` (`switch_id`, `dst_mac`, `out_port`, `created_timestamp`) VALUES (?, ?, ?, NOW())"
 		result, err := tx.Exec(qry, switchID, dstMAC.String(), outPort)
 		if err != nil {
 			return err
@@ -1520,7 +1520,7 @@ func (r *MySQL) AddFlow(swDPID uint64, dstMAC net.HardwareAddr, outPort uint32) 
 // RemoveFlow removes the flow specified by flowID from the database.
 func (r *MySQL) RemoveFlow(flowID uint64) error {
 	f := func(db *sql.DB) error {
-		qry := "UPDATE `flow` SET `removed` = TRUE WHERE `id` = ?"
+		qry := "UPDATE `flow` SET `removed` = TRUE, `removed_timestamp` = NOW() WHERE `id` = ?"
 		_, err := db.Exec(qry, flowID)
 		if err != nil {
 			return err
@@ -1535,7 +1535,12 @@ func (r *MySQL) RemoveFlow(flowID uint64) error {
 // RemoveFlows remove all the flows that belong to the device whose ID is swDPID.
 func (r *MySQL) RemoveFlows(swDPID uint64) error {
 	f := func(db *sql.DB) error {
-		qry := "UPDATE `flow` A JOIN `switch` B ON A.`switch_id` = B.`id` SET A.`removed` = TRUE WHERE B.`dpid` = ?"
+		qry := "UPDATE `flow` A "
+		qry += "JOIN `switch` B "
+		qry += "ON A.`switch_id` = B.`id` "
+		qry += "SET A.`removed` = TRUE, A.`removed_timestamp` = NOW() "
+		qry += "WHERE B.`dpid` = ?"
+
 		_, err := db.Exec(qry, swDPID)
 		if err != nil {
 			return err
