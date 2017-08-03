@@ -1532,6 +1532,21 @@ func (r *MySQL) RemoveFlow(flowID uint64) error {
 	return r.query(f)
 }
 
+// RemoveFlows remove all the flows that belong to the device whose ID is swDPID.
+func (r *MySQL) RemoveFlows(swDPID uint64) error {
+	f := func(db *sql.DB) error {
+		qry := "UPDATE `flow` A JOIN `switch` B ON A.`switch_id` = B.`id` SET A.`removed` = TRUE WHERE B.`dpid` = ?"
+		_, err := db.Exec(qry, swDPID)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	return r.query(f)
+}
+
 func (r *MySQL) GetActivatedHosts() (hosts []proxyarp.Host, err error) {
 	f := func(db *sql.DB) error {
 		qry := "SELECT INET_NTOA(B.`address`), HEX(A.`mac`) FROM `host` A JOIN `ip` B ON A.`ip_id` = B.`id`"

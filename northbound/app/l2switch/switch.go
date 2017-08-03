@@ -94,6 +94,9 @@ type Database interface {
 
 	// RemoveFlow removes the flow specified by flowID from the database.
 	RemoveFlow(flowID uint64) error
+
+	// RemoveFlows remove all the flows that belong to the device whose ID is swDPID.
+	RemoveFlows(swDPID uint64) error
 }
 
 func New(db Database) *L2Switch {
@@ -389,4 +392,20 @@ func (r *L2Switch) OnFlowRemoved(finder network.Finder, flow openflow.FlowRemove
 	}
 
 	return r.BaseProcessor.OnFlowRemoved(finder, flow)
+}
+
+func (r *L2Switch) OnDeviceDown(finder network.Finder, device *network.Device) error {
+	dpid, err := strconv.ParseUint(device.ID(), 10, 64)
+	if err != nil {
+		logger.Errorf("failed to parse the device ID: %v", device.ID())
+		return r.BaseProcessor.OnDeviceDown(finder, device)
+	}
+
+	if err := r.db.RemoveFlows(dpid); err != nil {
+		logger.Errorf("failed to remove all flow histories: %v", err)
+		return r.BaseProcessor.OnDeviceDown(finder, device)
+	}
+	logger.Debugf("removed all the flow histories for DPID %v", device.ID())
+
+	return r.BaseProcessor.OnDeviceDown(finder, device)
 }
