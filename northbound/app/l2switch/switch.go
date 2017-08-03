@@ -362,7 +362,7 @@ func (r *L2Switch) String() string {
 }
 
 func (r *L2Switch) OnPortDown(finder network.Finder, port *network.Port) error {
-	logger.Debugf("port down! removing all flows heading to that port (%v)..", port.ID())
+	logger.Warningf("port down! DPID=%v, number=%v", port.Device().ID(), port.Number())
 
 	device := port.Device()
 	factory := device.Factory()
@@ -377,6 +377,7 @@ func (r *L2Switch) OnPortDown(finder network.Finder, port *network.Port) error {
 	if err := device.RemoveFlow(match, outPort); err != nil {
 		return errors.Wrap(err, fmt.Sprintf("removing flows heading to port %v", port.ID()))
 	}
+	logger.Debugf("removed all flows heading to the port %v", port.ID())
 
 	return r.BaseProcessor.OnPortDown(finder, port)
 }
