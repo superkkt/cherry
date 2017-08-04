@@ -77,9 +77,6 @@ func (r *topology) String() string {
 	defer r.mutex.RUnlock()
 
 	var buf bytes.Buffer
-	for _, v := range r.devices {
-		buf.WriteString(fmt.Sprintf("%v\n", v))
-	}
 	buf.WriteString(fmt.Sprintf("%v\n", r.graph))
 
 	return buf.String()
