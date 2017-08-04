@@ -363,6 +363,7 @@ func (r *L2Switch) modifyFlows(finder network.Finder, mac net.HardwareAddr) {
 
 		// Reside on this device?
 		if device.ID() == node.Port().Device().ID() {
+			logger.Debugf("reside on the same device: DPID=%v, Port=%v", device.ID(), node.Port().Number())
 			egress = node.Port()
 		} else {
 			// Find the shortest path from this device to an another device that is connected to the destination node.
@@ -373,11 +374,6 @@ func (r *L2Switch) modifyFlows(finder network.Finder, mac net.HardwareAddr) {
 				continue
 			}
 			egress = path[0][0]
-		}
-
-		if egress.Value().IsPortDown() || egress.Value().IsLinkDown() {
-			logger.Debugf("skip flow management for %v on %v: link down", mac, device.ID())
-			continue
 		}
 
 		flow := flowParam{
