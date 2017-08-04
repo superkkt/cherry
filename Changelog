@@ -1,3 +1,45 @@
+* v0.13.0 (Fri Aug 04 23:37:48 2017 +0900)
+
+fe412ce Remove duplicated link down check
+5bfbf68 Decrease the flow manager interval to 1 minute
+0130939 Flow manager to keep the flows update
+b92618c Fix the deadlock between the topology and the device
+698ce6a Minor refactoring
+7a88c77 Set idle and hard flow timeouts from the config
+ae4e791 Log flow removed timestamp
+13ba29f Remove all the flow histories on the device down event
+fd8b1a4 Warning log on the port down event
+72b66c2 Backoff-delayed ARP announcer for all the registered hosts
+fbc8759 Backoff-delayed ARP announcer
+0509b0c Invalidate the ARP caches when a host is removed
+9d0500e Fix the broken VIP toggling by repeated toggles in a moment
+d468086 Minor refactoring of README
+f7cee84 Update README for the new configuration file
+ae3ee97 Fix the broken VIP toggling by the Discovery module
+ad5b2d9 Revert a weird patch 601ac8055
+ce25c01 Minor refactoring by function renaming
+daaeaed Log switch device up/down events
+a34bdce Fix the broken Dockerfile
+ee8f7a4 Flow history on the database
+e46bce5 Adjust switch port numbers based on its first printed port number
+b8eb6e9 Dynamic config reloading
+0a3a53f Increase log level of toggling VIP addresses
+5841fd6 Remove the old Golang X Context package
+9c62ce2 Fix the unintended package import
+a014cee Adjust log message level
+38bbac7 Implement automatic master election
+0be0c21 New host stale field instead of its UNIX timestamp
+584e230 Minor refactoring
+31e2491 Adjust loop intervals
+4acb3e3 Remove useless comment
+a5b152e Periodic switch port scanning
+bef4a14 Minor refactoring for the device expolorer interval
+aee62af Periodically send LLDPs to keep the network topology updated
+a730b7e Dynamic discovery of physical host locations using the ARP probe
+67911b1 Fix unexpected foreign key error from deleting a network address
+bba56c1 Add debug messages for ECHO_REQUEST and ECHO_REPLY packets
+e0b7e53 Decrease the capacity of the reader channel
+
 * v0.12.1 (Wed Aug 31 15:06:31 2016 +0900)
 
 3d35bfb Log the number of unread remaining packets in the reader channel
