@@ -8,15 +8,8 @@ default:
     applications: VirtualIP, Discovery, Monitor, ProxyARP, L2Switch
     # Email address that will be notified when an abnormal events occur.
     admin_email: name@domain.com
-
-flow:
     # Default VLAN ID. All switches should have this VLAN ID on all OF ports.
     vlan_id: 1000
-    # Flow idle timeout in second. Flows will be automatically removed if it does not hit for idle_timeout seconds.
-    idle_timeout: 60
-    # Flow hard timeout in second. Flows will be automatically removed after hard_timeout seconds. 
-    # hard_timeout should be greater than (idle_timeout * 2). 0 value means no hard timeout.
-    hard_timeout: 0
 
 database:
     host: DB_HOST

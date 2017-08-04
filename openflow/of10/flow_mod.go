@@ -154,12 +154,7 @@ func (r *FlowMod) MarshalBinary() ([]byte, error) {
 	} else {
 		binary.BigEndian.PutUint16(v[20:22], uint16(r.outPort.Value()))
 	}
-	// XXX:
-	// Installed flows are overwritten by consecutive flow installation requests if OFPFF_CHECK_OVERLAP is not specified.
-	// So, the flows will not work properly on very busy workload, and the controller will see repetitive PACKET_IN messages
-	// even if the ingress packet is matched with the installed flows on the switch. This is because the flows are fluctuated
-	// due to the consecutive flow installation requests without OFPFF_CHECK_OVERLAP flag.
-	binary.BigEndian.PutUint16(v[22:24], OFPFF_SEND_FLOW_REM|OFPFF_CHECK_OVERLAP)
+	binary.BigEndian.PutUint16(v[22:24], OFPFF_SEND_FLOW_REM)
 
 	if r.match == nil {
 		return nil, errors.New("empty flow match")

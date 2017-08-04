@@ -24,10 +24,9 @@ package l2switch
 import (
 	"bytes"
 	"fmt"
-	"math"
-	"math/rand"
 	"net"
-	"strconv"
+	"sync"
+	"time"
 
 	"github.com/superkkt/cherry/network"
 	"github.com/superkkt/cherry/northbound/app"
@@ -46,29 +45,18 @@ var (
 type L2Switch struct {
 	app.BaseProcessor
 	vlanID    uint16
-	cache     *flowCache
 	stormCtrl *stormController
 	db        Database
-	// Idle timeout in second.
-	idleTimeout uint16
-	// Hard timeout in second.
-	hardTimeout uint16
+	once      sync.Once
 }
 
 type Database interface {
-	// AddFlow adds a new flow into the database and returns its unique ID.
-	AddFlow(swDPID uint64, dstMAC net.HardwareAddr, outPort uint32) (flowID uint64, err error)
-
-	// RemoveFlow removes the flow specified by flowID from the database.
-	RemoveFlow(flowID uint64) error
-
-	// RemoveFlows remove all the flows that belong to the device whose ID is swDPID.
-	RemoveFlows(swDPID uint64) error
+	// MACAddrs returns all the registered MAC addresses.
+	MACAddrs() ([]net.HardwareAddr, error)
 }
 
 func New(db Database) *L2Switch {
 	return &L2Switch{
-		cache:     newFlowCache(),
 		stormCtrl: newStormController(100, new(flooder)),
 		db:        db,
 	}
@@ -82,26 +70,11 @@ func (r *flooder) flood(ingress *network.Port, packet []byte) error {
 }
 
 func (r *L2Switch) Init() error {
-	vlanID := viper.GetInt("flow.vlan_id")
+	vlanID := viper.GetInt("default.vlan_id")
 	if vlanID < 0 || vlanID > 4095 {
-		return errors.New("invalid flow.vlan_id in the config file")
+		return errors.New("invalid default.vlan_id in the config file")
 	}
 	r.vlanID = uint16(vlanID)
-
-	idleTimeout := viper.GetInt("flow.idle_timeout")
-	if idleTimeout <= 0 || idleTimeout > math.MaxUint16 {
-		return errors.New("invalid flow.idle_timeout in the config file")
-	}
-	r.idleTimeout = uint16(idleTimeout)
-
-	hardTimeout := viper.GetInt("flow.hard_timeout")
-	if hardTimeout < 0 || hardTimeout > math.MaxUint16 {
-		return errors.New("invalid flow.hard_timeout in the config file")
-	}
-	if hardTimeout > 0 && hardTimeout <= idleTimeout*2 {
-		return fmt.Errorf("flow.hard_timeout should be greater than %v seconds", idleTimeout*2)
-	}
-	r.hardTimeout = uint16(hardTimeout)
 
 	return nil
 }
@@ -115,27 +88,16 @@ func isBroadcast(eth *protocol.Ethernet) bool {
 }
 
 type flowParam struct {
-	device    *network.Device
-	etherType uint16
-	inPort    uint32
-	outPort   uint32
-	srcMAC    net.HardwareAddr
-	dstMAC    net.HardwareAddr
+	device  *network.Device
+	dstMAC  net.HardwareAddr
+	outPort uint32
 }
 
 func (r *flowParam) String() string {
-	return fmt.Sprintf("Device=%v, EtherType=%v, InPort=%v, OutPort=%v, SrcMAC=%v, DstMAC=%v",
-		r.device.ID(), r.etherType, r.inPort, r.outPort, r.srcMAC, r.dstMAC)
+	return fmt.Sprintf("Device=%v, DstMAC=%v, OutPort=%v", r.device.ID(), r.dstMAC, r.outPort)
 }
 
-func (r *L2Switch) installFlow(p flowParam) error {
-	// Skip the installation if p is already installed
-	if r.cache.exist(p) {
-		logger.Debugf("skipping duplicated flow installation: deviceID=%v, dstMAC=%v, outPort=%v",
-			p.device.ID(), p.dstMAC, p.outPort)
-		return nil
-	}
-
+func (r *L2Switch) setFlow(p flowParam) error {
 	f := p.device.Factory()
 	match, err := f.NewMatch()
 	if err != nil {
@@ -157,18 +119,17 @@ func (r *L2Switch) installFlow(p flowParam) error {
 	}
 	inst.ApplyAction(action)
 
-	flow, err := f.NewFlowMod(openflow.FlowAdd)
+	// For MODIFY requests, if a flow entry with identical header fields does not
+	// current reside in any table, the MODIFY acts like an ADD, and the new flow
+	// entry must be inserted with zeroed counters. Otherwise, the actions field is
+	// changed on the existing entry and its counters and idle time fields are left
+	// unchanged.
+	flow, err := f.NewFlowMod(openflow.FlowModify)
 	if err != nil {
 		return err
 	}
-	flow.SetCookie(r.getFlowID(p))
 	flow.SetTableID(p.device.FlowTableID())
-	flow.SetIdleTimeout(r.idleTimeout)
-	if r.hardTimeout > 0 {
-		// Extra random interval in order to avoid a lot of timed-out flows at once.
-		padding := uint16(rand.Intn(5))
-		flow.SetHardTimeout(r.hardTimeout + padding)
-	}
+	flow.SetIdleTimeout(30)
 	flow.SetPriority(10)
 	flow.SetFlowMatch(match)
 	flow.SetFlowInstruction(inst)
@@ -185,28 +146,7 @@ func (r *L2Switch) installFlow(p flowParam) error {
 	}
 	logger.Debugf("installed a flow rule: %+v", p)
 
-	r.cache.add(p)
-	logger.Debugf("added a flow cache entry: deviceID=%v, dstMAC=%v, outPort=%v", p.device.ID(), p.dstMAC, p.outPort)
-
 	return nil
-}
-
-func (r *L2Switch) getFlowID(p flowParam) uint64 {
-	dpid, err := strconv.ParseUint(p.device.ID(), 10, 64)
-	if err != nil {
-		logger.Errorf("failed to parse the switch DPID: %v", err)
-		// Fallback.
-		return 0
-	}
-
-	flowID, err := r.db.AddFlow(dpid, p.dstMAC, p.outPort)
-	if err != nil {
-		logger.Errorf("failed to add a new flow: %v", err)
-		// Fallback.
-		return 0
-	}
-
-	return flowID
 }
 
 type switchParam struct {
@@ -219,14 +159,11 @@ type switchParam struct {
 
 func (r *L2Switch) switching(p switchParam) error {
 	param := flowParam{
-		device:    p.ingress.Device(),
-		etherType: p.ethernet.Type,
-		inPort:    p.ingress.Number(),
-		outPort:   p.egress.Number(),
-		srcMAC:    p.ethernet.SrcMAC,
-		dstMAC:    p.ethernet.DstMAC,
+		device:  p.ingress.Device(),
+		dstMAC:  p.ethernet.DstMAC,
+		outPort: p.egress.Number(),
 	}
-	if err := r.installFlow(param); err != nil {
+	if err := r.setFlow(param); err != nil {
 		return err
 	}
 
@@ -372,27 +309,86 @@ func (r *L2Switch) OnPortDown(finder network.Finder, port *network.Port) error {
 	return r.BaseProcessor.OnPortDown(finder, port)
 }
 
-func (r *L2Switch) OnFlowRemoved(finder network.Finder, flow openflow.FlowRemoved) error {
-	if err := r.db.RemoveFlow(flow.Cookie()); err != nil {
-		logger.Errorf("failed to remove a flow: %v", err)
-		// Ignore this error and keep go on.
-	}
+func (r *L2Switch) OnDeviceUp(finder network.Finder, device *network.Device) error {
+	r.once.Do(func() {
+		// Run the background flow manager.
+		go r.flowManager(finder)
+	})
 
-	return r.BaseProcessor.OnFlowRemoved(finder, flow)
+	return r.BaseProcessor.OnDeviceUp(finder, device)
 }
 
-func (r *L2Switch) OnDeviceDown(finder network.Finder, device *network.Device) error {
-	dpid, err := strconv.ParseUint(device.ID(), 10, 64)
+func (r *L2Switch) flowManager(finder network.Finder) {
+	logger.Debug("executed flow manager")
+
+	ticker := time.Tick(3 * time.Minute)
+	// Infinite loop.
+	for range ticker {
+		mac, err := r.db.MACAddrs()
+		if err != nil {
+			logger.Errorf("failed to get MAC addresses: %v", err)
+			continue
+		}
+		logger.Debugf("got %v MAC addresses", len(mac))
+
+		for _, addr := range mac {
+			logger.Debugf("modifying the flow for %v...", addr)
+			r.modifyFlows(finder, addr)
+		}
+	}
+}
+
+func (r *L2Switch) modifyFlows(finder network.Finder, mac net.HardwareAddr) {
+	// Locate the destination node for the address.
+	node, status, err := finder.Node(mac)
 	if err != nil {
-		logger.Errorf("failed to parse the device ID: %v", device.ID())
-		return r.BaseProcessor.OnDeviceDown(finder, device)
+		logger.Errorf("failed to locate the node %v: %v", mac, err)
+		return
+	}
+	if status != network.LocationDiscovered {
+		logger.Debugf("skip flow management for %v: undiscovered location", mac)
+		return
 	}
 
-	if err := r.db.RemoveFlows(dpid); err != nil {
-		logger.Errorf("failed to remove all flow histories: %v", err)
-		return r.BaseProcessor.OnDeviceDown(finder, device)
+	// Disconnected node?
+	port := node.Port().Value()
+	if port.IsPortDown() || port.IsLinkDown() {
+		logger.Debugf("skip flow management for %v: link down", mac)
+		return
 	}
-	logger.Debugf("removed all the flow histories for DPID %v", device.ID())
 
-	return r.BaseProcessor.OnDeviceDown(finder, device)
+	// Update the flows on all devices.
+	for _, device := range finder.Devices() {
+		var egress *network.Port
+
+		// Reside on this device?
+		if device.ID() == node.Port().Device().ID() {
+			egress = node.Port()
+		} else {
+			// Find the shortest path from this device to an another device that is connected to the destination node.
+			path := finder.Path(device.ID(), node.Port().Device().ID())
+			// No path to the destination node?
+			if len(path) == 0 {
+				logger.Debugf("skip flow management for %v on %v: no path", mac, device.ID())
+				continue
+			}
+			egress = path[0][0]
+		}
+
+		if egress.Value().IsPortDown() || egress.Value().IsLinkDown() {
+			logger.Debugf("skip flow management for %v on %v: link down", mac, device.ID())
+			continue
+		}
+
+		flow := flowParam{
+			device:  device,
+			dstMAC:  mac,
+			outPort: egress.Number(),
+		}
+		if err := r.setFlow(flow); err != nil {
+			logger.Errorf("failed to modify the flows for %v on %v: %v", mac, device.ID(), err)
+			continue
+		}
+		logger.Debugf("modified the flows: DPID=%v, DstMAC=%v, OutPort=%v", device.ID(), mac, egress.Number())
+	}
 }

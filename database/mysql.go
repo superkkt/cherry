@@ -1479,79 +1479,6 @@ func (r *MySQL) Elect(uid string, expiration time.Duration) (elected bool, err e
 	return elected, nil
 }
 
-// AddFlow adds a new flow into the database and returns its unique ID.
-func (r *MySQL) AddFlow(swDPID uint64, dstMAC net.HardwareAddr, outPort uint32) (flowID uint64, err error) {
-	f := func(db *sql.DB) error {
-		tx, err := db.Begin()
-		if err != nil {
-			return err
-		}
-		defer tx.Rollback()
-
-		var switchID uint64
-		qry := "SELECT `id` FROM `switch` WHERE `dpid` = ? FOR UPDATE"
-		err = tx.QueryRow(qry, swDPID).Scan(&switchID)
-		if err != nil {
-			return err
-		}
-
-		qry = "INSERT INTO `flow` (`switch_id`, `dst_mac`, `out_port`, `created_timestamp`) VALUES (?, ?, ?, NOW())"
-		result, err := tx.Exec(qry, switchID, dstMAC.String(), outPort)
-		if err != nil {
-			return err
-		}
-
-		id, err := result.LastInsertId()
-		if err != nil {
-			return err
-		}
-		flowID = uint64(id)
-
-		return tx.Commit()
-	}
-
-	if err := r.query(f); err != nil {
-		return 0, err
-	}
-
-	return flowID, nil
-}
-
-// RemoveFlow removes the flow specified by flowID from the database.
-func (r *MySQL) RemoveFlow(flowID uint64) error {
-	f := func(db *sql.DB) error {
-		qry := "UPDATE `flow` SET `removed` = TRUE, `removed_timestamp` = NOW() WHERE `id` = ?"
-		_, err := db.Exec(qry, flowID)
-		if err != nil {
-			return err
-		}
-
-		return nil
-	}
-
-	return r.query(f)
-}
-
-// RemoveFlows remove all the flows that belong to the device whose ID is swDPID.
-func (r *MySQL) RemoveFlows(swDPID uint64) error {
-	f := func(db *sql.DB) error {
-		qry := "UPDATE `flow` A "
-		qry += "JOIN `switch` B "
-		qry += "ON A.`switch_id` = B.`id` "
-		qry += "SET A.`removed` = TRUE, A.`removed_timestamp` = NOW() "
-		qry += "WHERE B.`dpid` = ?"
-
-		_, err := db.Exec(qry, swDPID)
-		if err != nil {
-			return err
-		}
-
-		return nil
-	}
-
-	return r.query(f)
-}
-
 func (r *MySQL) GetActivatedHosts() (hosts []proxyarp.Host, err error) {
 	f := func(db *sql.DB) error {
 		qry := "SELECT INET_NTOA(B.`address`), HEX(A.`mac`) FROM `host` A JOIN `ip` B ON A.`ip_id` = B.`id`"
@@ -1590,4 +1517,38 @@ func (r *MySQL) GetActivatedHosts() (hosts []proxyarp.Host, err error) {
 	}
 
 	return hosts, nil
+}
+
+// MACAddrs returns all the registered MAC addresses.
+func (r *MySQL) MACAddrs() (result []net.HardwareAddr, err error) {
+	f := func(db *sql.DB) error {
+		rows, err := db.Query("SELECT HEX(`mac`) FROM `host`")
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var mac string
+			if err := rows.Scan(&mac); err != nil {
+				return err
+			}
+
+			// Parse the MAC address.
+			v, err := decodeMAC(mac)
+			if err != nil {
+				return err
+			}
+
+			result = append(result, v)
+		}
+
+		return rows.Err()
+	}
+
+	if err = r.query(f); err != nil {
+		return nil, err
+	}
+
+	return result, nil
 }
