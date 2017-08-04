@@ -28,14 +28,12 @@ import (
 	"math/rand"
 	"net"
 	"strconv"
-	"time"
 
 	"github.com/superkkt/cherry/network"
 	"github.com/superkkt/cherry/northbound/app"
 	"github.com/superkkt/cherry/openflow"
 	"github.com/superkkt/cherry/protocol"
 
-	lru "github.com/hashicorp/golang-lru"
 	"github.com/pkg/errors"
 	"github.com/superkkt/go-logging"
 	"github.com/superkkt/viper"
@@ -55,43 +53,6 @@ type L2Switch struct {
 	idleTimeout uint16
 	// Hard timeout in second.
 	hardTimeout uint16
-}
-
-type flowCache struct {
-	cache *lru.Cache
-}
-
-func newFlowCache() *flowCache {
-	c, err := lru.New(8192)
-	if err != nil {
-		panic(fmt.Sprintf("LRU flow cache: %v", err))
-	}
-
-	return &flowCache{
-		cache: c,
-	}
-}
-
-func (r *flowCache) getKeyString(flow flowParam) string {
-	return fmt.Sprintf("%v/%v/%v", flow.device.ID(), flow.dstMAC, flow.outPort)
-}
-
-func (r *flowCache) exist(flow flowParam) bool {
-	v, ok := r.cache.Get(r.getKeyString(flow))
-	if !ok {
-		return false
-	}
-	// Timeout?
-	if time.Since(v.(time.Time)) > 5*time.Second {
-		return false
-	}
-
-	return true
-}
-
-func (r *flowCache) add(flow flowParam) {
-	// Update if the key already exists
-	r.cache.Add(r.getKeyString(flow), time.Now())
 }
 
 type Database interface {
