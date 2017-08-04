@@ -321,7 +321,7 @@ func (r *L2Switch) OnDeviceUp(finder network.Finder, device *network.Device) err
 func (r *L2Switch) flowManager(finder network.Finder) {
 	logger.Debug("executed flow manager")
 
-	ticker := time.Tick(3 * time.Minute)
+	ticker := time.Tick(1 * time.Minute)
 	// Infinite loop.
 	for range ticker {
 		mac, err := r.db.MACAddrs()
