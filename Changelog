@@ -1,3 +1,7 @@
+* v0.13.1 (Sat Aug 05 16:45:00 2017 +0900)
+
+075e31c Ignore the ARP reply received from an edge among switches
+
 * v0.13.0 (Fri Aug 04 23:37:48 2017 +0900)
 
 fe412ce Remove duplicated link down check
