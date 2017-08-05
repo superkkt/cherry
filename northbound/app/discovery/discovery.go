@@ -105,8 +105,10 @@ func (r *processor) runARPSender(device *network.Device) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
+		ticker := time.Tick(10 * time.Second)
+
 		// Infinite loop.
-		for {
+		for range ticker {
 			select {
 			case <-ctx.Done():
 				logger.Debugf("terminating the ARP sender: deviceID=%v", device.ID())
@@ -118,8 +120,6 @@ func (r *processor) runARPSender(device *network.Device) {
 				logger.Errorf("failed to send ARP probes: %v", err)
 				// Ignore this error and keep go on.
 			}
-			// 5 <= interval <= 15 (seccond)
-			time.Sleep(time.Duration((5000 + rand.Intn(10000))) * time.Millisecond)
 		}
 	}()
 	r.canceller[device.ID()] = cancel
@@ -202,6 +202,11 @@ func (r *processor) processARPReply(finder network.Finder, ingress *network.Port
 		// Drop this packet. Do not pass it to the next processors.
 		return nil
 	}
+	if finder.IsEdge(ingress) {
+		logger.Debugf("dropping ARP reply received from an edge among switches: ingress=%v, arp=%v", ingress.ID(), arp)
+		// Drop this packet. Do not pass it to the next processors.
+		return nil
+	}
 
 	swDPID, err := strconv.ParseUint(ingress.Device().ID(), 10, 64)
 	if err != nil {
@@ -263,4 +268,28 @@ func (r *processor) OnDeviceDown(finder network.Finder, device *network.Device) 
 
 	// Propagate this event to the next processors.
 	return r.BaseProcessor.OnDeviceDown(finder, device)
+}
+
+func (r *processor) OnTopologyChange(finder network.Finder) error {
+	for _, device := range finder.Devices() {
+		swDPID, err := strconv.ParseUint(device.ID(), 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid device ID: %v", device.ID())
+		}
+
+		for _, port := range device.Ports() {
+			if finder.IsEdge(port) == false {
+				continue
+			}
+
+			if err := r.db.ResetHostLocationsByPort(swDPID, uint16(port.Number())); err != nil {
+				logger.Errorf("failed to reset host locations by port: DPID=%v, PortNum=%v, err=%v", swDPID, port.Number(), err)
+				continue
+			}
+			logger.Debugf("reset host locations that belong to the edge port: DPID=%v, PortNum=%v", swDPID, port.Number())
+		}
+	}
+
+	// Propagate this event to the next processors.
+	return r.BaseProcessor.OnTopologyChange(finder)
 }
