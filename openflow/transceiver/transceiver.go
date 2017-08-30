@@ -462,19 +462,18 @@ func (r *Transceiver) handleEchoReply(packet []byte) error {
 
 	data := msg.Data()
 	if data == nil || len(data) != 8 {
-		// I notice some broken switch sends an unexpected echo reply data.
-		// So, ignores the soft error to avoid switch disconnection.
-		logger.Debug("unexpected ECHO_REPLY data")
-		return nil
-	}
-	timestamp := time.Time{}
-	if err := timestamp.GobDecode(data); err != nil {
-		logger.Debug("unexpected timestamp data in the ECHO_REPLY packet")
-		return nil
+		// Some broken switch sends an unexpected echo reply data.
+		logger.Debug("unexpected ECHO_REPLY data: invalid data length")
+	} else {
+		timestamp := time.Time{}
+		if err := timestamp.GobDecode(data); err != nil {
+			logger.Debug("unexpected timestamp data in the ECHO_REPLY packet")
+		} else {
+			// Network latency
+			logger.Debugf("transceiver latency: %v", time.Now().Sub(timestamp))
+		}
 	}
 
-	// Network latency
-	logger.Debugf("transceiver latency: %v", time.Now().Sub(timestamp))
 	// Reset the ping counter
 	r.pingCounter = 0
 
