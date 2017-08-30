@@ -122,7 +122,7 @@ func (r *session) OnError(f openflow.Factory, w transceiver.Writer, v openflow.E
 		return nil
 	}
 
-	logger.Errorf("ERROR (class=%v, code=%v, data=%v)", v.Class(), v.Code(), v.Data())
+	logger.Errorf("ERROR (DPID=%v, class=%v, code=%v, data=%v)", r.device.ID(), v.Class(), v.Code(), v.Data())
 	if !r.negotiated {
 		return errNotNegotiated
 	}
