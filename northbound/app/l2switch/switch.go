@@ -119,12 +119,13 @@ func (r *L2Switch) setFlow(p flowParam) error {
 	}
 	inst.ApplyAction(action)
 
-	// For MODIFY requests, if a flow entry with identical header fields does not
-	// current reside in any table, the MODIFY acts like an ADD, and the new flow
-	// entry must be inserted with zeroed counters. Otherwise, the actions field is
-	// changed on the existing entry and its counters and idle time fields are left
-	// unchanged.
-	flow, err := f.NewFlowMod(openflow.FlowModify)
+	// For valid (non-overlapping) ADD requests, or those with no overlap checking,
+	// the switch must insert the flow entry at the lowest numbered table for which
+	// the switch supports all wildcards set in the flow_match struct, and for which
+	// the priority would be observed during the matching process. If a flow entry
+	// with identical header fields and priority already resides in any table, then
+	// that entry, including its counters, must be removed, and the new flow entry added.
+	flow, err := f.NewFlowMod(openflow.FlowAdd)
 	if err != nil {
 		return err
 	}
