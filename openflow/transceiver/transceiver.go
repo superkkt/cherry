@@ -76,6 +76,7 @@ type Handler interface {
 	OnPortStatus(openflow.Factory, Writer, openflow.PortStatus) error
 	OnFlowRemoved(openflow.Factory, Writer, openflow.FlowRemoved) error
 	OnPacketIn(openflow.Factory, Writer, openflow.PacketIn) error
+	OnBarrierReply(openflow.Factory, Writer, openflow.BarrierReply) error
 }
 
 func NewTransceiver(stream *Stream, handler Handler) *Transceiver {
@@ -385,6 +386,8 @@ func (r *Transceiver) handleOF10Message(packet []byte) error {
 		return r.handleFlowRemoved(packet)
 	case of10.OFPT_PACKET_IN:
 		return r.handlePacketIn(packet)
+	case of10.OFPT_BARRIER_REPLY:
+		return r.handleBarrierReply(packet)
 	default:
 		// Unsupported message. Do nothing.
 		return nil
@@ -417,6 +420,8 @@ func (r *Transceiver) handleOF13Message(packet []byte) error {
 		return r.handleFlowRemoved(packet)
 	case of13.OFPT_PACKET_IN:
 		return r.handlePacketIn(packet)
+	case of13.OFPT_BARRIER_REPLY:
+		return r.handleBarrierReply(packet)
 	default:
 		// Unsupported message. Do nothing.
 		return nil
@@ -586,6 +591,18 @@ func (r *Transceiver) handlePacketIn(packet []byte) error {
 	}
 
 	return r.observer.OnPacketIn(r.factory, r, msg)
+}
+
+func (r *Transceiver) handleBarrierReply(packet []byte) error {
+	msg, err := r.factory.NewBarrierReply()
+	if err != nil {
+		return err
+	}
+	if err := msg.UnmarshalBinary(packet); err != nil {
+		return err
+	}
+
+	return r.observer.OnBarrierReply(r.factory, r, msg)
 }
 
 func (r *Transceiver) Close() error {

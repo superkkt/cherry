@@ -30,7 +30,8 @@ import (
 )
 
 type of10Session struct {
-	device *Device
+	device     *Device
+	negotiated bool
 }
 
 func newOF10Session(d *Device) *of10Session {
@@ -43,27 +44,33 @@ func (r *of10Session) OnHello(f openflow.Factory, w transceiver.Writer, v openfl
 	if err := sendHello(f, w); err != nil {
 		return errors.Wrap(err, "failed to send HELLO")
 	}
+	if err := sendRemovingAllFlows(f, w); err != nil {
+		return errors.Wrap(err, "failed to send FLOW_MOD to remove all flows")
+	}
 	if err := sendSetConfig(f, w); err != nil {
 		return errors.Wrap(err, "failed to send SET_CONFIG")
+	}
+	if err := setARPSenderWithBarrier(f, w); err != nil {
+		return errors.Wrap(err, "failed to set ARP sender flow")
+	}
+
+	return nil
+}
+
+func (r *of10Session) OnBarrierReply(f openflow.Factory, w transceiver.Writer, v openflow.BarrierReply) error {
+	if r.negotiated {
+		logger.Debugf("ignore the barrier reply: DPID=%v", r.device.ID())
+		// Do nothing if this session has been already negotiated.
+		return nil
+	}
+
+	if err := sendDescriptionRequest(f, w); err != nil {
+		return errors.Wrap(err, "failed to send DESCRIPTION_REQUEST")
 	}
 	if err := sendFeaturesRequest(f, w); err != nil {
 		return errors.Wrap(err, "failed to send FEATURE_REQUEST")
 	}
-	if err := sendBarrierRequest(f, w); err != nil {
-		return errors.Wrap(err, "failed to send BARRIER_REQUEST")
-	}
-	if err := sendRemovingAllFlows(f, w); err != nil {
-		return errors.Wrap(err, "failed to send FLOW_MOD to remove all flows")
-	}
-	if err := sendDescriptionRequest(f, w); err != nil {
-		return errors.Wrap(err, "failed to send DESCRIPTION_REQUEST")
-	}
-	if err := sendBarrierRequest(f, w); err != nil {
-		return errors.Wrap(err, "failed to send BARRIER_REQUEST")
-	}
-	if err := setARPSender(f, w); err != nil {
-		return errors.Wrap(err, "failed to set ARP sender flow")
-	}
+	r.negotiated = true
 
 	return nil
 }
@@ -84,7 +91,7 @@ func (r *of10Session) OnFeaturesReply(f openflow.Factory, w transceiver.Writer, 
 
 		r.device.setPort(p.Number(), p)
 
-		if !p.IsPortDown() && !p.IsLinkDown() && r.device.isValid() {
+		if !p.IsPortDown() && !p.IsLinkDown() {
 			// Send LLDP to update network topology
 			if err := sendLLDP(r.device, p); err != nil {
 				logger.Errorf("failed to send LLDP: %v", err)

@@ -138,7 +138,7 @@ func (r *session) OnFeaturesReply(f openflow.Factory, w transceiver.Writer, v op
 	}
 
 	// First FeaturesReply packet?
-	if r.device.isValid() {
+	if r.device.isReady() {
 		// No, the device already has been initialized that means this is not the first
 		// FeaturesReply packet. This additional FeaturesReply packet is raised by our
 		// device explorer. So, we have to skip the following device initialization routine.
@@ -153,6 +153,8 @@ func (r *session) OnFeaturesReply(f openflow.Factory, w transceiver.Writer, v op
 		return errors.New("duplicated device DPID (aux. connection is not supported yet)")
 	}
 	r.device.setID(dpid)
+	logger.Debugf("device is ready: DPID=%v", dpid)
+
 	// We assume a device is up after setting its DPID
 	if err := r.listener.OnDeviceUp(r.finder, r.device); err != nil {
 		return err
@@ -328,7 +330,7 @@ func (r *session) OnPortStatus(f openflow.Factory, w transceiver.Writer, v openf
 	r.sendPortEvent(port.Number(), up)
 
 	// Is this an enabled port?
-	if up && r.device.isValid() {
+	if up && r.device.isReady() {
 		// Send LLDP to update network topology
 		if err := sendLLDP(r.device, port); err != nil {
 			return err
@@ -461,6 +463,12 @@ func (r *session) OnPacketIn(f openflow.Factory, w transceiver.Writer, v openflo
 	}
 	logger.Debugf("PACKET_IN ethernet: src=%v, dst=%v, type=%v", ethernet.SrcMAC, ethernet.DstMAC, ethernet.Type)
 
+	// Do nothing if the ingress device is not yet ready.
+	if r.device.isReady() == false {
+		logger.Debugf("device is not ready: ignoring PACKET_IN from %v:%v", r.device.ID(), v.InPort())
+		return nil
+	}
+
 	inPort := r.device.Port(v.InPort())
 	if inPort == nil {
 		logger.Errorf("failed to find a port: deviceID=%v, portNum=%v, so ignore PACKET_IN..", r.device.ID(), v.InPort())
@@ -483,6 +491,15 @@ func (r *session) OnPacketIn(f openflow.Factory, w transceiver.Writer, v openflo
 	return r.listener.OnPacketIn(r.finder, inPort, ethernet)
 }
 
+func (r *session) OnBarrierReply(f openflow.Factory, w transceiver.Writer, v openflow.BarrierReply) error {
+	if !r.negotiated {
+		return errNotNegotiated
+	}
+	logger.Debugf("BARRIER_REPLY is received (device=%v)", r.device.ID())
+
+	return r.handler.OnBarrierReply(f, w, v)
+}
+
 func (r *session) Run(ctx context.Context) {
 	stopExplorer := r.runDeviceExplorer(ctx)
 	logger.Debugf("started a new device explorer")
@@ -495,7 +512,7 @@ func (r *session) Run(ctx context.Context) {
 	stopExplorer()
 	r.transceiver.Close()
 	r.device.Close()
-	if r.device.isValid() {
+	if r.device.isReady() {
 		if err := r.listener.OnDeviceDown(r.finder, r.device); err != nil {
 			logger.Errorf("OnDeviceDown: %v", err)
 		}
@@ -518,7 +535,7 @@ func (r *session) runDeviceExplorer(ctx context.Context) context.CancelFunc {
 				logger.Debugf("terminating the device explorer: deviceID=%v", r.device.ID())
 				return
 			case <-ticker:
-				if r.device.isValid() == false {
+				if r.device.isReady() == false {
 					logger.Debug("skip to execute the device explorer due to incomplete device status")
 					continue
 				}
@@ -610,7 +627,9 @@ func sendPortDescriptionRequest(f openflow.Factory, w transceiver.Writer) error 
 	return w.Write(msg)
 }
 
-func setARPSender(f openflow.Factory, w transceiver.Writer) error {
+// setARPSender installs a flow that to send ARP packets to controllers and then
+// sends a barrier request.
+func setARPSenderWithBarrier(f openflow.Factory, w transceiver.Writer) error {
 	match, err := f.NewMatch()
 	if err != nil {
 		return err

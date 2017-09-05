@@ -103,7 +103,7 @@ func (r *Device) setID(id string) {
 	r.id = id
 }
 
-func (r *Device) isValid() bool {
+func (r *Device) isReady() bool {
 	// Read lock
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
@@ -282,7 +282,7 @@ func (r *Device) RemoveAllFlows() error {
 		return err
 	}
 
-	return setARPSender(r.factory, r.session.transceiver)
+	return setARPSenderWithBarrier(r.factory, r.session.transceiver)
 }
 
 func (r *Device) RemoveFlow(match openflow.Match, port openflow.OutPort) error {
