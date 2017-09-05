@@ -459,6 +459,8 @@ func (r *session) OnPacketIn(f openflow.Factory, w transceiver.Writer, v openflo
 	if err != nil {
 		return err
 	}
+	logger.Debugf("PACKET_IN ethernet: src=%v, dst=%v, type=%v", ethernet.SrcMAC, ethernet.DstMAC, ethernet.Type)
+
 	inPort := r.device.Port(v.InPort())
 	if inPort == nil {
 		logger.Errorf("failed to find a port: deviceID=%v, portNum=%v, so ignore PACKET_IN..", r.device.ID(), v.InPort())

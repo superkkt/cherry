@@ -220,7 +220,7 @@ func (r *processor) processARPReply(finder network.Finder, ingress *network.Port
 	}
 	// Remove installed flows for this host if the location has been changed.
 	if updated {
-		logger.Infof("host location updated: IP=%v, MAC=%v, deviceID=%v, portNum=%v", arp.SPA, arp.SHA, swDPID, ingress.Number())
+		logger.Infof("update host location: IP=%v, MAC=%v, deviceID=%v, portNum=%v", arp.SPA, arp.SHA, swDPID, ingress.Number())
 		// Remove flows from all devices.
 		for _, device := range finder.Devices() {
 			if err := device.RemoveFlowByMAC(arp.SHA); err != nil {
@@ -229,6 +229,8 @@ func (r *processor) processARPReply(finder network.Finder, ingress *network.Port
 			}
 			logger.Infof("removed flows whose destination MAC address is %v on %v", arp.SHA, device.ID())
 		}
+	} else {
+		logger.Debugf("skip to update host location: no location change: IP=%v, MAC=%v, deviceID=%v, portNum=%v", arp.SPA, arp.SHA, swDPID, ingress.Number())
 	}
 
 	// This ARP reply packet has been processed. Do not pass it to the next processors.
