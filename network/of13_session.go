@@ -32,8 +32,11 @@ import (
 )
 
 type of13Session struct {
-	device     *Device
-	negotiated bool
+	device *Device
+	// True after we get the first barrier reply that means all the previously
+	// installed flows on the device have been removed, and then the ACL flow for
+	// ARP packes has been installed.
+	checkpoint bool
 }
 
 func newOF13Session(d *Device) *of13Session {
@@ -60,7 +63,7 @@ func (r *of13Session) OnHello(f openflow.Factory, w transceiver.Writer, v openfl
 }
 
 func (r *of13Session) OnBarrierReply(f openflow.Factory, w transceiver.Writer, v openflow.BarrierReply) error {
-	if r.negotiated {
+	if r.checkpoint {
 		logger.Debugf("ignore the barrier reply: DPID=%v", r.device.ID())
 		// Do nothing if this session has been already negotiated.
 		return nil
@@ -69,7 +72,7 @@ func (r *of13Session) OnBarrierReply(f openflow.Factory, w transceiver.Writer, v
 	if err := sendFeaturesRequest(f, w); err != nil {
 		return errors.Wrap(err, "failed to send FEATURE_REQUEST")
 	}
-	r.negotiated = true
+	r.checkpoint = true
 
 	return nil
 }

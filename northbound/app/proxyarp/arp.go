@@ -125,7 +125,7 @@ func (r *ProxyARP) OnPacketIn(finder network.Finder, ingress *network.Port, eth 
 	if isARPAnnouncement(arp) {
 		// We don't allow a host sends ARP announcement to the network. This controller only can send it,
 		// and we will flood the announcement to all switch devices using PACKET_OUT  when we need it.
-		logger.Infof("drop ARP announcements.. ingress=%v (%v)", ingress.ID(), arp)
+		logger.Debugf("drop ARP announcements.. ingress=%v (%v)", ingress.ID(), arp)
 		return nil
 	}
 	// ARP request?

@@ -93,7 +93,7 @@ type flowParam struct {
 	outPort uint32
 }
 
-func (r *flowParam) String() string {
+func (r flowParam) String() string {
 	return fmt.Sprintf("Device=%v, DstMAC=%v, OutPort=%v", r.device.ID(), r.dstMAC, r.outPort)
 }
 
@@ -145,7 +145,7 @@ func (r *L2Switch) setFlow(p flowParam) error {
 	if err := p.device.SendMessage(barrier); err != nil {
 		return err
 	}
-	logger.Debugf("installed a flow rule: %+v", p)
+	logger.Debugf("installed a flow rule: %v", p)
 
 	return nil
 }
@@ -280,6 +280,7 @@ func (r *L2Switch) removeAllFlows(devices []*network.Device) error {
 		if err := d.RemoveAllFlows(); err != nil {
 			return err
 		}
+		logger.Debugf("removed all flows from DPID %v", d.ID())
 	}
 
 	return nil
@@ -386,6 +387,5 @@ func (r *L2Switch) modifyFlows(finder network.Finder, mac net.HardwareAddr) {
 			logger.Errorf("failed to modify the flows for %v on %v: %v", mac, device.ID(), err)
 			continue
 		}
-		logger.Debugf("modified the flows: DPID=%v, DstMAC=%v, OutPort=%v", device.ID(), mac, egress.Number())
 	}
 }

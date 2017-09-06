@@ -436,7 +436,7 @@ func (r *session) handleLLDP(inPort *Port, ethernet *protocol.Ethernet) error {
 	deviceID, portNum, err := extractDeviceInfo(lldp)
 	if err != nil {
 		// Do nothing if this packet is not the one we sent
-		logger.Info("ignoring a LLDP packet issued by an unknown device")
+		logger.Debug("ignoring a LLDP packet issued by an unknown device")
 		return nil
 	}
 	port, err := r.findNeighborPort(deviceID, portNum)
@@ -465,7 +465,8 @@ func (r *session) OnPacketIn(f openflow.Factory, w transceiver.Writer, v openflo
 
 	// Do nothing if the ingress device is not yet ready.
 	if r.device.isReady() == false {
-		logger.Debugf("device is not ready: ignoring PACKET_IN from %v:%v", r.device.ID(), v.InPort())
+		logger.Debugf("device is not ready: ignoring PACKET_IN: srcMAC=%v, dstMAC=%v, inPort=%v", ethernet.SrcMAC, ethernet.DstMAC, v.InPort())
+		// Drop the incoming packet.
 		return nil
 	}
 
@@ -474,7 +475,8 @@ func (r *session) OnPacketIn(f openflow.Factory, w transceiver.Writer, v openflo
 		logger.Errorf("failed to find a port: deviceID=%v, portNum=%v, so ignore PACKET_IN..", r.device.ID(), v.InPort())
 		return nil
 	}
-	// Process LLDP, and then add an edge among two switches
+	// Process LLDP, and then add an edge among two switches. This should be executed
+	// before checking whether the ingress port is one of STP disabled ports!
 	if isLLDP(ethernet) {
 		return r.handleLLDP(inPort, ethernet)
 	}
