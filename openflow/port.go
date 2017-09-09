@@ -23,6 +23,7 @@ package openflow
 
 import (
 	"encoding"
+	"fmt"
 	"net"
 )
 
@@ -102,6 +103,10 @@ func (r *OutPort) SetValue(port uint32) {
 
 func (r *OutPort) Value() uint32 {
 	return r.value
+}
+
+func (r OutPort) String() string {
+	return fmt.Sprintf("logical: %v, value: %v", r.logical, r.value)
 }
 
 type InPort struct {

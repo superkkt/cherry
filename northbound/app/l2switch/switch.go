@@ -108,44 +108,11 @@ func (r *L2Switch) setFlow(p flowParam) error {
 
 	outPort := openflow.NewOutPort()
 	outPort.SetValue(p.outPort)
-	action, err := f.NewAction()
-	if err != nil {
-		return err
-	}
-	action.SetOutPort(outPort)
-	inst, err := f.NewInstruction()
-	if err != nil {
-		return err
-	}
-	inst.ApplyAction(action)
 
-	// For valid (non-overlapping) ADD requests, or those with no overlap checking,
-	// the switch must insert the flow entry at the lowest numbered table for which
-	// the switch supports all wildcards set in the flow_match struct, and for which
-	// the priority would be observed during the matching process. If a flow entry
-	// with identical header fields and priority already resides in any table, then
-	// that entry, including its counters, must be removed, and the new flow entry added.
-	flow, err := f.NewFlowMod(openflow.FlowAdd)
-	if err != nil {
+	if err := p.device.SetFlow(match, outPort); err != nil {
 		return err
 	}
-	flow.SetTableID(p.device.FlowTableID())
-	flow.SetIdleTimeout(30)
-	flow.SetPriority(10)
-	flow.SetFlowMatch(match)
-	flow.SetFlowInstruction(inst)
-
-	if err := p.device.SendMessage(flow); err != nil {
-		return err
-	}
-	barrier, err := f.NewBarrierRequest()
-	if err != nil {
-		return err
-	}
-	if err := p.device.SendMessage(barrier); err != nil {
-		return err
-	}
-	logger.Debugf("installed a flow rule: %v", p)
+	logger.Debugf("installed a new flow rule: %v", p)
 
 	return nil
 }

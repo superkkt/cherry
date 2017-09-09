@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/superkkt/cherry/openflow"
 	"github.com/superkkt/cherry/openflow/transceiver"
@@ -57,6 +58,7 @@ type Device struct {
 	flowTableID  uint8 // Table IDs that we install flows
 	factory      openflow.Factory
 	closed       bool
+	flowCache    *flowCache
 }
 
 var (
@@ -69,8 +71,9 @@ func newDevice(s *session) *Device {
 	}
 
 	return &Device{
-		session: s,
-		ports:   make(map[uint32]*Port),
+		session:   s,
+		ports:     make(map[uint32]*Port),
+		flowCache: newFlowCache(5 * time.Second),
 	}
 }
 
@@ -251,6 +254,67 @@ func (r *Device) IsClosed() bool {
 	return r.closed
 }
 
+func (r *Device) SetFlow(match openflow.Match, port openflow.OutPort) error {
+	// Write lock
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	if r.closed {
+		return ErrClosedDevice
+	}
+
+	action, err := r.factory.NewAction()
+	if err != nil {
+		return err
+	}
+	action.SetOutPort(port)
+
+	inst, err := r.factory.NewInstruction()
+	if err != nil {
+		return err
+	}
+	inst.ApplyAction(action)
+
+	// For valid (non-overlapping) ADD requests, or those with no overlap checking,
+	// the switch must insert the flow entry at the lowest numbered table for which
+	// the switch supports all wildcards set in the flow_match struct, and for which
+	// the priority would be observed during the matching process. If a flow entry
+	// with identical header fields and priority already resides in any table, then
+	// that entry, including its counters, must be removed, and the new flow entry added.
+	flow, err := r.factory.NewFlowMod(openflow.FlowAdd)
+	if err != nil {
+		return err
+	}
+	flow.SetTableID(r.flowTableID)
+	flow.SetIdleTimeout(30)
+	flow.SetPriority(10)
+	flow.SetFlowMatch(match)
+	flow.SetFlowInstruction(inst)
+
+	ok, err := r.flowCache.InProgress(match, port)
+	if err != nil {
+		return err
+	}
+	if ok {
+		logger.Debugf("skip to install a new flow: already installed one: deviceID=%v", r.id)
+		return nil
+	}
+	// Install the new flow.
+	if err := r.session.Write(flow); err != nil {
+		return err
+	}
+	if err := r.flowCache.Add(match, port); err != nil {
+		return err
+	}
+
+	barrier, err := r.factory.NewBarrierRequest()
+	if err != nil {
+		return err
+	}
+
+	return r.session.Write(barrier)
+}
+
 func (r *Device) RemoveAllFlows() error {
 	// Write lock
 	r.mutex.Lock()
@@ -281,10 +345,14 @@ func (r *Device) RemoveAllFlows() error {
 	if err := r.session.Write(flowmod); err != nil {
 		return err
 	}
+	r.flowCache.RemoveAll()
 
 	return setARPSenderWithBarrier(r.factory, r.session.transceiver)
 }
 
+// TODO:
+// Remove the flow caches that match the removed flows. This is not a critical
+// issue, but same flows cannot be installed until the caches are expired.
 func (r *Device) RemoveFlow(match openflow.Match, port openflow.OutPort) error {
 	// Write lock
 	r.mutex.Lock()
@@ -307,6 +375,9 @@ func (r *Device) RemoveFlow(match openflow.Match, port openflow.OutPort) error {
 	return r.session.Write(flowmod)
 }
 
+// TODO:
+// Remove the flow caches that match the removed flows. This is not a critical
+// issue, but same flows cannot be installed until the caches are expired.
 func (r *Device) RemoveFlowByMAC(mac net.HardwareAddr) error {
 	// Write lock
 	r.mutex.Lock()
