@@ -656,6 +656,8 @@ func setARPSenderWithBarrier(f openflow.Factory, w transceiver.Writer) error {
 	if err != nil {
 		return err
 	}
+	// This is the special flow that will not be removed unless the switch device reconnects.
+	flow.SetCookie(0x1 << 63)
 	// Permanent flow
 	flow.SetIdleTimeout(0)
 	flow.SetHardTimeout(0)
@@ -670,7 +672,9 @@ func setARPSenderWithBarrier(f openflow.Factory, w transceiver.Writer) error {
 	return sendBarrierRequest(f, w)
 }
 
-func sendRemovingAllFlows(f openflow.Factory, w transceiver.Writer) error {
+// sendRemoveAllFlows removes all the previously installed flows including special
+// flows for table-miss and ARP packets.
+func sendRemoveAllFlows(f openflow.Factory, w transceiver.Writer) error {
 	match, err := f.NewMatch() // Wildcard
 	if err != nil {
 		return err

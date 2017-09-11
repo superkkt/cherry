@@ -47,7 +47,7 @@ func (r *of10Session) OnHello(f openflow.Factory, w transceiver.Writer, v openfl
 	if err := sendHello(f, w); err != nil {
 		return errors.Wrap(err, "failed to send HELLO")
 	}
-	if err := sendRemovingAllFlows(f, w); err != nil {
+	if err := sendRemoveAllFlows(f, w); err != nil {
 		return errors.Wrap(err, "failed to send FLOW_MOD to remove all flows")
 	}
 	if err := sendSetConfig(f, w); err != nil {

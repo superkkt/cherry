@@ -315,7 +315,8 @@ func (r *Device) SetFlow(match openflow.Match, port openflow.OutPort) error {
 	return r.session.Write(barrier)
 }
 
-func (r *Device) RemoveAllFlows() error {
+// RemoveNormalFlows removes only the normal flows except special flows for table miss and ARP packets.
+func (r *Device) RemoveNormalFlows() error {
 	// Write lock
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -337,7 +338,7 @@ func (r *Device) RemoveAllFlows() error {
 	if err != nil {
 		return err
 	}
-	// Remove flows except the table miss flows (Note that MSB of the cookie is a marker)
+	// Remove all the normal flows, except the special table miss and ARP flows whose MSB is 1.
 	flowmod.SetCookieMask(0x1 << 63)
 	flowmod.SetTableID(0xFF) // ALL
 	flowmod.SetFlowMatch(match)
@@ -347,7 +348,7 @@ func (r *Device) RemoveAllFlows() error {
 	}
 	r.flowCache.RemoveAll()
 
-	return setARPSenderWithBarrier(r.factory, r.session.transceiver)
+	return nil
 }
 
 // TODO:
@@ -366,7 +367,7 @@ func (r *Device) RemoveFlow(match openflow.Match, port openflow.OutPort) error {
 	if err != nil {
 		return err
 	}
-	// Remove flows except the table miss flows (Note that MSB of the cookie is a marker)
+	// Remove all the normal flows, except the table miss and ARP flows whose MSB is 1.
 	flowmod.SetCookieMask(0x1 << 63)
 	flowmod.SetTableID(0xFF) // ALL
 	flowmod.SetFlowMatch(match)
@@ -400,7 +401,7 @@ func (r *Device) RemoveFlowByMAC(mac net.HardwareAddr) error {
 	if err != nil {
 		return err
 	}
-	// Remove flows except the table miss flows (Note that MSB of the cookie is a marker)
+	// Remove all the normal flows, except the table miss and ARP flows whose MSB is 1.
 	flowmod.SetCookieMask(0x1 << 63)
 	flowmod.SetTableID(0xFF) // ALL
 	flowmod.SetFlowMatch(match)

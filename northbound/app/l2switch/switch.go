@@ -244,7 +244,7 @@ func (r *L2Switch) removeAllFlows(devices []*network.Device) error {
 		if d.IsClosed() {
 			continue
 		}
-		if err := d.RemoveAllFlows(); err != nil {
+		if err := d.RemoveNormalFlows(); err != nil {
 			return err
 		}
 		logger.Debugf("removed all flows from DPID %v", d.ID())
