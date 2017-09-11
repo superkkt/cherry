@@ -25,7 +25,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"math/rand"
 	"net"
 	"strconv"
 	"sync"
@@ -141,7 +140,7 @@ func (r *processor) sendARPProbes(device *network.Device) error {
 		}
 		logger.Debugf("sent an ARP probe for %v on %v", ip, device.ID())
 		// Sleep to mitigate the peak latency of processing PACKET_INs.
-		time.Sleep(time.Duration(10+rand.Intn(100)) * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 	}
 
 	return nil

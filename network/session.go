@@ -138,7 +138,7 @@ func (r *session) OnFeaturesReply(f openflow.Factory, w transceiver.Writer, v op
 	}
 
 	// First FeaturesReply packet?
-	if r.device.isReady() {
+	if ready, _ := r.device.IsReady(); ready {
 		// No, the device already has been initialized that means this is not the first
 		// FeaturesReply packet. This additional FeaturesReply packet is raised by our
 		// device explorer. So, we have to skip the following device initialization routine.
@@ -330,7 +330,8 @@ func (r *session) OnPortStatus(f openflow.Factory, w transceiver.Writer, v openf
 	r.sendPortEvent(port.Number(), up)
 
 	// Is this an enabled port?
-	if up && r.device.isReady() {
+	ready, _ := r.device.IsReady()
+	if up && ready {
 		// Send LLDP to update network topology
 		if err := sendLLDP(r.device, port); err != nil {
 			return err
@@ -458,8 +459,8 @@ func (r *session) OnPacketIn(f openflow.Factory, w transceiver.Writer, v openflo
 		r.device.ID(), v.InPort(), v.Reason(), v.TableID(), v.Cookie())
 
 	// Do nothing if the ingress device is not yet ready.
-	if r.device.isReady() == false {
-		logger.Debugf("device is not ready: ignoring PACKET_IN: device=%v, inPort=%v", r.device.ID(), v.InPort())
+	if ready, _ := r.device.IsReady(); ready == false {
+		logger.Debugf("ignoring PACKET_IN: device is not ready: device=%v, inPort=%v", r.device.ID(), v.InPort())
 		// Drop the incoming packet.
 		return nil
 	}
@@ -514,7 +515,7 @@ func (r *session) Run(ctx context.Context) {
 	stopExplorer()
 	r.transceiver.Close()
 	r.device.Close()
-	if r.device.isReady() {
+	if ready, _ := r.device.IsReady(); ready {
 		if err := r.listener.OnDeviceDown(r.finder, r.device); err != nil {
 			logger.Errorf("OnDeviceDown: %v", err)
 		}
@@ -537,7 +538,7 @@ func (r *session) runDeviceExplorer(ctx context.Context) context.CancelFunc {
 				logger.Debugf("terminating the device explorer: deviceID=%v", r.device.ID())
 				return
 			case <-ticker:
-				if r.device.isReady() == false {
+				if ready, _ := r.device.IsReady(); ready == false {
 					logger.Debug("skip to execute the device explorer due to incomplete device status")
 					continue
 				}

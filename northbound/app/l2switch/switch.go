@@ -143,6 +143,13 @@ func (r *L2Switch) OnPacketIn(finder network.Finder, ingress *network.Port, eth 
 func (r *L2Switch) processPacket(finder network.Finder, ingress *network.Port, eth *protocol.Ethernet) (drop bool, err error) {
 	logger.Debugf("PACKET_IN.. Ingress=%v, SrcMAC=%v, DstMAC=%v", ingress.ID(), eth.SrcMAC, eth.DstMAC)
 
+	ready, initTime := ingress.Device().IsReady()
+	if ready == false || time.Now().Sub(initTime) < 5*time.Second {
+		logger.Debugf("ignoring PACKET_IN: initial time buffering: ingress=%v, initTime=%v", ingress.ID(), initTime)
+		// Drop the incoming packet.
+		return true, nil
+	}
+
 	packet, err := eth.MarshalBinary()
 	if err != nil {
 		return false, err
