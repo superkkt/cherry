@@ -119,7 +119,7 @@ func (r *processor) runARPSender(device *network.Device) {
 				// Ignore this error and keep go on.
 			}
 
-			time.Sleep(5 * time.Second)
+			time.Sleep(1500 * time.Millisecond)
 		}
 	}()
 	r.canceller[device.ID()] = cancel
