@@ -457,18 +457,18 @@ func (r *session) OnPacketIn(f openflow.Factory, w transceiver.Writer, v openflo
 	logger.Debugf("PACKET_IN is received (device=%v, inport=%v, reason=%v, tableID=%v, cookie=%v)",
 		r.device.ID(), v.InPort(), v.Reason(), v.TableID(), v.Cookie())
 
+	// Do nothing if the ingress device is not yet ready.
+	if r.device.isReady() == false {
+		logger.Debugf("device is not ready: ignoring PACKET_IN: device=%v, inPort=%v", r.device.ID(), v.InPort())
+		// Drop the incoming packet.
+		return nil
+	}
+
 	ethernet, err := getEthernet(v.Data())
 	if err != nil {
 		return err
 	}
 	logger.Debugf("PACKET_IN ethernet: src=%v, dst=%v, type=%v", ethernet.SrcMAC, ethernet.DstMAC, ethernet.Type)
-
-	// Do nothing if the ingress device is not yet ready.
-	if r.device.isReady() == false {
-		logger.Debugf("device is not ready: ignoring PACKET_IN: srcMAC=%v, dstMAC=%v, inPort=%v", ethernet.SrcMAC, ethernet.DstMAC, v.InPort())
-		// Drop the incoming packet.
-		return nil
-	}
 
 	inPort := r.device.Port(v.InPort())
 	if inPort == nil {
