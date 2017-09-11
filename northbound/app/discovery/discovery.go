@@ -92,6 +92,7 @@ func (r *processor) String() string {
 }
 
 func (r *processor) OnDeviceUp(finder network.Finder, device *network.Device) error {
+	// Make sure that there is only one ARP sender for a device.
 	r.stopARPSender(device.ID())
 	r.runARPSender(device)
 
@@ -105,10 +106,8 @@ func (r *processor) runARPSender(device *network.Device) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
-		ticker := time.Tick(10 * time.Second)
-
 		// Infinite loop.
-		for range ticker {
+		for {
 			select {
 			case <-ctx.Done():
 				logger.Debugf("terminating the ARP sender: deviceID=%v", device.ID())
@@ -120,6 +119,8 @@ func (r *processor) runARPSender(device *network.Device) {
 				logger.Errorf("failed to send ARP probes: %v", err)
 				// Ignore this error and keep go on.
 			}
+
+			time.Sleep(10 * time.Second)
 		}
 	}()
 	r.canceller[device.ID()] = cancel
