@@ -35,7 +35,6 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/superkkt/go-logging"
-	"github.com/superkkt/viper"
 )
 
 var (
@@ -44,7 +43,6 @@ var (
 
 type L2Switch struct {
 	app.BaseProcessor
-	vlanID    uint16
 	stormCtrl *stormController
 	db        Database
 	once      sync.Once
@@ -70,12 +68,6 @@ func (r *flooder) flood(ingress *network.Port, packet []byte) error {
 }
 
 func (r *L2Switch) Init() error {
-	vlanID := viper.GetInt("default.vlan_id")
-	if vlanID < 0 || vlanID > 4095 {
-		return errors.New("invalid default.vlan_id in the config file")
-	}
-	r.vlanID = uint16(vlanID)
-
 	return nil
 }
 
@@ -103,7 +95,6 @@ func (r *L2Switch) setFlow(p flowParam) error {
 	if err != nil {
 		return err
 	}
-	match.SetVLANID(r.vlanID)
 	match.SetDstMAC(p.dstMAC)
 
 	outPort := openflow.NewOutPort()
@@ -244,7 +235,7 @@ func (r *L2Switch) removeAllFlows(devices []*network.Device) error {
 		if d.IsClosed() {
 			continue
 		}
-		if err := d.RemoveNormalFlows(); err != nil {
+		if err := d.RemoveFlows(); err != nil {
 			return err
 		}
 		logger.Debugf("removed all flows from DPID %v", d.ID())

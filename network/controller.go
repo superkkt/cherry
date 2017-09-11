@@ -274,7 +274,7 @@ func (r *Controller) removeSwitch(w rest.ResponseWriter, req *rest.Request) {
 
 	for _, sw := range r.topo.Devices() {
 		logger.Infof("removing all flows from %v", sw.ID())
-		if err := sw.RemoveNormalFlows(); err != nil {
+		if err := sw.RemoveFlows(); err != nil {
 			logger.Warningf("failed to remove all flows on %v device: %v", sw.ID(), err)
 			continue
 		}
@@ -415,7 +415,7 @@ func (r *Controller) removeNetwork(w rest.ResponseWriter, req *rest.Request) {
 
 	for _, sw := range r.topo.Devices() {
 		logger.Infof("removing all flows from %v", sw.ID())
-		if err := sw.RemoveNormalFlows(); err != nil {
+		if err := sw.RemoveFlows(); err != nil {
 			logger.Warningf("failed to remove all flows on %v device: %v", sw.ID(), err)
 			continue
 		}

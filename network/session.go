@@ -656,8 +656,6 @@ func setARPSenderWithBarrier(f openflow.Factory, w transceiver.Writer) error {
 	if err != nil {
 		return err
 	}
-	// This is the special flow that will not be removed unless the switch device reconnects.
-	flow.SetCookie(0x1 << 63)
 	// Permanent flow
 	flow.SetIdleTimeout(0)
 	flow.SetHardTimeout(0)

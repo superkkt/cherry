@@ -32,6 +32,8 @@ import (
 	"github.com/superkkt/cherry/openflow"
 	"github.com/superkkt/cherry/openflow/transceiver"
 	"github.com/superkkt/cherry/protocol"
+
+	"github.com/superkkt/viper"
 )
 
 type Descriptions struct {
@@ -59,6 +61,7 @@ type Device struct {
 	factory      openflow.Factory
 	closed       bool
 	flowCache    *flowCache
+	vlanID       uint16
 }
 
 var (
@@ -70,10 +73,17 @@ func newDevice(s *session) *Device {
 		panic("Session is nil")
 	}
 
+	vlanID := viper.GetInt("default.vlan_id")
+	if vlanID < 0 || vlanID > 4095 {
+		// vlanID should be already checked in the main code.
+		panic("invalid default.vlan_id in the config file")
+	}
+
 	return &Device{
 		session:   s,
 		ports:     make(map[uint32]*Port),
 		flowCache: newFlowCache(5 * time.Second),
+		vlanID:    uint16(vlanID),
 	}
 }
 
@@ -254,6 +264,7 @@ func (r *Device) IsClosed() bool {
 	return r.closed
 }
 
+// SetFlow installs a normal flow entry for packet switching and routing into the switch device.
 func (r *Device) SetFlow(match openflow.Match, port openflow.OutPort) error {
 	// Write lock
 	r.mutex.Lock()
@@ -262,6 +273,9 @@ func (r *Device) SetFlow(match openflow.Match, port openflow.OutPort) error {
 	if r.closed {
 		return ErrClosedDevice
 	}
+
+	// Set the default VLAN ID. It is necessary to use the L2 MAC flow table of Dell SXXX switches.
+	match.SetVLANID(r.vlanID)
 
 	action, err := r.factory.NewAction()
 	if err != nil {
@@ -315,8 +329,8 @@ func (r *Device) SetFlow(match openflow.Match, port openflow.OutPort) error {
 	return r.session.Write(barrier)
 }
 
-// RemoveNormalFlows removes only the normal flows except special flows for table miss and ARP packets.
-func (r *Device) RemoveNormalFlows() error {
+// RemoveFlows removes all the normal flows except special ones for table miss and ARP packets.
+func (r *Device) RemoveFlows() error {
 	// Write lock
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -325,11 +339,13 @@ func (r *Device) RemoveNormalFlows() error {
 		return ErrClosedDevice
 	}
 
-	// Wildcard match
 	match, err := r.factory.NewMatch()
 	if err != nil {
 		return err
 	}
+	// Default VLAN ID specified for the normal flows.
+	match.SetVLANID(r.vlanID)
+
 	// Set output port to OFPP_NONE
 	port := openflow.NewOutPort()
 	port.SetNone()
@@ -363,6 +379,9 @@ func (r *Device) RemoveFlow(match openflow.Match, port openflow.OutPort) error {
 		return ErrClosedDevice
 	}
 
+	// Default VLAN ID specified for the normal flows.
+	match.SetVLANID(r.vlanID)
+
 	flowmod, err := r.factory.NewFlowMod(openflow.FlowDelete)
 	if err != nil {
 		return err
@@ -392,6 +411,8 @@ func (r *Device) RemoveFlowByMAC(mac net.HardwareAddr) error {
 	if err != nil {
 		return err
 	}
+	// Default VLAN ID specified for the normal flows.
+	match.SetVLANID(r.vlanID)
 	match.SetDstMAC(mac)
 
 	port := openflow.NewOutPort()

@@ -122,6 +122,10 @@ func validateConfig() error {
 	if len(viper.GetString("default.admin_email")) == 0 {
 		return errors.New("invalid default.admin_email")
 	}
+	vlanID := viper.GetInt("default.vlan_id")
+	if vlanID < 0 || vlanID > 4095 {
+		return errors.New("invalid default.vlan_id in the config file")
+	}
 
 	return nil
 }
