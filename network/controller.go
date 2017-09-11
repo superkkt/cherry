@@ -63,6 +63,10 @@ type database interface {
 	VIPs() ([]VIP, error)
 }
 
+type observer interface {
+	IsMaster() bool
+}
+
 type LocationStatus int
 
 const (
@@ -96,21 +100,33 @@ type Controller struct {
 	topo     *topology
 	listener EventListener
 	db       database
+	observer observer
 }
 
-func NewController(db database) *Controller {
+func NewController(db database, observer observer) *Controller {
 	v := &Controller{
-		topo: newTopology(db),
-		db:   db,
+		topo:     newTopology(db),
+		db:       db,
+		observer: observer,
 	}
 	go v.serveREST()
 
 	return v
 }
 
-// TODO: Deny the client requests if we are not the master controller!
 func (r *Controller) serveREST() {
 	api := rest.NewApi()
+	// Middleware to deny the client requests if we are not the master controller.
+	api.Use(rest.MiddlewareSimple(func(handler rest.HandlerFunc) rest.HandlerFunc {
+		return func(writer rest.ResponseWriter, request *rest.Request) {
+			if r.observer.IsMaster() == false {
+				writeError(writer, http.StatusServiceUnavailable, errors.New("use the master controller server"))
+				return
+			}
+
+			handler(writer, request)
+		}
+	}))
 	router, err := rest.MakeRouter(
 		rest.Get("/api/v1/switch", r.listSwitch),
 		rest.Post("/api/v1/switch", r.addSwitch),

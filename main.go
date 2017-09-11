@@ -78,7 +78,7 @@ func main() {
 
 	observer := initElectionObserver(ctx, db)
 
-	controller := network.NewController(db)
+	controller := network.NewController(db, observer)
 	manager, err := createAppManager(db)
 	if err != nil {
 		logger.Fatalf("failed to create application manager: %v", err)
