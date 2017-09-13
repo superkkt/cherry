@@ -279,6 +279,7 @@ func (r *L2Switch) OnPortDown(finder network.Finder, port *network.Port) error {
 }
 
 func (r *L2Switch) OnDeviceUp(finder network.Finder, device *network.Device) error {
+	// Make sure that there is only one flow manager in this application.
 	r.once.Do(func() {
 		// Run the background flow manager.
 		go r.flowManager(finder)

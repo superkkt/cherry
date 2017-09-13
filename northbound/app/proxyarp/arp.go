@@ -74,6 +74,7 @@ func (r *ProxyARP) Name() string {
 }
 
 func (r *ProxyARP) OnDeviceUp(finder network.Finder, device *network.Device) error {
+	// Make sure that there is only one ProxyARP broadcaster in this application.
 	r.once.Do(func() {
 		// Run the background broadcaster for periodic ARP announcement.
 		go r.broadcaster(finder)

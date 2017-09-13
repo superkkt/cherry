@@ -104,6 +104,7 @@ func (r *VirtualIP) String() string {
 }
 
 func (r *VirtualIP) OnDeviceUp(finder network.Finder, device *network.Device) error {
+	// Make sure that there is only one VirtualIP broadcaster in this application.
 	r.once.Do(func() {
 		// Run the background broadcaster for periodic ARP announcement.
 		go r.broadcaster(finder)
