@@ -388,7 +388,7 @@ func (r *MySQL) Networks() (networks []network.Network, err error) {
 	f := func(db *sql.DB) error {
 		qry := `SELECT id, INET_NTOA(address), mask
 			FROM network
-			ORDER BY id DESC`
+			ORDER BY address ASC, mask ASC`
 		rows, err := db.Query(qry)
 		if err != nil {
 			return err
