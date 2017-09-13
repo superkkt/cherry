@@ -49,14 +49,23 @@ func (r *of13Session) OnHello(f openflow.Factory, w transceiver.Writer, v openfl
 	if err := sendHello(f, w); err != nil {
 		return errors.Wrap(err, "failed to send HELLO")
 	}
-	if err := sendRemoveAllFlows(f, w); err != nil {
-		return errors.Wrap(err, "failed to send FLOW_MOD to remove all flows")
-	}
 	if err := sendSetConfig(f, w); err != nil {
 		return errors.Wrap(err, "failed to send SET_CONFIG")
 	}
-	if err := setARPSenderWithBarrier(f, w); err != nil {
-		return errors.Wrap(err, "failed to set ARP sender flow")
+	if err := sendRemoveAllFlows(f, w); err != nil {
+		return errors.Wrap(err, "failed to send FLOW_MOD to remove all flows")
+	}
+	if err := setTemporaryDrop(f, w); err != nil {
+		return errors.Wrap(err, "failed to set the temporary drop rule")
+	}
+	if err := setARPSender(f, w); err != nil {
+		return errors.Wrap(err, "failed to set the ARP sender")
+	}
+	if err := setLLDPSender(f, w); err != nil {
+		return errors.Wrap(err, "failed to set the LLDP sender")
+	}
+	if err := sendBarrierRequest(f, w); err != nil {
+		return errors.Wrap(err, "failed to send BARRIER_REQUEST")
 	}
 
 	return nil

@@ -62,8 +62,6 @@ type Device struct {
 	closed       bool
 	flowCache    *flowCache
 	vlanID       uint16
-	// Device init timestamp. It should be set after the device is initialized.
-	initialized time.Time
 }
 
 var (
@@ -116,15 +114,14 @@ func (r *Device) setID(id string) {
 	defer r.mutex.Unlock()
 
 	r.id = id
-	r.initialized = time.Now()
 }
 
-func (r *Device) IsReady() (ready bool, initTimestamp time.Time) {
+func (r *Device) isReady() bool {
 	// Read lock
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 
-	return len(r.id) > 0, r.initialized
+	return len(r.id) > 0
 }
 
 func (r *Device) Factory() openflow.Factory {

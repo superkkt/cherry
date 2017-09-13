@@ -138,7 +138,7 @@ func (r *session) OnFeaturesReply(f openflow.Factory, w transceiver.Writer, v op
 	}
 
 	// First FeaturesReply packet?
-	if ready, _ := r.device.IsReady(); ready {
+	if r.device.isReady() {
 		// No, the device already has been initialized that means this is not the first
 		// FeaturesReply packet. This additional FeaturesReply packet is raised by our
 		// device explorer. So, we have to skip the following device initialization routine.
@@ -330,8 +330,7 @@ func (r *session) OnPortStatus(f openflow.Factory, w transceiver.Writer, v openf
 	r.sendPortEvent(port.Number(), up)
 
 	// Is this an enabled port?
-	ready, _ := r.device.IsReady()
-	if up && ready {
+	if up && r.device.isReady() {
 		// Send LLDP to update network topology
 		if err := sendLLDP(r.device, port); err != nil {
 			return err
@@ -459,7 +458,7 @@ func (r *session) OnPacketIn(f openflow.Factory, w transceiver.Writer, v openflo
 		r.device.ID(), v.InPort(), v.Reason(), v.TableID(), v.Cookie())
 
 	// Do nothing if the ingress device is not yet ready.
-	if ready, _ := r.device.IsReady(); ready == false {
+	if r.device.isReady() == false {
 		logger.Debugf("ignoring PACKET_IN: device is not ready: device=%v, inPort=%v", r.device.ID(), v.InPort())
 		// Drop the incoming packet.
 		return nil
@@ -515,7 +514,7 @@ func (r *session) Run(ctx context.Context) {
 	stopExplorer()
 	r.transceiver.Close()
 	r.device.Close()
-	if ready, _ := r.device.IsReady(); ready {
+	if r.device.isReady() {
 		if err := r.listener.OnDeviceDown(r.finder, r.device); err != nil {
 			logger.Errorf("OnDeviceDown: %v", err)
 		}
@@ -538,7 +537,7 @@ func (r *session) runDeviceExplorer(ctx context.Context) context.CancelFunc {
 				logger.Debugf("terminating the device explorer: deviceID=%v", r.device.ID())
 				return
 			case <-ticker:
-				if ready, _ := r.device.IsReady(); ready == false {
+				if r.device.isReady() == false {
 					logger.Debug("skip to execute the device explorer due to incomplete device status")
 					continue
 				}
@@ -630,45 +629,62 @@ func sendPortDescriptionRequest(f openflow.Factory, w transceiver.Writer) error 
 	return w.Write(msg)
 }
 
-// setARPSender installs a flow that to send ARP packets to controllers and then
-// sends a barrier request.
-func setARPSenderWithBarrier(f openflow.Factory, w transceiver.Writer) error {
+// setARPSender installs a flow that sends all ARP packets to the controller.
+func setARPSender(f openflow.Factory, w transceiver.Writer) error {
+	// Permanent flow.
+	return setSpecialFlow(f, w, 0x0806 /* ARP */, 100, 0, 0, false)
+}
+
+// setLLDPSender installs a flow that sends all LLDP packets to the controller.
+func setLLDPSender(f openflow.Factory, w transceiver.Writer) error {
+	// Permanent flow.
+	return setSpecialFlow(f, w, 0x88CC /* LLDP */, 100, 0, 0, false)
+}
+
+// setTemporaryDrop installs a temporary flow that drops all the packets.
+func setTemporaryDrop(f openflow.Factory, w transceiver.Writer) error {
+	// Temporary flow that will be removed after a few seconds.
+	return setSpecialFlow(f, w, 0 /* wildcard */, 50, 0, 5, true)
+}
+
+func setSpecialFlow(f openflow.Factory, w transceiver.Writer, ethertype, priority, idleTimeout, hardTimeout uint16, allDrop bool) error {
 	match, err := f.NewMatch()
 	if err != nil {
 		return err
 	}
-	match.SetEtherType(0x0806) // ARP
-
-	outPort := openflow.NewOutPort()
-	outPort.SetController()
-
-	action, err := f.NewAction()
-	if err != nil {
-		return err
+	// 0 of ethertype is the wildcard.
+	if ethertype != 0 {
+		match.SetEtherType(ethertype)
 	}
-	action.SetOutPort(outPort)
-	inst, err := f.NewInstruction()
-	if err != nil {
-		return err
-	}
-	inst.ApplyAction(action)
 
 	flow, err := f.NewFlowMod(openflow.FlowAdd)
 	if err != nil {
 		return err
 	}
-	// Permanent flow
-	flow.SetIdleTimeout(0)
-	flow.SetHardTimeout(0)
-	flow.SetPriority(100)
+	flow.SetIdleTimeout(idleTimeout)
+	flow.SetHardTimeout(hardTimeout)
+	flow.SetPriority(priority)
 	flow.SetFlowMatch(match)
-	flow.SetFlowInstruction(inst)
 
-	if err := w.Write(flow); err != nil {
-		return err
+	// Forward all matched packets to the controller if allDrop is false. Note that
+	// the matched packet is dropped if no forward actions are present in the flow.
+	if allDrop == false {
+		outPort := openflow.NewOutPort()
+		outPort.SetController()
+		action, err := f.NewAction()
+		if err != nil {
+			return err
+		}
+		action.SetOutPort(outPort)
+		inst, err := f.NewInstruction()
+		if err != nil {
+			return err
+		}
+		inst.ApplyAction(action)
+		flow.SetFlowInstruction(inst)
 	}
 
-	return sendBarrierRequest(f, w)
+	return w.Write(flow)
 }
 
 // sendRemoveAllFlows removes all the previously installed flows including special
