@@ -47,6 +47,74 @@ CREATE TABLE IF NOT EXISTS `acl` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `network`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE IF NOT EXISTS `network` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `address` int(10) unsigned NOT NULL,
+  `mask` int(10) unsigned NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `address` (`address`,`mask`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `switch`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE IF NOT EXISTS `switch` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `dpid` bigint(20) unsigned NOT NULL,
+  `n_ports` smallint(5) unsigned NOT NULL,
+  `first_port` smallint(5) unsigned NOT NULL DEFAULT '1',
+  `first_printed_port` smallint(5) unsigned NOT NULL DEFAULT '0',
+  `description` varchar(255) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `dpid` (`dpid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `port`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE IF NOT EXISTS `port` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `switch_id` bigint(20) unsigned NOT NULL,
+  `number` smallint(5) unsigned NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `number` (`switch_id`,`number`),
+  CONSTRAINT `port_ibfk_1` FOREIGN KEY (`switch_id`) REFERENCES `switch` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `ip`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE IF NOT EXISTS `ip` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `network_id` bigint(20) unsigned NOT NULL,
+  `address` int(10) unsigned NOT NULL,
+  `used` tinyint(1) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `address` (`address`),
+  KEY `used` (`used`),
+  KEY `network_id` (`network_id`),
+  CONSTRAINT `ip_ibfk_1` FOREIGN KEY (`network_id`) REFERENCES `network` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `host`
 --
 
@@ -117,74 +185,6 @@ DELIMITER ;
 /*!50003 SET character_set_client  = @saved_cs_client */ ;
 /*!50003 SET character_set_results = @saved_cs_results */ ;
 /*!50003 SET collation_connection  = @saved_col_connection */ ;
-
---
--- Table structure for table `ip`
---
-
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE IF NOT EXISTS `ip` (
-  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-  `network_id` bigint(20) unsigned NOT NULL,
-  `address` int(10) unsigned NOT NULL,
-  `used` tinyint(1) NOT NULL DEFAULT '0',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `address` (`address`),
-  KEY `used` (`used`),
-  KEY `network_id` (`network_id`),
-  CONSTRAINT `ip_ibfk_1` FOREIGN KEY (`network_id`) REFERENCES `network` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `network`
---
-
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE IF NOT EXISTS `network` (
-  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-  `address` int(10) unsigned NOT NULL,
-  `mask` int(10) unsigned NOT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `address` (`address`,`mask`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `port`
---
-
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE IF NOT EXISTS `port` (
-  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-  `switch_id` bigint(20) unsigned NOT NULL,
-  `number` smallint(5) unsigned NOT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `number` (`switch_id`,`number`),
-  CONSTRAINT `port_ibfk_1` FOREIGN KEY (`switch_id`) REFERENCES `switch` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `switch`
---
-
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE IF NOT EXISTS `switch` (
-  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-  `dpid` bigint(20) unsigned NOT NULL,
-  `n_ports` smallint(5) unsigned NOT NULL,
-  `first_port` smallint(5) unsigned NOT NULL DEFAULT '1',
-  `first_printed_port` smallint(5) unsigned NOT NULL DEFAULT '0',
-  `description` varchar(255) NOT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `dpid` (`dpid`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
-/*!40101 SET character_set_client = @saved_cs_client */;
 
 --
 -- Table structure for table `vip`
