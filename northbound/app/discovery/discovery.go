@@ -45,7 +45,7 @@ var (
 )
 
 const (
-	ProbeInterval = 5 * time.Minute
+	ProbeInterval = 30 * time.Second
 )
 
 type processor struct {
@@ -119,6 +119,7 @@ func (r *processor) runARPSender(device *network.Device) {
 				// Ignore this error and keep go on.
 			}
 
+			// This sleep delay should be shorter than ProbeInterval.
 			time.Sleep(1500 * time.Millisecond)
 		}
 	}()
