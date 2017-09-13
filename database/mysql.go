@@ -654,7 +654,7 @@ func (r *MySQL) Host(id uint64) (host network.Host, ok bool, err error) {
 		}
 		host.MAC = mac.String()
 		// Check its freshness.
-		if time.Now().Sub(timestamp) > discovery.ProbeInterval*3 {
+		if time.Now().Sub(timestamp) > discovery.ProbeInterval*2 {
 			host.Stale = true
 		}
 
