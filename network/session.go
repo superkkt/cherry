@@ -43,7 +43,7 @@ var (
 )
 
 const (
-	deviceExplorerInterval = 3 * time.Minute
+	deviceExplorerInterval = 1 * time.Minute
 )
 
 type session struct {
