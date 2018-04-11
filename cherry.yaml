@@ -11,12 +11,12 @@ default:
     # Default VLAN ID. All switches should have this VLAN ID on all OF ports.
     vlan_id: 1000
 
-database:
-    host: DB_HOST
-    port: DB_PORT
-    user: DB_USER
-    password: DB_PASSWORD
-    name: DB_NAME
+mysql:
+    # host:port[,host:port,host:port,...]
+    addr: "localhost:3306"
+    username: "username"
+    password: "password"
+    name: "dbname"
 
 rest:
     port: 7070
