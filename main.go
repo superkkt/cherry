@@ -98,6 +98,11 @@ func initConfig() {
 	}
 	// Watching and re-reading config file whenever it changes.
 	viper.OnConfigChange(func(e fsnotify.Event) {
+		// Ignore the WRITE operation to avoid reading empty config.
+		if e.Op != fsnotify.Write {
+			return
+		}
+		
 		if loggerLeveled != nil {
 			// Set log level for all modules
 			loggerLeveled.SetLevel(getLogLevel(viper.GetString("default.log_level")), "")
