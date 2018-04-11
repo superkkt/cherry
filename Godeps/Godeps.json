@@ -1,7 +1,10 @@
 {
 	"ImportPath": "github.com/superkkt/cherry",
-	"GoVersion": "go1.8",
+	"GoVersion": "go1.10",
 	"GodepVersion": "v79",
+	"Packages": [
+		"./..."
+	],
 	"Deps": [
 		{
 			"ImportPath": "github.com/ant0ine/go-json-rest/rest",
@@ -20,8 +23,8 @@
 		},
 		{
 			"ImportPath": "github.com/go-sql-driver/mysql",
-			"Comment": "v1.2-196-g3654d25",
-			"Rev": "3654d25ec346ee8ce71a68431025458d52a38ac0"
+			"Comment": "v1.3-59-g1a676ac",
+			"Rev": "1a676ac6e4dce68e9303a1800773861350374a9e"
 		},
 		{
 			"ImportPath": "github.com/hashicorp/golang-lru",
