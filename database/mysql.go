@@ -44,9 +44,11 @@ import (
 )
 
 const (
+	maxDeadlockRetry         = 5
+
 	deadlockErrCode   uint16 = 1213
 	foreignkeyErrCode uint16 = 1451
-	maxDeadlockRetry         = 5
+
 	clusterDialerNetwork = "cluster"
 )
 
@@ -91,14 +93,18 @@ func NewMySQL() (*MySQL, error) {
 }
 
 func validateClusterAddr(addr string) error {
+	if len(addr) == 0 {
+		return errors.New("empty cluster address")
+	}
+
 	token := strings.Split(strings.Replace(addr, " ", "", -1), ",")
 	if len(token) == 0 {
-		return errors.New("invalid cluster address")
+		return fmt.Errorf("invalid cluster address: %v", addr)
 	}
 
 	for _, v := range token {
 		if _, err := net.ResolveTCPAddr("tcp", v); err != nil {
-			return err
+			return fmt.Errorf("invalid cluster address: %v: %v", v, err)
 		}
 	}
 
