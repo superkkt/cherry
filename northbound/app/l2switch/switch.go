@@ -249,7 +249,7 @@ func (r *L2Switch) String() string {
 }
 
 func (r *L2Switch) OnPortDown(finder network.Finder, port *network.Port) error {
-	logger.Warningf("port down! DPID=%v, number=%v", port.Device().ID(), port.Number())
+	logger.Infof("port down! DPID=%v, number=%v", port.Device().ID(), port.Number())
 
 	device := port.Device()
 	factory := device.Factory()

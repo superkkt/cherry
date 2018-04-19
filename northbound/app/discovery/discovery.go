@@ -228,7 +228,7 @@ func (r *processor) processARPReply(finder network.Finder, ingress *network.Port
 				logger.Errorf("failed to remove flows from %v: %v", device.ID(), err)
 				continue
 			}
-			logger.Infof("removed flows whose destination MAC address is %v on %v", arp.SHA, device.ID())
+			logger.Debugf("removed flows whose destination MAC address is %v on %v", arp.SHA, device.ID())
 		}
 	} else {
 		logger.Debugf("skip to update host location: unknown host or no location change: IP=%v, MAC=%v, deviceID=%v, portNum=%v", arp.SPA, arp.SHA, swDPID, ingress.Number())

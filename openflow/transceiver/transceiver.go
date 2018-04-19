@@ -266,7 +266,7 @@ func (r *Transceiver) runReader(ctx context.Context) <-chan []byte {
 			case c <- packet:
 			default:
 				// Drop the packet if we cannot immediately carry it.
-				logger.Error("transceiver buffer full: drop the incoming packet!")
+				logger.Warning("transceiver buffer full: drop the incoming packet!")
 			}
 		}
 	}()

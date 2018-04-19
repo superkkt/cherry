@@ -547,7 +547,7 @@ func (r *Controller) sendARPAnnouncement(cidr string, mac string) error {
 	}
 
 	for _, sw := range r.topo.Devices() {
-		logger.Infof("sending ARP announcement for a host (IP: %v, MAC: %v) via %v", ip, hwAddr, sw.ID())
+		logger.Debugf("sending ARP announcement for a host (IP: %v, MAC: %v) via %v", ip, hwAddr, sw.ID())
 		if err := sw.SendARPAnnouncement(ip, hwAddr); err != nil {
 			logger.Errorf("failed to send ARP announcement via %v: %v", sw.ID(), err)
 			continue
@@ -731,10 +731,10 @@ func (r *Controller) toggleVIP(w rest.ResponseWriter, req *rest.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	logger.Infof("toggled the VIP (ID=%v)", id)
+	logger.Infof("toggled the VIP: ID=%v, IP=%v, MAC=%v)", id, ip, mac)
 
 	for _, sw := range r.topo.Devices() {
-		logger.Infof("sending ARP announcement for a host (IP: %v, MAC: %v) via %v", ip, mac, sw.ID())
+		logger.Debugf("sending ARP announcement for a host (IP: %v, MAC: %v) via %v", ip, mac, sw.ID())
 		if err := sw.SendARPAnnouncement(ip, mac); err != nil {
 			logger.Errorf("failed to send ARP announcement via %v: %v", sw.ID(), err)
 			continue

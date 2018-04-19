@@ -177,6 +177,7 @@ func (r *topology) DeviceLinked(ports [2]*Port) {
 	if err == nil && added {
 		// XXX: Make sure the mutex is unlocked before calling sendEvent().
 		r.sendEvent()
+		logger.Infof("devices have been linked: %v:%v / %v:%v", ports[0].Device().ID(), ports[0].Number(), ports[1].Device().ID(), ports[1].Number())
 	}
 }
 

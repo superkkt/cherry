@@ -153,7 +153,7 @@ func (r *session) OnFeaturesReply(f openflow.Factory, w transceiver.Writer, v op
 		return errors.New("duplicated device DPID (aux. connection is not supported yet)")
 	}
 	r.device.setID(dpid)
-	logger.Debugf("device is ready: DPID=%v", dpid)
+	logger.Infof("device is ready: DPID=%v, Description=%+v", dpid, r.device.Descriptions())
 
 	// We assume a device is up after setting its DPID
 	if err := r.listener.OnDeviceUp(r.finder, r.device); err != nil {
@@ -188,11 +188,7 @@ func (r *session) OnDescReply(f openflow.Factory, w transceiver.Writer, v openfl
 		return errNotNegotiated
 	}
 
-	logger.Debugf("Manufacturer=%v", v.Manufacturer())
-	logger.Debugf("Hardware=%v", v.Hardware())
-	logger.Debugf("Software=%v", v.Software())
-	logger.Debugf("Serial=%v", v.Serial())
-	logger.Debugf("Description=%v", v.Description())
+	logger.Debugf("Manufacturer=%v, Hardware=%v, Software=%v, Serial=%v, Description=%v", v.Manufacturer(), v.Hardware(), v.Software(), v.Serial(), v.Description())
 
 	desc := Descriptions{
 		Manufacturer: v.Manufacturer(),
