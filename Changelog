@@ -1,3 +1,40 @@
+* v0.13.2 (2018-04-20)
+
+05f3fc0 Adjust log levels
+412988e Use string parameters in the YAML config file
+1114081 MySQL: validate the cluster address
+fe7f912 Update the MySQL driver
+c3b6288 mysql: new cluster dialer and query function that pass Tx instead of DB
+a760e5e Ignore the WRITE fsnotify operation to avoid reading empty config
+d4d48f7 Increase the flow idle timeout
+df3e5ed Make a switch drops all incoming packets (except ARP and LLDP) for a while on start up
+0bfdb5b Sort networks by address
+3809a8c Re-ordering DB tables in the MySQL schema
+9eb8066 Decrease the ARP probe interval
+480d6b5 Fix missing time interval change
+7cfdccb Decrease the flow manager interval
+6f8780c Add extra comments
+151ab37 Decrease the device explorer interval to 1 minute
+0e11b0d Update a debug message
+1fc910c Decrease ARP sender's loop interval to 1.5 sec.
+5472f62 Add a comment for time buffering
+750627a Drop the some PACKET_INs for proper device setup on start up
+0670200 Drop the packets before ethernet parsing if the device is not yet ready
+e7d0e91 Decrease ARP sender's loop interval
+3f3fbc3 Send ARP probes immediately on start up for fast discovery
+a77d304 Fix aaa0e4fd797 as OF1.0 does not support the cookie mask
+5ade735 Deny the API request if we are not the master controller
+5e2633e Keep the ARP flow unless the switch device reconnects
+aaa0e4f Flow cache to avoid duplicate and repeated flow installation (See #1)
+f8bb64f Minor refactoring
+109e393 Refactoring of the switch device negotiation procedure
+c527c28 Add extra debug messages
+e8d4b50 Decrease the timeout for a staled host
+6d42974 Decrease the PACKET_IN read buffer size
+78f098a Use FLOW_ADD instead of FLOW_MODIFY for a broken switch device (i.e., Dell S3148) (See #1)
+7770802 Log DPID when we get an openflow error packet
+018b460 Ignore the invalid echo responses
+
 * v0.13.1 (Sat Aug 05 16:45:00 2017 +0900)
 
 075e31c Ignore the ARP reply received from an edge among switches

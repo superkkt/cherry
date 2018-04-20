@@ -46,7 +46,7 @@ import (
 
 const (
 	programName     = "cherry"
-	programVersion  = "0.13.1"
+	programVersion  = "0.13.2"
 	defaultLogLevel = logging.INFO
 )
 
@@ -102,7 +102,7 @@ func initConfig() {
 		if e.Op != fsnotify.Write {
 			return
 		}
-		
+
 		if loggerLeveled != nil {
 			// Set log level for all modules
 			loggerLeveled.SetLevel(getLogLevel(viper.GetString("default.log_level")), "")
