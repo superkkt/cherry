@@ -46,7 +46,7 @@ import (
 
 const (
 	programName     = "cherry"
-	programVersion  = "0.13.2"
+	programVersion  = "0.13.3"
 	defaultLogLevel = logging.INFO
 )
 

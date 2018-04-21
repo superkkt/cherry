@@ -1,3 +1,7 @@
+* v0.13.3 (2018-04-22)
+
+619eefc Revert "Decrease the PACKET_IN read buffer size"
+
 * v0.13.2 (2018-04-20)
 
 05f3fc0 Adjust log levels
