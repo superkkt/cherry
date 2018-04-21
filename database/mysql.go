@@ -29,9 +29,9 @@ import (
 	"math"
 	"math/rand"
 	"net"
+	"runtime"
 	"strings"
 	"time"
-	"runtime"
 
 	"github.com/superkkt/cherry/network"
 	"github.com/superkkt/cherry/northbound/app/discovery"
@@ -39,12 +39,12 @@ import (
 	"github.com/superkkt/cherry/northbound/app/virtualip"
 
 	"github.com/go-sql-driver/mysql"
-	"github.com/superkkt/viper"
 	"github.com/superkkt/go-logging"
+	"github.com/superkkt/viper"
 )
 
 const (
-	maxDeadlockRetry         = 5
+	maxDeadlockRetry = 5
 
 	deadlockErrCode   uint16 = 1213
 	foreignkeyErrCode uint16 = 1451
@@ -53,7 +53,7 @@ const (
 )
 
 var (
-	logger            = logging.MustGetLogger("database")
+	logger = logging.MustGetLogger("database")
 
 	maxIdleConn = runtime.NumCPU()
 	maxOpenConn = maxIdleConn * 2
@@ -87,7 +87,7 @@ func NewMySQL() (*MySQL, error) {
 	}
 
 	return &MySQL{
-		db: db,
+		db:     db,
 		random: rand.New(&randomSource{src: rand.NewSource(time.Now().Unix())}),
 	}, nil
 }
@@ -259,7 +259,7 @@ func (r *MySQL) Location(mac net.HardwareAddr) (dpid string, port uint32, status
 		status = network.LocationUnregistered
 
 		var portID sql.NullInt64
-		qry := "SELECT `port_id` FROM `host` WHERE `mac` = ? LOCK IN SHARE MODE"
+		qry := "SELECT `port_id` FROM `host` WHERE `mac` = ? ORDER BY `port_id` DESC LOCK IN SHARE MODE"
 		if err := tx.QueryRow(qry, []byte(mac)).Scan(&portID); err != nil {
 			// Unregistered host?
 			if err == sql.ErrNoRows {
