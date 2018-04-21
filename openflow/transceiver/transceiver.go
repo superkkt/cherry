@@ -216,7 +216,7 @@ func (r *Transceiver) negotiate(ctx context.Context, reader <-chan []byte) (pack
 
 func (r *Transceiver) runReader(ctx context.Context) <-chan []byte {
 	// Buffered channel
-	c := make(chan []byte, 1024)
+	c := make(chan []byte, 4096)
 	go func() {
 		// The channel c will be closed when this goroutine returns in order to notice the connection has been closed.
 		defer close(c)
