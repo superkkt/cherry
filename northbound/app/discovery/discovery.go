@@ -196,9 +196,9 @@ func (r *processor) processARPRequest(finder network.Finder, ingress *network.Po
 }
 
 func (r *processor) processARPReply(finder network.Finder, ingress *network.Port, eth *protocol.Ethernet, arp *protocol.ARP) error {
-	// The target (not source!) hardware address of the ARP reply packet should be
-	// equal to the myMAC address if it is a counterpart for our ARP probe.
-	if bytes.Equal(arp.THA, myMAC) == false {
+	// The target (not source!) hardware address of the ARP reply packet (or the destination MAC address of the ethernet
+	// frame) should be equal to the myMAC address if it is a counterpart for our ARP probe.
+	if bytes.Equal(arp.THA, myMAC) == false && bytes.Equal(eth.DstMAC, myMAC) == false {
 		logger.Debugf("unexpected ARP reply: %v", arp)
 		// Drop this packet. Do not pass it to the next processors.
 		return nil
