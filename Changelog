@@ -1,3 +1,7 @@
+* v0.13.5 (2018-05-15)
+
+06fe675 Discovery: workaround for old OSes that have a broken TCP/IP stack (See #6)
+
 * v0.13.4 (2018-04-22)
 
 4767d4c Fix the node discovery bug (See #5)
