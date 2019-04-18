@@ -75,7 +75,11 @@ func (r *stormController) broadcast(ingress *network.Port, packet []byte) error 
 		return r.bcaster.flood(ingress, packet)
 	}
 	// Deny! r.broadcast should not be updated!
-	logger.Infof("too many broadcasts: broadcast is denied to avoid the broadcast storm: ingress=%v, packet=%v", ingress.ID(), spew.Sdump(packet))
+	if ingress != nil && packet != nil {
+		logger.Infof("too many broadcasts: broadcast is denied to avoid the broadcast storm: ingress=%v, packet=%v", ingress.ID(), spew.Sdump(packet))
+	} else {
+		logger.Info("too many broadcasts: broadcast is denied to avoid the broadcast storm")
+	}
 
 	return nil
 }
