@@ -483,15 +483,11 @@ func (r *Device) SendARPProbe(sha net.HardwareAddr, tpa net.IP) error {
 	return r.flood(nil, probe)
 }
 
-// https://en.wikipedia.org/wiki/Address_Resolution_Protocol#ARP_probe
-//
-// An ARP probe is an ARP request constructed with an all-zero sender IP address (SPA).
-// The term is used in the IPv4 Address Conflict Detection specification (RFC 5227).
-// Before beginning to use an IPv4 address (whether received from manual configuration,
-// DHCP, or some other means), a host implementing this specification must test to see
-// if the address is already in use, by broadcasting ARP probe packets.
 func makeARPProbe(sha net.HardwareAddr, tpa net.IP) ([]byte, error) {
-	arp := protocol.NewARPRequest(sha, net.IPv4(0, 0, 0, 0), tpa)
+	// RFC-5227 (IPv4 Address Conflict Detection) says that the all-zero sender IP address (SPA) is used for address
+	// conflict detection. This ARP probe causes actual IP conflict with Microsoft Windows OSes (See #12). So, we have
+	// to use an another SPA, instead of the all-zero one.
+	arp := protocol.NewARPRequest(sha, net.IPv4(0, 0, 0, 1), tpa)
 	probe, err := arp.MarshalBinary()
 	if err != nil {
 		return nil, err
