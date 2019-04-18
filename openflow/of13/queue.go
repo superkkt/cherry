@@ -81,7 +81,7 @@ func (r *QueueProperty) Length() uint16 {
 }
 
 func (r *QueueProperty) Rate() (uint16, error) {
-	if r.typ != openflow.OFPQT_MIN_RATE || r.typ != openflow.OFPQT_MAX_RATE {
+	if r.typ != openflow.OFPQT_MIN_RATE && r.typ != openflow.OFPQT_MAX_RATE {
 		return 0x0, openflow.ErrInvalidPropertyMethod
 	}
 	return r.rate, nil
