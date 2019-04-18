@@ -32,7 +32,7 @@ import (
 func TestStorm(t *testing.T) {
 	max := uint(100)
 	dummy := new(dummyFlooder)
-	storm := newStormController(max, new(dummyLogger), dummy)
+	storm := newStormController(max, dummy)
 	fmt.Printf("%v\n", time.Now())
 	for i := uint(0); i < max; i++ {
 		storm.broadcast(nil, nil)
@@ -60,7 +60,7 @@ func TestStorm(t *testing.T) {
 func TestPeriodicBroadcast(t *testing.T) {
 	max := uint(1)
 	dummy := new(dummyFlooder)
-	storm := newStormController(max, new(dummyLogger), dummy)
+	storm := newStormController(max, dummy)
 	for i := 0; i < 10; i++ {
 		fmt.Printf("Count: %v, Timestamp: %v\n", i, time.Now())
 		storm.broadcast(nil, nil)
@@ -74,7 +74,7 @@ func TestPeriodicBroadcast(t *testing.T) {
 func TestPeriodicStorm(t *testing.T) {
 	max := uint(1)
 	dummy := new(dummyFlooder)
-	storm := newStormController(max, new(dummyLogger), dummy)
+	storm := newStormController(max, dummy)
 	for i := 0; i < 10; i++ {
 		fmt.Printf("Count: %v, Timestamp: %v\n", i, time.Now())
 		storm.broadcast(nil, nil)
@@ -100,31 +100,4 @@ func (r *dummyFlooder) flood(ingress *network.Port, packet []byte) error {
 
 func (r *dummyFlooder) getCounter() uint64 {
 	return r.counter
-}
-
-type dummyLogger struct{}
-
-func (r *dummyLogger) Debug(m string) (err error) {
-	fmt.Printf("DEBUG: %v\n", m)
-	return nil
-}
-
-func (r *dummyLogger) Err(m string) (err error) {
-	fmt.Printf("ERR: %v\n", m)
-	return nil
-}
-
-func (r *dummyLogger) Info(m string) (err error) {
-	fmt.Printf("INFO: %v\n", m)
-	return nil
-}
-
-func (r *dummyLogger) Notice(m string) (err error) {
-	fmt.Printf("NOTICE: %v\n", m)
-	return nil
-}
-
-func (r *dummyLogger) Warning(m string) (err error) {
-	fmt.Printf("WARN: %v\n", m)
-	return nil
 }

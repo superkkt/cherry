@@ -92,7 +92,7 @@ func TestInvalidMST(t *testing.T) {
 		points: [2]point{point{"a", 1}, point{"b", 1}},
 		weight: 2,
 	}
-	if err := graph.AddEdge(e); err == nil {
+	if _, err := graph.AddEdge(e); err == nil {
 		t.Fatal("Expected error, but not occurred!")
 	}
 }
@@ -105,7 +105,7 @@ func TestRemoveVertex(t *testing.T) {
 		points: [2]point{point{"a", 1}, point{"b", 1}},
 		weight: 2,
 	}
-	if err := graph.AddEdge(e); err != nil {
+	if _, err := graph.AddEdge(e); err != nil {
 		t.Fatal(err)
 	}
 	graph.RemoveVertex(node{"a"})
@@ -132,7 +132,7 @@ func TestRemoveEdges(t *testing.T) {
 		points: [2]point{point{"a", 1}, point{"b", 1}},
 		weight: 2,
 	}
-	if err := graph.AddEdge(e); err != nil {
+	if _, err := graph.AddEdge(e); err != nil {
 		t.Fatal(err)
 	}
 	graph.RemoveEdge(point{"a", 1})
@@ -148,10 +148,10 @@ func TestRemoveEdges(t *testing.T) {
 		t.Fatalf("Expected # of edges is 0/0, got=%v/%v\n", len(a.edges), len(b.edges))
 	}
 
-	if err := graph.AddEdge(e); err != nil {
+	if _, err := graph.AddEdge(e); err != nil {
 		t.Fatal(err)
 	}
-	if err := graph.AddEdge(e); err != nil {
+	if _, err := graph.AddEdge(e); err != nil {
 		t.Fatal(err)
 	}
 	if len(a.edges) != 1 || len(b.edges) != 1 {
@@ -177,10 +177,10 @@ func TestDuplicatedEdges(t *testing.T) {
 		points: [2]point{point{"a", 1}, point{"b", 1}},
 		weight: 2,
 	}
-	if err := graph.AddEdge(e); err != nil {
+	if _, err := graph.AddEdge(e); err != nil {
 		t.Fatal(err)
 	}
-	if err := graph.AddEdge(e); err != nil {
+	if _, err := graph.AddEdge(e); err != nil {
 		t.Fatal(err)
 	}
 
@@ -209,7 +209,7 @@ func TestMST0(t *testing.T) {
 	})
 
 	for _, v := range edges {
-		if err := graph.AddEdge(v); err != nil {
+		if _, err := graph.AddEdge(v); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -279,7 +279,7 @@ func TestMST1(t *testing.T) {
 	})
 
 	for _, v := range edges {
-		if err := graph.AddEdge(v); err != nil {
+		if _, err := graph.AddEdge(v); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -364,7 +364,7 @@ func TestMST2(t *testing.T) {
 	})
 
 	for _, v := range edges {
-		if err := graph.AddEdge(v); err != nil {
+		if _, err := graph.AddEdge(v); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -459,7 +459,7 @@ func TestMST3(t *testing.T) {
 	})
 
 	for _, v := range edges {
-		if err := graph.AddEdge(v); err != nil {
+		if _, err := graph.AddEdge(v); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -535,7 +535,7 @@ func TestMST4(t *testing.T) {
 	})
 
 	for _, v := range edges {
-		if err := graph.AddEdge(v); err != nil {
+		if _, err := graph.AddEdge(v); err != nil {
 			t.Fatal(err)
 		}
 	}
