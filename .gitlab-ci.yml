@@ -1,0 +1,21 @@
+image: golang:1.12
+
+before_script:
+  - mkdir -p /go/src/github.com/superkkt
+  - cp -rp /builds/superkkt/cherry /go/src/github.com/superkkt
+    
+stages:
+  - build
+  - test
+
+build_all:
+  stage: build
+  script:
+    - cd /go/src/github.com/superkkt/cherry
+    - go build $(go list ./... | grep -v /vendor/)
+
+test_all:
+  stage: test
+  script:
+    - cd /go/src/github.com/superkkt/cherry
+    - go test $(go list ./... | grep -v /vendor/)
