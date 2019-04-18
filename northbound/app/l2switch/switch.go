@@ -35,6 +35,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/superkkt/go-logging"
+	"github.com/davecgh/go-spew/spew"
 )
 
 var (
@@ -150,7 +151,7 @@ func (r *L2Switch) processPacket(finder network.Finder, ingress *network.Port, e
 
 	// Broadcast?
 	if isBroadcast(eth) {
-		logger.Debugf("broadcasting.. SrcMAC=%v, DstMAC=%v", eth.SrcMAC, eth.DstMAC)
+		logger.Debugf("broadcasting.. Ingress=%v, SrcMAC=%v, DstMAC=%v, Packet=%v", ingress.ID(), eth.SrcMAC, eth.DstMAC, spew.Sdump(packet))
 		return true, r.stormCtrl.broadcast(ingress, packet)
 	}
 

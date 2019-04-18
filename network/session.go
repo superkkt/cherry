@@ -81,7 +81,7 @@ func checkParam(c sessionConfig) {
 func newSession(c sessionConfig) *session {
 	checkParam(c)
 
-	stream := transceiver.NewStream(c.conn)
+	stream := transceiver.NewStream(c.conn, 0xFFFF)
 	v := new(session)
 	v.watcher = c.watcher
 	v.finder = c.finder
