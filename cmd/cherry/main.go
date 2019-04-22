@@ -33,8 +33,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/superkkt/cherry/api"
 	"github.com/superkkt/cherry/database"
 	"github.com/superkkt/cherry/election"
+	"github.com/superkkt/cherry/log"
 	"github.com/superkkt/cherry/network"
 	"github.com/superkkt/cherry/northbound"
 
@@ -77,8 +79,8 @@ func main() {
 	}
 
 	observer := initElectionObserver(ctx, db)
-
-	controller := network.NewController(db, observer)
+	controller := network.NewController(db)
+	initAPIServer(observer, controller)
 	manager, err := createAppManager(db)
 	if err != nil {
 		logger.Fatalf("failed to create application manager: %v", err)
@@ -147,6 +149,24 @@ func initElectionObserver(ctx context.Context, db *database.MySQL) *election.Obs
 	return observer
 }
 
+func initAPIServer(observer *election.Observer, controller *network.Controller) {
+	go func() {
+		conf := api.Config{}
+		conf.Port = uint16(viper.GetInt("rest.port"))
+		if viper.GetBool("rest.tls") == true {
+			conf.TLS.Cert = viper.GetString("rest.cert_file")
+			conf.TLS.Key = viper.GetString("rest.key_file")
+		}
+		conf.Observer = observer
+		conf.Controller = controller
+
+		srv := &api.Core{Config: conf}
+		if err := srv.Serve(); err != nil {
+			logger.Fatalf("failed to run the API server: %v", err)
+		}
+	}()
+}
+
 func initSignalHandler(controller *network.Controller, manager *northbound.Manager, cancel context.CancelFunc) {
 	go func() {
 		c := make(chan os.Signal, 5)
@@ -174,7 +194,7 @@ func initSignalHandler(controller *network.Controller, manager *northbound.Manag
 }
 
 func initLog(level logging.Level) error {
-	backend, err := newSyslog(programName)
+	backend, err := log.NewSyslog(programName)
 	if err != nil {
 		return err
 	}

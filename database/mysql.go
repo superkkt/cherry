@@ -33,6 +33,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/superkkt/cherry/api"
 	"github.com/superkkt/cherry/network"
 	"github.com/superkkt/cherry/northbound/app/discovery"
 	"github.com/superkkt/cherry/northbound/app/proxyarp"
@@ -294,7 +295,7 @@ func (r *MySQL) Location(mac net.HardwareAddr) (dpid string, port uint32, status
 	return dpid, port, status, nil
 }
 
-func (r *MySQL) Switches() (sw []network.Switch, err error) {
+func (r *MySQL) Switches() (sw []api.Switch, err error) {
 	f := func(tx *sql.Tx) error {
 		rows, err := tx.Query("SELECT id, dpid, n_ports, first_port, first_printed_port, description FROM switch ORDER BY id DESC")
 		if err != nil {
@@ -303,7 +304,7 @@ func (r *MySQL) Switches() (sw []network.Switch, err error) {
 		defer rows.Close()
 
 		for rows.Next() {
-			v := network.Switch{}
+			v := api.Switch{}
 			if err := rows.Scan(&v.ID, &v.DPID, &v.NumPorts, &v.FirstPort, &v.FirstPrintedPort, &v.Description); err != nil {
 				return err
 			}
@@ -319,13 +320,13 @@ func (r *MySQL) Switches() (sw []network.Switch, err error) {
 	return sw, nil
 }
 
-func (r *MySQL) AddSwitch(sw network.SwitchParam) (swID uint64, err error) {
+func (r *MySQL) AddSwitch(dpid uint64, nPorts, firstPort, firstPrintedPort uint16, desc string) (swID uint64, err error) {
 	f := func(tx *sql.Tx) error {
-		swID, err = r.addSwitch(tx, sw)
+		swID, err = r.addSwitch(tx, dpid, nPorts, firstPort, firstPrintedPort, desc)
 		if err != nil {
 			return err
 		}
-		if err := r.addPorts(tx, swID, sw.FirstPort, sw.NumPorts); err != nil {
+		if err := r.addPorts(tx, swID, firstPort, nPorts); err != nil {
 			return err
 		}
 
@@ -338,9 +339,9 @@ func (r *MySQL) AddSwitch(sw network.SwitchParam) (swID uint64, err error) {
 	return swID, nil
 }
 
-func (r *MySQL) addSwitch(tx *sql.Tx, sw network.SwitchParam) (swID uint64, err error) {
+func (r *MySQL) addSwitch(tx *sql.Tx, dpid uint64, nPorts, firstPort, firstPrintedPort uint16, desc string) (swID uint64, err error) {
 	qry := "INSERT INTO switch (dpid, n_ports, first_port, first_printed_port, description) VALUES (?, ?, ?, ?, ?)"
-	result, err := tx.Exec(qry, sw.DPID, sw.NumPorts, sw.FirstPort, sw.FirstPrintedPort, sw.Description)
+	result, err := tx.Exec(qry, dpid, nPorts, firstPort, firstPrintedPort, desc)
 	if err != nil {
 		return 0, err
 	}
@@ -368,7 +369,7 @@ func (r *MySQL) addPorts(tx *sql.Tx, swID uint64, firstPort, n_ports uint16) err
 	return nil
 }
 
-func (r *MySQL) Switch(dpid uint64) (sw network.Switch, ok bool, err error) {
+func (r *MySQL) Switch(dpid uint64) (sw api.Switch, ok bool, err error) {
 	f := func(tx *sql.Tx) error {
 		row, err := tx.Query("SELECT id, dpid, n_ports, first_port, first_printed_port, description FROM switch WHERE dpid = ?", dpid)
 		if err != nil {
@@ -388,7 +389,7 @@ func (r *MySQL) Switch(dpid uint64) (sw network.Switch, ok bool, err error) {
 		return nil
 	}
 	if err = r.query(f); err != nil {
-		return network.Switch{}, false, err
+		return api.Switch{}, false, err
 	}
 
 	return sw, ok, nil
@@ -420,7 +421,7 @@ func (r *MySQL) RemoveSwitch(id uint64) (ok bool, err error) {
 	return ok, nil
 }
 
-func (r *MySQL) SwitchPorts(swID uint64) (ports []network.SwitchPort, err error) {
+func (r *MySQL) SwitchPorts(swID uint64) (ports []api.SwitchPort, err error) {
 	f := func(tx *sql.Tx) error {
 		qry := `SELECT A.id, A.number, B.first_port
 			FROM port A
@@ -435,7 +436,7 @@ func (r *MySQL) SwitchPorts(swID uint64) (ports []network.SwitchPort, err error)
 
 		for rows.Next() {
 			var firstPort uint
-			v := network.SwitchPort{}
+			v := api.SwitchPort{}
 			if err := rows.Scan(&v.ID, &v.Number, &firstPort); err != nil {
 				return err
 			}
@@ -452,7 +453,7 @@ func (r *MySQL) SwitchPorts(swID uint64) (ports []network.SwitchPort, err error)
 	return ports, nil
 }
 
-func (r *MySQL) Networks() (networks []network.Network, err error) {
+func (r *MySQL) Networks() (networks []api.Network, err error) {
 	f := func(tx *sql.Tx) error {
 		qry := `SELECT id, INET_NTOA(address), mask
 			FROM network
@@ -464,7 +465,7 @@ func (r *MySQL) Networks() (networks []network.Network, err error) {
 		defer rows.Close()
 
 		for rows.Next() {
-			v := network.Network{}
+			v := api.Network{}
 			if err := rows.Scan(&v.ID, &v.Address, &v.Mask); err != nil {
 				return err
 			}
@@ -532,7 +533,7 @@ func (r *MySQL) addIPAddrs(tx *sql.Tx, netID uint64, addr net.IP, mask net.IPMas
 	return nil
 }
 
-func (r *MySQL) Network(addr net.IP) (n network.Network, ok bool, err error) {
+func (r *MySQL) Network(addr net.IP) (n api.Network, ok bool, err error) {
 	f := func(tx *sql.Tx) error {
 		row, err := tx.Query("SELECT id, INET_NTOA(address), mask FROM network WHERE address = INET_ATON(?)", addr.String())
 		if err != nil {
@@ -552,7 +553,7 @@ func (r *MySQL) Network(addr net.IP) (n network.Network, ok bool, err error) {
 		return nil
 	}
 	if err = r.query(f); err != nil {
-		return network.Network{}, false, err
+		return api.Network{}, false, err
 	}
 
 	return n, ok, nil
@@ -584,7 +585,7 @@ func (r *MySQL) RemoveNetwork(id uint64) (ok bool, err error) {
 	return ok, nil
 }
 
-func (r *MySQL) IPAddrs(networkID uint64) (addresses []network.IP, err error) {
+func (r *MySQL) IPAddrs(networkID uint64) (addresses []api.IP, err error) {
 	f := func(tx *sql.Tx) error {
 		qry := `SELECT A.id, INET_NTOA(A.address), A.used, C.description, 
 				IFNULL(CONCAT(E.description, '/', D.number - E.first_port + E.first_printed_port), '') 
@@ -602,7 +603,7 @@ func (r *MySQL) IPAddrs(networkID uint64) (addresses []network.IP, err error) {
 
 		for rows.Next() {
 			var host, port sql.NullString
-			v := network.IP{}
+			v := api.IP{}
 			if err := rows.Scan(&v.ID, &v.Address, &v.Used, &host, &port); err != nil {
 				return err
 			}
@@ -632,7 +633,7 @@ func decodeMAC(s string) (net.HardwareAddr, error) {
 	return net.HardwareAddr(v), nil
 }
 
-func (r *MySQL) Hosts() (hosts []network.Host, err error) {
+func (r *MySQL) Hosts() (hosts []api.Host, err error) {
 	f := func(tx *sql.Tx) error {
 		qry := `SELECT A.id, CONCAT(INET_NTOA(B.address), '/', E.mask), 
 				IFNULL(CONCAT(D.description, '/', C.number - D.first_port + D.first_printed_port), ''), 
@@ -650,7 +651,7 @@ func (r *MySQL) Hosts() (hosts []network.Host, err error) {
 		defer rows.Close()
 
 		for rows.Next() {
-			v := network.Host{}
+			v := api.Host{}
 			var timestamp time.Time
 
 			if err := rows.Scan(&v.ID, &v.IP, &v.Port, &v.MAC, &v.Description, &timestamp); err != nil {
@@ -680,7 +681,7 @@ func (r *MySQL) Hosts() (hosts []network.Host, err error) {
 	return hosts, nil
 }
 
-func (r *MySQL) Host(id uint64) (host network.Host, ok bool, err error) {
+func (r *MySQL) Host(id uint64) (host api.Host, ok bool, err error) {
 	f := func(tx *sql.Tx) error {
 		qry := `SELECT A.id, CONCAT(INET_NTOA(B.address), '/', E.mask), 
 				IFNULL(CONCAT(D.description, '/', C.number - D.first_port + D.first_printed_port), ''), 
@@ -722,22 +723,22 @@ func (r *MySQL) Host(id uint64) (host network.Host, ok bool, err error) {
 		return nil
 	}
 	if err = r.query(f); err != nil {
-		return network.Host{}, false, err
+		return api.Host{}, false, err
 	}
 
 	return host, ok, nil
 }
 
-func (r *MySQL) AddHost(host network.HostParam) (hostID uint64, err error) {
+func (r *MySQL) AddHost(ipID uint64, mac net.HardwareAddr, desc string) (hostID uint64, err error) {
 	f := func(tx *sql.Tx) error {
-		ok, err := isAvailableIP(tx, host.IPID)
+		ok, err := isAvailableIP(tx, ipID)
 		if err != nil {
 			return err
 		}
 		if !ok {
 			return errors.New("already used IP address")
 		}
-		hostID, err = addNewHost(tx, host)
+		hostID, err = addNewHost(tx, ipID, mac, desc)
 		if err != nil {
 			return err
 		}
@@ -751,9 +752,9 @@ func (r *MySQL) AddHost(host network.HostParam) (hostID uint64, err error) {
 	return hostID, nil
 }
 
-func addNewHost(tx *sql.Tx, host network.HostParam) (uint64, error) {
+func addNewHost(tx *sql.Tx, ipID uint64, mac net.HardwareAddr, desc string) (uint64, error) {
 	qry := "INSERT INTO host (ip_id, mac, description, last_updated_timestamp) VALUES (?, UNHEX(?), ?, NOW())"
-	result, err := tx.Exec(qry, host.IPID, normalizeMAC(host.MAC), host.Description)
+	result, err := tx.Exec(qry, ipID, normalizeMAC(mac.String()), desc)
 	if err != nil {
 		return 0, err
 	}
@@ -1058,7 +1059,7 @@ func hostMAC(tx *sql.Tx, hostID uint64) (net.HardwareAddr, error) {
 	return mac, nil
 }
 
-func (r *MySQL) VIPs() (result []network.VIP, err error) {
+func (r *MySQL) VIPs() (result []api.VIP, err error) {
 	vips, err := r.getVIPs()
 	if err != nil {
 		return nil, err
@@ -1081,7 +1082,7 @@ func (r *MySQL) VIPs() (result []network.VIP, err error) {
 			return nil, fmt.Errorf("unknown standby host (ID=%v)", v.standby)
 		}
 
-		result = append(result, network.VIP{
+		result = append(result, api.VIP{
 			ID:          v.id,
 			IP:          v.address,
 			ActiveHost:  active,
@@ -1165,20 +1166,20 @@ func (r *MySQL) GetActivatedVIPs() (result []virtualip.Address, err error) {
 	return result, nil
 }
 
-func (r *MySQL) AddVIP(vip network.VIPParam) (id uint64, cidr string, err error) {
+func (r *MySQL) AddVIP(ipID, activeID, standbyID uint64, desc string) (id uint64, cidr string, err error) {
 	f := func(tx *sql.Tx) error {
-		ok, err := isAvailableIP(tx, vip.IPID)
+		ok, err := isAvailableIP(tx, ipID)
 		if err != nil {
 			return err
 		}
 		if !ok {
 			return errors.New("already used IP address")
 		}
-		id, err = addNewVIP(tx, vip)
+		id, err = addNewVIP(tx, ipID, activeID, standbyID, desc)
 		if err != nil {
 			return err
 		}
-		cidr, err = getIP(tx, vip.IPID)
+		cidr, err = getIP(tx, ipID)
 		if err != nil {
 			return err
 		}
@@ -1192,9 +1193,9 @@ func (r *MySQL) AddVIP(vip network.VIPParam) (id uint64, cidr string, err error)
 	return id, cidr, nil
 }
 
-func addNewVIP(tx *sql.Tx, vip network.VIPParam) (uint64, error) {
+func addNewVIP(tx *sql.Tx, ipID, activeID, standbyID uint64, desc string) (uint64, error) {
 	qry := "INSERT INTO vip (ip_id, active_host_id, standby_host_id, description) VALUES (?, ?, ?, ?)"
-	result, err := tx.Exec(qry, vip.IPID, vip.ActiveHostID, vip.StandbyHostID, vip.Description)
+	result, err := tx.Exec(qry, ipID, activeID, standbyID, desc)
 	if err != nil {
 		return 0, err
 	}
