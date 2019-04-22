@@ -19,7 +19,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-package main
+package log
 
 import (
 	"fmt"
@@ -34,7 +34,7 @@ type syslog struct {
 	writer *slog.Writer
 }
 
-func newSyslog(prefix string) (logging.Backend, error) {
+func NewSyslog(prefix string) (logging.Backend, error) {
 	w, err := slog.New(slog.LOG_CRIT, prefix)
 	if err != nil {
 		return nil, err
