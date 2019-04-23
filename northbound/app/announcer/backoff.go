@@ -31,21 +31,16 @@ import (
 	"github.com/superkkt/cherry/network"
 
 	lru "github.com/hashicorp/golang-lru"
-	"github.com/superkkt/go-logging"
 )
 
-var (
-	logger = logging.MustGetLogger("announcer")
-)
-
-type BackoffARPAnnouncer struct {
+type backoff struct {
 	finder network.Finder
 
 	mutex sync.Mutex
 	cache *lru.Cache
 }
 
-func NewBackoffARPAnnouncer(finder network.Finder) *BackoffARPAnnouncer {
+func newBackoff(finder network.Finder) *backoff {
 	if finder == nil {
 		panic("nil finder parameter")
 	}
@@ -54,20 +49,20 @@ func NewBackoffARPAnnouncer(finder network.Finder) *BackoffARPAnnouncer {
 		panic(err)
 	}
 
-	return &BackoffARPAnnouncer{
+	return &backoff{
 		finder: finder,
 		cache:  cache,
 	}
 }
 
-func (r *BackoffARPAnnouncer) Broadcast(ip net.IP, mac net.HardwareAddr) error {
+func (r *backoff) Broadcast(ip net.IP, mac net.HardwareAddr) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	return r.getAnnouncer(ip, mac).Broadcast()
 }
 
-func (r *BackoffARPAnnouncer) getAnnouncer(ip net.IP, mac net.HardwareAddr) *announcer {
+func (r *backoff) getAnnouncer(ip net.IP, mac net.HardwareAddr) *announcer {
 	var result *announcer
 
 	v, ok := r.cache.Get(ip.String())

@@ -35,8 +35,8 @@ import (
 
 	"github.com/superkkt/cherry/api"
 	"github.com/superkkt/cherry/network"
+	"github.com/superkkt/cherry/northbound/app/announcer"
 	"github.com/superkkt/cherry/northbound/app/discovery"
-	"github.com/superkkt/cherry/northbound/app/proxyarp"
 	"github.com/superkkt/cherry/northbound/app/virtualip"
 
 	"github.com/go-sql-driver/mysql"
@@ -763,6 +763,10 @@ func addNewHost(tx *sql.Tx, ipID uint64, mac net.HardwareAddr, desc string) (uin
 		return 0, err
 	}
 
+	if err := updateARPTableEntryByHost(tx, uint64(id), false); err != nil {
+		return 0, err
+	}
+
 	return uint64(id), nil
 }
 
@@ -792,6 +796,10 @@ func normalizeMAC(mac string) string {
 
 func (r *MySQL) RemoveHost(id uint64) (ok bool, err error) {
 	f := func(tx *sql.Tx) error {
+		if err := updateARPTableEntryByHost(tx, id, true); err != nil {
+			return err
+		}
+
 		result, err := tx.Exec("DELETE FROM host WHERE id = ?", id)
 		if err != nil {
 			return err
@@ -1033,6 +1041,10 @@ func swapVIPHosts(tx *sql.Tx, v vip) error {
 		return err
 	}
 
+	if err := updateARPTableEntryByVIP(tx, v.id, false); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -1133,39 +1145,6 @@ func (r *MySQL) getVIPs() (result []registeredVIP, err error) {
 	return result, nil
 }
 
-func (r *MySQL) GetActivatedVIPs() (result []virtualip.Address, err error) {
-	vips, err := r.getVIPs()
-	if err != nil {
-		return nil, err
-	}
-
-	for _, v := range vips {
-		active, ok, err := r.Host(v.active)
-		if err != nil {
-			return nil, err
-		}
-		if !ok {
-			return nil, fmt.Errorf("unknown active host (ID=%v)", v.active)
-		}
-
-		ip, _, err := net.ParseCIDR(v.address)
-		if err != nil {
-			return nil, fmt.Errorf("invalid IP address: %v", v.address)
-		}
-		mac, err := net.ParseMAC(active.MAC)
-		if err != nil {
-			return nil, fmt.Errorf("invalid MAC address: %v", active.MAC)
-		}
-
-		result = append(result, virtualip.Address{
-			IP:  ip,
-			MAC: mac,
-		})
-	}
-
-	return result, nil
-}
-
 func (r *MySQL) AddVIP(ipID, activeID, standbyID uint64, desc string) (id uint64, cidr string, err error) {
 	f := func(tx *sql.Tx) error {
 		ok, err := isAvailableIP(tx, ipID)
@@ -1204,6 +1183,10 @@ func addNewVIP(tx *sql.Tx, ipID, activeID, standbyID uint64, desc string) (uint6
 		return 0, err
 	}
 
+	if err := updateARPTableEntryByVIP(tx, uint64(id), false); err != nil {
+		return 0, err
+	}
+
 	return uint64(id), nil
 }
 
@@ -1231,6 +1214,10 @@ func getIP(tx *sql.Tx, id uint64) (cidr string, err error) {
 
 func (r *MySQL) RemoveVIP(id uint64) (ok bool, err error) {
 	f := func(tx *sql.Tx) error {
+		if err := updateARPTableEntryByVIP(tx, id, true); err != nil {
+			return err
+		}
+
 		result, err := tx.Exec("DELETE FROM vip WHERE id = ?", id)
 		if err != nil {
 			return err
@@ -1463,46 +1450,6 @@ func (r *MySQL) Elect(uid string, expiration time.Duration) (elected bool, err e
 	return elected, nil
 }
 
-func (r *MySQL) GetActivatedHosts() (hosts []proxyarp.Host, err error) {
-	f := func(tx *sql.Tx) error {
-		qry := "SELECT INET_NTOA(B.`address`), HEX(A.`mac`) FROM `host` A JOIN `ip` B ON A.`ip_id` = B.`id`"
-		rows, err := tx.Query(qry)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-
-		for rows.Next() {
-			var address, mac string
-			if err := rows.Scan(&address, &mac); err != nil {
-				return err
-			}
-
-			v := proxyarp.Host{}
-			// Parse the IP address.
-			v.IP = net.ParseIP(address)
-			if v.IP == nil {
-				return fmt.Errorf("invalid IP address: %v", address)
-			}
-			// Parse the MAC address.
-			v.MAC, err = decodeMAC(mac)
-			if err != nil {
-				return err
-			}
-
-			hosts = append(hosts, v)
-		}
-
-		return rows.Err()
-	}
-
-	if err = r.query(f); err != nil {
-		return nil, err
-	}
-
-	return hosts, nil
-}
-
 // MACAddrs returns all the registered MAC addresses.
 func (r *MySQL) MACAddrs() (result []net.HardwareAddr, err error) {
 	f := func(tx *sql.Tx) error {
@@ -1535,4 +1482,156 @@ func (r *MySQL) MACAddrs() (result []net.HardwareAddr, err error) {
 	}
 
 	return result, nil
+}
+
+func (r *MySQL) RenewARPTable() error {
+	f := func(tx *sql.Tx) error {
+		hosts, err := getHostARPEntries(tx)
+		if err != nil {
+			return err
+		}
+		vips, err := getVIPARPEntries(tx)
+		if err != nil {
+			return err
+		}
+
+		for _, v := range append(hosts, vips...) {
+			if err := updateARPTableEntry(tx, v.IP, v.MAC); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}
+
+	return r.query(f)
+}
+
+type arpEntry struct {
+	IP  string
+	MAC string
+}
+
+func getHostARPEntries(tx *sql.Tx) (result []arpEntry, err error) {
+	qry := "SELECT INET_NTOA(B.`address`), HEX(A.`mac`) FROM `host` A JOIN `ip` B ON A.`ip_id` = B.`id`"
+	rows, err := tx.Query(qry)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var ip, mac string
+		if err := rows.Scan(&ip, &mac); err != nil {
+			return nil, err
+		}
+		result = append(result, arpEntry{IP: ip, MAC: mac})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+func getVIPARPEntries(tx *sql.Tx) (result []arpEntry, err error) {
+	qry := "SELECT INET_NTOA(B.`address`), HEX(C.`mac`) FROM `vip` A JOIN `ip` B ON A.`ip_id` = B.`id` JOIN `host` C ON A.`active_host_id` = C.`id`"
+	rows, err := tx.Query(qry)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var ip, mac string
+		if err := rows.Scan(&ip, &mac); err != nil {
+			return nil, err
+		}
+		result = append(result, arpEntry{IP: ip, MAC: mac})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+func (r *MySQL) GetARPTable() (result []announcer.ARPTableEntry, err error) {
+	f := func(tx *sql.Tx) error {
+		rows, err := tx.Query("SELECT INET_NTOA(`ip`), HEX(`mac`) FROM `arp`")
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var ip, mac string
+			if err := rows.Scan(&ip, &mac); err != nil {
+				return err
+			}
+			addr := net.ParseIP(ip)
+			if addr == nil {
+				return fmt.Errorf("invalid IP address: %v", ip)
+			}
+			hwAddr, err := decodeMAC(mac)
+			if err != nil {
+				return err
+			}
+
+			result = append(result, announcer.ARPTableEntry{IP: addr, MAC: hwAddr})
+		}
+
+		return rows.Err()
+	}
+
+	if err = r.query(f); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+const zeroMAC = "000000000000"
+
+func updateARPTableEntryByHost(tx *sql.Tx, id uint64, invalidate bool) error {
+	var ip, mac string
+	qry := "SELECT INET_NTOA(B.`address`), HEX(A.`mac`) "
+	qry += "FROM `host` A "
+	qry += "JOIN `ip` B ON A.`ip_id` = B.`id` "
+	qry += "WHERE A.`id` = ?"
+	if err := tx.QueryRow(qry, id).Scan(&ip, &mac); err != nil {
+		return err
+	}
+	if invalidate == true {
+		mac = zeroMAC
+	}
+
+	return updateARPTableEntry(tx, ip, mac)
+}
+
+func updateARPTableEntryByVIP(tx *sql.Tx, id uint64, invalidate bool) error {
+	var ip, mac string
+	qry := "SELECT INET_NTOA(B.`address`), HEX(C.`mac`) "
+	qry += "FROM `vip` A "
+	qry += "JOIN `ip` B ON A.`ip_id` = B.`id` "
+	qry += "JOIN `host` C ON A.`active_host_id` = C.`id` "
+	qry += "WHERE A.`id` = ?"
+	if err := tx.QueryRow(qry, id).Scan(&ip, &mac); err != nil {
+		return err
+	}
+	if invalidate == true {
+		mac = zeroMAC
+	}
+
+	return updateARPTableEntry(tx, ip, mac)
+}
+
+func updateARPTableEntry(tx *sql.Tx, ip, mac string) error {
+	qry := "INSERT INTO `arp` (`ip`, `mac`) VALUES (INET_ATON(?), UNHEX(?)) ON DUPLICATE KEY UPDATE `mac` = UNHEX(?)"
+	if _, err := tx.Exec(qry, ip, mac, mac); err != nil {
+		return err
+	}
+	logger.Debugf("updated ARP table entry: IP=%v, MAC=%v", ip, mac)
+
+	return nil
 }
