@@ -33,9 +33,9 @@ import (
 	"github.com/superkkt/cherry/openflow"
 	"github.com/superkkt/cherry/protocol"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/pkg/errors"
 	"github.com/superkkt/go-logging"
-	"github.com/davecgh/go-spew/spew"
 )
 
 var (
@@ -283,6 +283,7 @@ func (r *L2Switch) OnDeviceUp(finder network.Finder, device *network.Device) err
 func (r *L2Switch) flowManager(finder network.Finder) {
 	logger.Debug("executed flow manager")
 
+	// This interval should be shorter than the flow hard-timeout specified by network.Device.SetFlow().
 	ticker := time.Tick(35 * time.Second)
 	// Infinite loop.
 	for range ticker {
