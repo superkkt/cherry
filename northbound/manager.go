@@ -30,6 +30,7 @@ import (
 	"github.com/superkkt/cherry/database"
 	"github.com/superkkt/cherry/network"
 	"github.com/superkkt/cherry/northbound/app"
+	"github.com/superkkt/cherry/northbound/app/announcer"
 	"github.com/superkkt/cherry/northbound/app/discovery"
 	"github.com/superkkt/cherry/northbound/app/l2switch"
 	"github.com/superkkt/cherry/northbound/app/monitor"
@@ -71,6 +72,7 @@ func NewManager(db *database.MySQL) (*Manager, error) {
 	v.register(proxyarp.New(db))
 	v.register(monitor.New())
 	v.register(virtualip.New(db))
+	v.register(announcer.New(db))
 
 	return v, nil
 }
@@ -109,8 +111,12 @@ func (r *Manager) Enable(appName string) error {
 	if !ok {
 		return fmt.Errorf("unknown application: %v", appName)
 	}
-	app := v.instance
+	if v.enabled == true {
+		logger.Debugf("%v: already enabled", appName)
+		return nil
+	}
 
+	app := v.instance
 	if err := app.Init(); err != nil {
 		return errors.Wrap(err, "initializing application")
 	}

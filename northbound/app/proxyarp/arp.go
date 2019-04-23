@@ -24,14 +24,10 @@ package proxyarp
 import (
 	"bytes"
 	"fmt"
-	"math/rand"
 	"net"
-	"sync"
-	"time"
 
 	"github.com/superkkt/cherry/network"
 	"github.com/superkkt/cherry/northbound/app"
-	"github.com/superkkt/cherry/northbound/util/announcer"
 	"github.com/superkkt/cherry/openflow"
 	"github.com/superkkt/cherry/protocol"
 
@@ -45,13 +41,11 @@ var (
 
 type ProxyARP struct {
 	app.BaseProcessor
-	db   database
-	once sync.Once
+	db database
 }
 
 type database interface {
 	MAC(ip net.IP) (mac net.HardwareAddr, ok bool, err error)
-	GetActivatedHosts() ([]Host, error)
 }
 
 type Host struct {
@@ -71,43 +65,6 @@ func (r *ProxyARP) Init() error {
 
 func (r *ProxyARP) Name() string {
 	return "ProxyARP"
-}
-
-func (r *ProxyARP) OnDeviceUp(finder network.Finder, device *network.Device) error {
-	// Make sure that there is only one ProxyARP broadcaster in this application.
-	r.once.Do(func() {
-		// Run the background broadcaster for periodic ARP announcement.
-		go r.broadcaster(finder)
-	})
-
-	return r.BaseProcessor.OnDeviceUp(finder, device)
-}
-
-func (r *ProxyARP) broadcaster(finder network.Finder) {
-	logger.Debug("executed ARP announcement broadcaster")
-
-	backoff := announcer.NewBackoffARPAnnouncer(finder)
-
-	ticker := time.Tick(5 * time.Second)
-	// Infinite loop.
-	for range ticker {
-		hosts, err := r.db.GetActivatedHosts()
-		if err != nil {
-			logger.Errorf("failed to get host addresses: %v", err)
-			continue
-		}
-
-		for _, v := range hosts {
-			logger.Debugf("broadcasting an ARP announcement for a host: IP=%v, MAC=%v", v.IP, v.MAC)
-
-			if err := backoff.Broadcast(v.IP, v.MAC); err != nil {
-				logger.Errorf("failed to broadcast an ARP announcement: %v", err)
-				continue
-			}
-			// Sleep to mitigate the peak latency of processing PACKET_INs.
-			time.Sleep(time.Duration(10+rand.Intn(100)) * time.Millisecond)
-		}
-	}
 }
 
 func (r *ProxyARP) OnPacketIn(finder network.Finder, ingress *network.Port, eth *protocol.Ethernet) error {

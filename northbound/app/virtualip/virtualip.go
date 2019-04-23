@@ -23,16 +23,11 @@ package virtualip
 
 import (
 	"fmt"
-	"math/rand"
 	"net"
 	"strconv"
-	"sync"
-	"time"
 
 	"github.com/superkkt/cherry/network"
 	"github.com/superkkt/cherry/northbound/app"
-	"github.com/superkkt/cherry/northbound/util/announcer"
-
 	"github.com/superkkt/go-logging"
 )
 
@@ -43,14 +38,12 @@ var (
 // NOTE: This VirtualIP module should be executed before the Discovery module.
 type VirtualIP struct {
 	app.BaseProcessor
-	db   database
-	once sync.Once
+	db database
 }
 
 type database interface {
 	ToggleDeviceVIP(swDPID uint64) ([]Address, error)
 	TogglePortVIP(swDPID uint64, portNum uint16) ([]Address, error)
-	GetActivatedVIPs() (vips []Address, err error)
 }
 
 type Address struct {
@@ -68,49 +61,12 @@ func (r *VirtualIP) Init() error {
 	return nil
 }
 
-func (r *VirtualIP) broadcaster(finder network.Finder) {
-	logger.Debug("executed ARP announcement broadcaster")
-
-	backoff := announcer.NewBackoffARPAnnouncer(finder)
-
-	ticker := time.Tick(5 * time.Second)
-	// Infinite loop.
-	for range ticker {
-		vips, err := r.db.GetActivatedVIPs()
-		if err != nil {
-			logger.Errorf("failed to get activated VIPs: %v", err)
-			continue
-		}
-
-		for _, v := range vips {
-			logger.Debugf("broadcasting an ARP announcement for VIP: IP=%v, MAC=%v", v.IP, v.MAC)
-
-			if err := backoff.Broadcast(v.IP, v.MAC); err != nil {
-				logger.Errorf("failed to broadcast an ARP announcement: %v", err)
-				continue
-			}
-			// Sleep to mitigate the peak latency of processing PACKET_INs.
-			time.Sleep(time.Duration(10+rand.Intn(100)) * time.Millisecond)
-		}
-	}
-}
-
 func (r *VirtualIP) Name() string {
 	return "VirtualIP"
 }
 
 func (r *VirtualIP) String() string {
 	return fmt.Sprintf("%v", r.Name())
-}
-
-func (r *VirtualIP) OnDeviceUp(finder network.Finder, device *network.Device) error {
-	// Make sure that there is only one VirtualIP broadcaster in this application.
-	r.once.Do(func() {
-		// Run the background broadcaster for periodic ARP announcement.
-		go r.broadcaster(finder)
-	})
-
-	return r.BaseProcessor.OnDeviceUp(finder, device)
 }
 
 func (r *VirtualIP) OnPortDown(finder network.Finder, port *network.Port) error {
