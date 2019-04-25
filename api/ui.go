@@ -50,6 +50,11 @@ type Database interface {
 	UpdateUser(id uint64, password *string, admin *bool) error
 	ActivateUser(id uint64) error
 	DeactivateUser(id uint64) error
+
+	Groups(offset uint32, limit uint8) ([]Group, error)
+	AddGroup(name string) (id uint64, duplicated bool, err error)
+	UpdateGroup(id uint64, name string) (duplicated bool, err error)
+	RemoveGroup(id uint64) error
 }
 
 type User struct {
@@ -58,6 +63,40 @@ type User struct {
 	Enabled   bool
 	Admin     bool
 	Timestamp time.Time
+}
+
+func (r *User) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		ID        uint64 `json:"id"`
+		Name      string `json:"name"`
+		Enabled   bool   `json:"enabled"`
+		Admin     bool   `json:"admin"`
+		Timestamp int64  `json:"timestamp"`
+	}{
+		ID:        r.ID,
+		Name:      r.Name,
+		Enabled:   r.Enabled,
+		Admin:     r.Admin,
+		Timestamp: r.Timestamp.Unix(),
+	})
+}
+
+type Group struct {
+	ID        uint64    `json:"id"`
+	Name      string    `json:"name"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+func (r *Group) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		ID        uint64 `json:"id"`
+		Name      string `json:"name"`
+		Timestamp int64  `json:"timestamp"`
+	}{
+		ID:        r.ID,
+		Name:      r.Name,
+		Timestamp: r.Timestamp.Unix(),
+	})
 }
 
 func (r *UI) Serve() error {
@@ -74,6 +113,10 @@ func (r *UI) Serve() error {
 		rest.Post("/api/v1/user/update", r.updateUser),
 		rest.Post("/api/v1/user/activate", r.activateUser),
 		rest.Post("/api/v1/user/deactivate", r.deactivateUser),
+		rest.Post("/api/v1/group/list", r.listGroup),
+		rest.Post("/api/v1/group/add", r.addGroup),
+		rest.Post("/api/v1/group/update", r.updateGroup),
+		rest.Post("/api/v1/group/remove", r.removeGroup),
 	)
 }
 
@@ -217,7 +260,7 @@ func (r *UI) listUser(w rest.ResponseWriter, req *rest.Request) {
 
 	w.WriteJson(&response{
 		Status: statusOkay,
-		Data:   &listUserResp{user},
+		Data:   user,
 	})
 }
 
@@ -252,34 +295,6 @@ func (r *listUserParam) validate() error {
 	return nil
 }
 
-type listUserResp struct {
-	User []User
-}
-
-func (r *listUserResp) MarshalJSON() ([]byte, error) {
-	type user struct {
-		ID        uint64 `json:"id"`
-		Name      string `json:"name"`
-		Enabled   bool   `json:"enabled"`
-		Admin     bool   `json:"admin"`
-		Timestamp int64  `json:"timestamp"`
-	}
-	u := make([]user, len(r.User))
-	for i, v := range r.User {
-		u[i] = user{
-			ID:        v.ID,
-			Name:      v.Name,
-			Enabled:   v.Enabled,
-			Admin:     v.Admin,
-			Timestamp: v.Timestamp.Unix(),
-		}
-	}
-
-	return json.Marshal(&struct {
-		User []user `json:"user"`
-	}{u})
-}
-
 func (r *UI) addUser(w rest.ResponseWriter, req *rest.Request) {
 	p := new(addUserParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
@@ -306,6 +321,7 @@ func (r *UI) addUser(w rest.ResponseWriter, req *rest.Request) {
 		w.WriteJson(&response{Status: statusDuplicated, Message: fmt.Sprintf("duplicated user account: %v", p.Name)})
 		return
 	}
+	logger.Debugf("added user info: %v", spew.Sdump(p))
 
 	w.WriteJson(&response{
 		Status: statusOkay,
@@ -352,8 +368,8 @@ func (r *addUserParam) validate() error {
 func (r *UI) updateUser(w rest.ResponseWriter, req *rest.Request) {
 	p := new(updateUserParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
+		logger.Warningf("failed to decode params: %v", err)
 		w.WriteJson(&response{Status: statusInvalidParameter, Message: err.Error()})
-		logger.Debugf("failed to decode params: %v", err)
 		return
 	}
 	logger.Debugf("updateUser request from %v: %v", req.RemoteAddr, spew.Sdump(p))
@@ -534,6 +550,250 @@ func (r *UI) validateAdminSession(sessionID string) bool {
 	}
 
 	return session.(*User).Admin
+}
+
+func (r *UI) listGroup(w rest.ResponseWriter, req *rest.Request) {
+	p := new(listGroupParam)
+	if err := req.DecodeJsonPayload(p); err != nil {
+		logger.Warningf("failed to decode params: %v", err)
+		w.WriteJson(&response{Status: statusInvalidParameter, Message: err.Error()})
+		return
+	}
+	logger.Debugf("listGroup request from %v: %v", req.RemoteAddr, spew.Sdump(p))
+
+	if _, ok := r.session.Get(p.SessionID); ok == false {
+		logger.Warningf("unknown session id: %v", p.SessionID)
+		w.WriteJson(&response{Status: statusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		return
+	}
+
+	group, err := r.DB.Groups(p.Offset, p.Limit)
+	if err != nil {
+		logger.Errorf("failed to query the group list: %v", err)
+		w.WriteJson(&response{Status: statusInternalServerError, Message: err.Error()})
+		return
+	}
+	logger.Debugf("queried group list: %v", spew.Sdump(group))
+
+	w.WriteJson(&response{
+		Status: statusOkay,
+		Data:   group,
+	})
+}
+
+type listGroupParam struct {
+	SessionID string
+	Offset    uint32
+	Limit     uint8
+}
+
+func (r *listGroupParam) UnmarshalJSON(data []byte) error {
+	v := struct {
+		SessionID string `json:"session_id"`
+		Offset    uint32 `json:"offset"`
+		Limit     uint8  `json:"limit"`
+	}{}
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	*r = listGroupParam(v)
+
+	return r.validate()
+}
+
+func (r *listGroupParam) validate() error {
+	if len(r.SessionID) != 64 {
+		return errors.New("invalid session id")
+	}
+	if r.Limit == 0 {
+		return errors.New("invalid limit")
+	}
+
+	return nil
+}
+
+func (r *UI) addGroup(w rest.ResponseWriter, req *rest.Request) {
+	p := new(addGroupParam)
+	if err := req.DecodeJsonPayload(p); err != nil {
+		logger.Warningf("failed to decode params: %v", err)
+		w.WriteJson(&response{Status: statusInvalidParameter, Message: err.Error()})
+		return
+	}
+	logger.Debugf("addGroup request from %v: %v", req.RemoteAddr, spew.Sdump(p))
+
+	if _, ok := r.session.Get(p.SessionID); ok == false {
+		logger.Warningf("unknown session id: %v", p.SessionID)
+		w.WriteJson(&response{Status: statusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		return
+	}
+
+	id, duplicated, err := r.DB.AddGroup(p.Name)
+	if err != nil {
+		logger.Errorf("failed to add a new group: %v", err)
+		w.WriteJson(&response{Status: statusInternalServerError, Message: err.Error()})
+		return
+	}
+	if duplicated {
+		logger.Infof("duplicated group: name=%v", p.Name)
+		w.WriteJson(&response{Status: statusDuplicated, Message: fmt.Sprintf("duplicated group: %v", p.Name)})
+		return
+	}
+	logger.Debugf("added group info: %v", spew.Sdump(p))
+
+	w.WriteJson(&response{
+		Status: statusOkay,
+		Data: &struct {
+			ID uint64 `json:"id"`
+		}{id},
+	})
+}
+
+type addGroupParam struct {
+	SessionID string
+	Name      string
+}
+
+func (r *addGroupParam) UnmarshalJSON(data []byte) error {
+	v := struct {
+		SessionID string `json:"session_id"`
+		Name      string `json:"name"`
+	}{}
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	*r = addGroupParam(v)
+
+	return r.validate()
+}
+
+func (r *addGroupParam) validate() error {
+	if len(r.SessionID) != 64 {
+		return errors.New("invalid session id")
+	}
+	if len(r.Name) < 2 || len(r.Name) > 25 {
+		return fmt.Errorf("invalid name: %v", r.Name)
+	}
+
+	return nil
+}
+
+func (r *UI) updateGroup(w rest.ResponseWriter, req *rest.Request) {
+	p := new(updateGroupParam)
+	if err := req.DecodeJsonPayload(p); err != nil {
+		logger.Warningf("failed to decode params: %v", err)
+		w.WriteJson(&response{Status: statusInvalidParameter, Message: err.Error()})
+		return
+	}
+	logger.Debugf("updateGroup request from %v: %v", req.RemoteAddr, spew.Sdump(p))
+
+	if _, ok := r.session.Get(p.SessionID); ok == false {
+		logger.Warningf("unknown session id: %v", p.SessionID)
+		w.WriteJson(&response{Status: statusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		return
+	}
+
+	duplicated, err := r.DB.UpdateGroup(p.ID, p.Name)
+	if err != nil {
+		logger.Errorf("failed to update group info: %v", err)
+		w.WriteJson(&response{Status: statusInternalServerError, Message: err.Error()})
+		return
+	}
+	if duplicated {
+		logger.Infof("duplicated group: name=%v", p.Name)
+		w.WriteJson(&response{Status: statusDuplicated, Message: fmt.Sprintf("duplicated group: %v", p.Name)})
+		return
+	}
+	logger.Debugf("updated group info: %v", spew.Sdump(p))
+
+	w.WriteJson(&response{Status: statusOkay})
+}
+
+type updateGroupParam struct {
+	SessionID string
+	ID        uint64
+	Name      string
+}
+
+func (r *updateGroupParam) UnmarshalJSON(data []byte) error {
+	v := struct {
+		SessionID string `json:"session_id"`
+		ID        uint64 `json:"id"`
+		Name      string `json:"name"`
+	}{}
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	*r = updateGroupParam(v)
+
+	return r.validate()
+}
+
+func (r *updateGroupParam) validate() error {
+	if len(r.SessionID) != 64 {
+		return errors.New("invalid session id")
+	}
+	if r.ID == 0 {
+		return errors.New("invalid group id")
+	}
+	if len(r.Name) < 2 || len(r.Name) > 25 {
+		return fmt.Errorf("invalid name: %v", r.Name)
+	}
+
+	return nil
+}
+
+func (r *UI) removeGroup(w rest.ResponseWriter, req *rest.Request) {
+	p := new(removeGroupParam)
+	if err := req.DecodeJsonPayload(p); err != nil {
+		logger.Warningf("failed to decode params: %v", err)
+		w.WriteJson(&response{Status: statusInvalidParameter, Message: err.Error()})
+		return
+	}
+	logger.Debugf("removeGroup request from %v: %v", req.RemoteAddr, spew.Sdump(p))
+
+	if _, ok := r.session.Get(p.SessionID); ok == false {
+		logger.Warningf("unknown session id: %v", p.SessionID)
+		w.WriteJson(&response{Status: statusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		return
+	}
+
+	if err := r.DB.RemoveGroup(p.ID); err != nil {
+		logger.Errorf("failed to remove group info: %v", err)
+		w.WriteJson(&response{Status: statusInternalServerError, Message: err.Error()})
+		return
+	}
+	logger.Debugf("removed group info: %v", spew.Sdump(p))
+
+	w.WriteJson(&response{Status: statusOkay})
+}
+
+type removeGroupParam struct {
+	SessionID string
+	ID        uint64
+}
+
+func (r *removeGroupParam) UnmarshalJSON(data []byte) error {
+	v := struct {
+		SessionID string `json:"session_id"`
+		ID        uint64 `json:"id"`
+	}{}
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	*r = removeGroupParam(v)
+
+	return r.validate()
+}
+
+func (r *removeGroupParam) validate() error {
+	if len(r.SessionID) != 64 {
+		return errors.New("invalid session id")
+	}
+	if r.ID == 0 {
+		return errors.New("invalid group id")
+	}
+
+	return nil
 }
 
 type Switch struct {
