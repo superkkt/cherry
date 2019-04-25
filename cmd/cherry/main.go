@@ -33,6 +33,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/superkkt/cherry"
 	"github.com/superkkt/cherry/api"
 	"github.com/superkkt/cherry/database"
 	"github.com/superkkt/cherry/election"
@@ -48,7 +49,7 @@ import (
 
 const (
 	programName     = "cherry"
-	programVersion  = "0.13.5"
+	programVersion  = cherry.Version
 	defaultLogLevel = logging.INFO
 )
 

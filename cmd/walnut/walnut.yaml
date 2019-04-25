@@ -1,0 +1,27 @@
+# NOTE:
+#
+# Parameters marked as a DYNAMIC can be dynamically updated without restarting the daemon.
+
+log:
+    # (DYNAMIC)
+    # The logger will only write log messages whose level is equal to or higher
+    # than this level. It should be one of DEBUG, INFO, WARNING, ERROR or CRITICAL.
+    # Lower log level is more verbose. (DEBUG < INFO < WARNING < ERROR < CRITICAL)
+    level: "INFO"
+    # log_driver can be one of stderr or syslog.
+    driver: "stderr"
+
+mysql:
+    # host:port[,host:port,host:port,...]
+    addr: "localhost:3306"
+    username: "username"
+    password: "password"
+    name: "database"
+
+rest:
+    port: 4500
+    tls: true
+    cert_file: "/your_tls_cert_file"
+    key_file: "/your_tls_key_file"
+
+core_api_url: "http://localhost:7070"
