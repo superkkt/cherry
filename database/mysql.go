@@ -338,6 +338,99 @@ func (r *MySQL) DeactivateUser(id uint64) error {
 	return r.query(f)
 }
 
+func (r *MySQL) Groups(offset uint32, limit uint8) (group []api.Group, err error) {
+	f := func(tx *sql.Tx) error {
+		qry := "SELECT `id`, `name`, `timestamp` "
+		qry += "FROM `group` "
+		qry += "ORDER BY `id` DESC "
+		qry += "LIMIT ?, ?"
+
+		rows, err := tx.Query(qry, offset, limit)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		group = []api.Group{}
+		for rows.Next() {
+			v := api.Group{}
+			if err := rows.Scan(&v.ID, &v.Name, &v.Timestamp); err != nil {
+				return err
+			}
+			group = append(group, v)
+		}
+
+		return rows.Err()
+	}
+	if err = r.query(f); err != nil {
+		return nil, err
+	}
+
+	return group, nil
+}
+
+func (r *MySQL) AddGroup(name string) (groupID uint64, duplicated bool, err error) {
+	f := func(tx *sql.Tx) error {
+		qry := "INSERT INTO `group` (`name`, `timestamp`) VALUES (?, NOW())"
+		result, err := tx.Exec(qry, name)
+		if err != nil {
+			// No error.
+			if isDuplicated(err) {
+				duplicated = true
+				return nil
+			}
+			return err
+		}
+
+		id, err := result.LastInsertId()
+		if err != nil {
+			return err
+		}
+		groupID = uint64(id)
+
+		return nil
+	}
+	if err = r.query(f); err != nil {
+		return 0, false, err
+	}
+
+	return groupID, duplicated, nil
+}
+
+func (r *MySQL) UpdateGroup(id uint64, name string) (duplicated bool, err error) {
+	f := func(tx *sql.Tx) error {
+		qry := "UPDATE `group` SET `name` = ? WHERE `id` = ?"
+		if _, err := tx.Exec(qry, name, id); err != nil {
+			// No error.
+			if isDuplicated(err) {
+				duplicated = true
+				return nil
+			}
+			return err
+		}
+
+		return nil
+	}
+	if err = r.query(f); err != nil {
+		return false, err
+
+	}
+
+	return duplicated, nil
+}
+
+func (r *MySQL) RemoveGroup(id uint64) error {
+	f := func(tx *sql.Tx) error {
+		_, err := tx.Exec("DELETE FROM `group` WHERE `id` = ?", id)
+		if isForeignkeyErr(err) {
+			return errors.New("failed to remove a group: it has child hosts that are being used by group")
+		}
+		return err
+	}
+
+	return r.query(f)
+}
+
 func (r *MySQL) MAC(ip net.IP) (mac net.HardwareAddr, ok bool, err error) {
 	if ip == nil {
 		panic("IP address is nil")
