@@ -16,6 +16,24 @@
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
 
 --
+-- Table structure for table `user`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE IF NOT EXISTS `user` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  `password` char(64) NOT NULL,
+  `enabled` tinyint(1) NOT NULL DEFAULT '0',
+  `admin` tinyint(1) NOT NULL DEFAULT '0',
+  `timestamp` TIMESTAMP NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `name` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `arp`
 --
 
@@ -175,10 +193,10 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = '' */ ;
 DELIMITER ;;
-/*!50003 CREATE*/ /*!50017 DEFINER=`root`@`localhost`*/ /*!50003 TRIGGER update_ip AFTER UPDATE ON host 
- FOR EACH ROW BEGIN 
- UPDATE ip SET used = 0 WHERE id = OLD.ip_id; 
- UPDATE ip SET used = 1 WHERE id = NEW.ip_id; 
+/*!50003 CREATE*/ /*!50017 DEFINER=`root`@`localhost`*/ /*!50003 TRIGGER update_ip AFTER UPDATE ON host
+ FOR EACH ROW BEGIN
+ UPDATE ip SET used = 0 WHERE id = OLD.ip_id;
+ UPDATE ip SET used = 1 WHERE id = NEW.ip_id;
  END */;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
@@ -244,10 +262,10 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = '' */ ;
 DELIMITER ;;
-/*!50003 CREATE*/ /*!50017 DEFINER=`root`@`localhost`*/ /*!50003 TRIGGER update_vip AFTER UPDATE ON vip 
- FOR EACH ROW BEGIN 
- UPDATE ip SET used = 0 WHERE id = OLD.ip_id; 
- UPDATE ip SET used = 1 WHERE id = NEW.ip_id; 
+/*!50003 CREATE*/ /*!50017 DEFINER=`root`@`localhost`*/ /*!50003 TRIGGER update_vip AFTER UPDATE ON vip
+ FOR EACH ROW BEGIN
+ UPDATE ip SET used = 0 WHERE id = OLD.ip_id;
+ UPDATE ip SET used = 1 WHERE id = NEW.ip_id;
  END */;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;

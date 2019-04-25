@@ -48,6 +48,7 @@ const (
 	maxDeadlockRetry = 5
 
 	deadlockErrCode   uint16 = 1213
+	duplicatedErrCode uint16 = 1062
 	foreignkeyErrCode uint16 = 1451
 
 	clusterDialerNetwork = "cluster"
@@ -140,6 +141,15 @@ func isDeadlock(err error) bool {
 	return e.Number == deadlockErrCode
 }
 
+func isDuplicated(err error) bool {
+	e, ok := err.(*mysql.MySQLError)
+	if !ok {
+		return false
+	}
+
+	return e.Number == duplicatedErrCode
+}
+
 func isForeignkeyErr(err error) bool {
 	e, ok := err.(*mysql.MySQLError)
 	if !ok {
@@ -197,6 +207,135 @@ func caller() string {
 	}
 
 	return fmt.Sprintf("%v (%v:%v)", f.Name(), file, line)
+}
+
+func (r *MySQL) Auth(name, password string) (user *api.User, err error) {
+	f := func(tx *sql.Tx) error {
+		v := new(api.User)
+		qry := "SELECT `id`, `name`, `enabled`, `admin`, `timestamp` FROM `user` WHERE `name` = ? AND `password` = SHA2(?, 256)"
+		if err := tx.QueryRow(qry, name, name+password).Scan(&v.ID, &v.Name, &v.Enabled, &v.Admin, &v.Timestamp); err != nil {
+			if err == sql.ErrNoRows {
+				// Incorrect credential or not exist.
+				return nil
+			}
+			return err
+		}
+		user = v
+
+		return nil
+	}
+	if err = r.query(f); err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}
+
+func (r *MySQL) Users(offset uint32, limit uint8) (user []api.User, err error) {
+	f := func(tx *sql.Tx) error {
+		qry := "SELECT `id`, `name`, `enabled`, `admin`, `timestamp` "
+		qry += "FROM `user` "
+		qry += "ORDER BY `id` DESC "
+		qry += "LIMIT ?, ?"
+
+		rows, err := tx.Query(qry, offset, limit)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		user = []api.User{}
+		for rows.Next() {
+			v := api.User{}
+			if err := rows.Scan(&v.ID, &v.Name, &v.Enabled, &v.Admin, &v.Timestamp); err != nil {
+				return err
+			}
+			user = append(user, v)
+		}
+
+		return rows.Err()
+	}
+
+	if err = r.query(f); err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}
+
+func (r *MySQL) AddUser(name, password string) (userID uint64, duplicated bool, err error) {
+	f := func(tx *sql.Tx) error {
+		qry := "INSERT INTO `user` (`name`, `password`, `enabled`, `admin`, `timestamp`) "
+		qry += "VALUES (?, SHA2(?, 256), TRUE, FALSE, NOW())"
+		result, err := tx.Exec(qry, name, name+password)
+		if err != nil {
+			// No error.
+			if isDuplicated(err) {
+				duplicated = true
+				return nil
+			}
+			return err
+		}
+
+		id, err := result.LastInsertId()
+		if err != nil {
+			return err
+		}
+		userID = uint64(id)
+
+		return nil
+	}
+	if err = r.query(f); err != nil {
+		return 0, false, err
+	}
+
+	return userID, duplicated, nil
+}
+
+func (r *MySQL) UpdateUser(id uint64, password *string, admin *bool) error {
+	f := func(tx *sql.Tx) error {
+		set := []string{}
+		args := []interface{}{}
+
+		if password != nil {
+			set = append(set, "`password` = SHA2(CONCAT(`name`, ?), 256)")
+			args = append(args, *password)
+		}
+		if admin != nil {
+			set = append(set, "`admin` = ?")
+			args = append(args, *admin)
+		}
+		if len(set) == 0 {
+			return nil
+		}
+
+		qry := fmt.Sprintf("UPDATE `user` SET %v WHERE `id` = %v", strings.Join(set, ","), id)
+		_, err := tx.Exec(qry, args...)
+
+		return err
+	}
+
+	return r.query(f)
+}
+
+func (r *MySQL) ActivateUser(id uint64) error {
+	f := func(tx *sql.Tx) error {
+		qry := "UPDATE `user` SET `enabled` = TRUE WHERE `id` = ?"
+		_, err := tx.Exec(qry, id)
+		return err
+	}
+
+	return r.query(f)
+}
+
+func (r *MySQL) DeactivateUser(id uint64) error {
+	f := func(tx *sql.Tx) error {
+		qry := "UPDATE `user` SET `enabled` = FALSE WHERE `id` = ?"
+		_, err := tx.Exec(qry, id)
+		return err
+	}
+
+	return r.query(f)
 }
 
 func (r *MySQL) MAC(ip net.IP) (mac net.HardwareAddr, ok bool, err error) {

@@ -40,15 +40,29 @@ type Core struct {
 
 func (r *Core) Serve() error {
 	return r.serve(
+		rest.Post("/api/v1/status", r.status),
 		rest.Post("/api/v1/remove", r.remove),
 		rest.Post("/api/v1/announce", r.announce),
 	)
 }
 
+func (r *Core) status(w rest.ResponseWriter, req *rest.Request) {
+	logger.Debugf("status request from %v", req.RemoteAddr)
+
+	w.WriteJson(&response{
+		Status: statusOkay,
+		Data: struct {
+			Master bool `json:"master"`
+		}{
+			Master: r.Observer.IsMaster(),
+		},
+	})
+}
+
 func (r *Core) remove(w rest.ResponseWriter, req *rest.Request) {
 	p := new(removeParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
-		w.WriteJson(response{Status: statusInvalidParameterError, Message: err.Error()})
+		w.WriteJson(response{Status: statusInvalidParameter, Message: err.Error()})
 		return
 	}
 	logger.Debugf("remove request from %v: %v", req.RemoteAddr, spew.Sdump(p))
@@ -97,7 +111,7 @@ func (r *removeParam) UnmarshalJSON(data []byte) error {
 func (r *Core) announce(w rest.ResponseWriter, req *rest.Request) {
 	p := new(announceParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
-		w.WriteJson(response{Status: statusInvalidParameterError, Message: err.Error()})
+		w.WriteJson(response{Status: statusInvalidParameter, Message: err.Error()})
 		return
 	}
 	logger.Debugf("announce request from %v: %v", req.RemoteAddr, spew.Sdump(p))

@@ -80,7 +80,7 @@ func (r *Config) serve(routes ...*rest.Route) error {
 	api.Use(rest.MiddlewareSimple(func(handler rest.HandlerFunc) rest.HandlerFunc {
 		return func(writer rest.ResponseWriter, request *rest.Request) {
 			if r.Observer.IsMaster() == false {
-				writer.WriteJson(response{Status: statusServiceUnavailableError, Message: "use the master controller server"})
+				writer.WriteJson(response{Status: statusServiceUnavailable, Message: "use the master controller server"})
 				return
 			}
 			handler(writer, request)
