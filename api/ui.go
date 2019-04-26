@@ -30,6 +30,9 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ant0ine/go-json-rest/rest"
@@ -56,6 +59,10 @@ type Database interface {
 	AddGroup(name string) (id uint64, duplicated bool, err error)
 	UpdateGroup(id uint64, name string) (duplicated bool, err error)
 	RemoveGroup(id uint64) error
+
+	Switches(offset uint32, limit uint8) ([]Switch, error)
+	AddSwitch(dpid uint64, nPorts, firstPort, firstPrintedPort uint16, desc string) (id uint64, duplicated bool, err error)
+	RemoveSwitch(id uint64) error
 
 	Networks(offset uint32, limit uint8) ([]Network, error)
 	AddNetwork(addr net.IP, mask net.IPMask) (id uint64, duplicated bool, err error)
@@ -105,6 +112,45 @@ func (r *Group) MarshalJSON() ([]byte, error) {
 	})
 }
 
+type Switch struct {
+	ID               uint64 `json:"id"`
+	DPID             uint64 `json:"dpid"`
+	NumPorts         uint16 `json:"n_ports"`
+	FirstPort        uint16 `json:"first_port"`
+	FirstPrintedPort uint16 `json:"first_printed_port"`
+	Description      string `json:"description"`
+}
+
+func (r *Switch) MarshalJSON() ([]byte, error) {
+	s := new(struct {
+		ID   uint64 `json:"id"`
+		DPID struct {
+			Int uint64 `json:"int"`
+			Hex string `json:"hex"`
+		} `json:"dpid"`
+		NumPorts         uint16 `json:"n_ports"`
+		FirstPort        uint16 `json:"first_port"`
+		FirstPrintedPort uint16 `json:"first_printed_port"`
+		Description      string `json:"description"`
+	})
+
+	s.ID = r.ID
+	s.DPID.Int = r.DPID
+	s.DPID.Hex = hexDPID(r.DPID)
+	s.NumPorts = r.NumPorts
+	s.FirstPort = r.FirstPort
+	s.FirstPrintedPort = r.FirstPrintedPort
+	s.Description = r.Description
+
+	return json.Marshal(&s)
+}
+
+func hexDPID(dpid uint64) string {
+	hex := fmt.Sprintf("%016x", dpid)
+	re := regexp.MustCompile("..")
+	return strings.TrimRight(re.ReplaceAllString(hex, "$0:"), ":")
+}
+
 type Network struct {
 	ID      uint64 `json:"id"`
 	Address string `json:"address"` // FIXME: Use a native type.
@@ -137,6 +183,9 @@ func (r *UI) Serve() error {
 		rest.Post("/api/v1/group/add", r.addGroup),
 		rest.Post("/api/v1/group/update", r.updateGroup),
 		rest.Post("/api/v1/group/remove", r.removeGroup),
+		rest.Post("/api/v1/switch/list", r.listSwitch),
+		rest.Post("/api/v1/switch/add", r.addSwitch),
+		rest.Post("/api/v1/switch/remove", r.removeSwitch),
 		rest.Post("/api/v1/network/list", r.listNetwork),
 		rest.Post("/api/v1/network/add", r.addNetwork),
 		rest.Post("/api/v1/network/remove", r.removeNetwork),
@@ -804,6 +853,218 @@ func (r *removeGroupParam) validate() error {
 	return nil
 }
 
+func (r *UI) listSwitch(w rest.ResponseWriter, req *rest.Request) {
+	p := new(listSwitchParam)
+	if err := req.DecodeJsonPayload(p); err != nil {
+		logger.Warningf("failed to decode params: %v", err)
+		w.WriteJson(&response{Status: statusInvalidParameter, Message: err.Error()})
+		return
+	}
+	logger.Debugf("listSwitch request from %v: %v", req.RemoteAddr, spew.Sdump(p))
+
+	if _, ok := r.session.Get(p.SessionID); ok == false {
+		logger.Warningf("unknown session id: %v", p.SessionID)
+		w.WriteJson(&response{Status: statusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		return
+	}
+
+	sw, err := r.DB.Switches(p.Offset, p.Limit)
+	if err != nil {
+		logger.Errorf("failed to query the switch list: %v", err)
+		w.WriteJson(&response{Status: statusInternalServerError, Message: err.Error()})
+		return
+	}
+	logger.Debugf("queried switch list: %v", spew.Sdump(sw))
+
+	w.WriteJson(&response{Status: statusOkay, Data: sw})
+}
+
+type listSwitchParam struct {
+	SessionID string
+	Offset    uint32
+	Limit     uint8
+}
+
+func (r *listSwitchParam) UnmarshalJSON(data []byte) error {
+	v := struct {
+		SessionID string `json:"session_id"`
+		Offset    uint32 `json:"offset"`
+		Limit     uint8  `json:"limit"`
+	}{}
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	*r = listSwitchParam(v)
+
+	return r.validate()
+}
+
+func (r *listSwitchParam) validate() error {
+	if len(r.SessionID) != 64 {
+		return errors.New("invalid session id")
+	}
+	if r.Limit == 0 {
+		return errors.New("invalid limit")
+	}
+
+	return nil
+}
+
+func (r *UI) addSwitch(w rest.ResponseWriter, req *rest.Request) {
+	p := new(addSwitchParam)
+	if err := req.DecodeJsonPayload(p); err != nil {
+		logger.Warningf("failed to decode params: %v", err)
+		w.WriteJson(&response{Status: statusInvalidParameter, Message: err.Error()})
+		return
+	}
+	logger.Debugf("addSwitch request from %v: %v", req.RemoteAddr, spew.Sdump(p))
+
+	if _, ok := r.session.Get(p.SessionID); ok == false {
+		logger.Warningf("unknown session id: %v", p.SessionID)
+		w.WriteJson(&response{Status: statusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		return
+	}
+
+	id, duplicated, err := r.DB.AddSwitch(p.DPID, p.NumPorts, p.FirstPort, p.FirstPrintedPort, p.Description)
+	if err != nil {
+		logger.Errorf("failed to add a new switch: %v", err)
+		w.WriteJson(&response{Status: statusInternalServerError, Message: err.Error()})
+		return
+	}
+	if duplicated {
+		logger.Infof("duplicated switch: dpid=%v", p.DPID)
+		w.WriteJson(&response{Status: statusDuplicated, Message: fmt.Sprintf("duplicated switch: dpid=%v", p.DPID)})
+		return
+	}
+	logger.Debugf("added switch info: %v", spew.Sdump(p))
+
+	w.WriteJson(&response{Status: statusOkay, Data: id})
+}
+
+type addSwitchParam struct {
+	SessionID        string
+	DPID             uint64
+	NumPorts         uint16
+	FirstPort        uint16
+	FirstPrintedPort uint16
+	Description      string
+}
+
+func (r *addSwitchParam) UnmarshalJSON(data []byte) error {
+	v := struct {
+		SessionID        string `json:"session_id"`
+		DPID             string `json:"dpid"`
+		NumPorts         uint16 `json:"n_ports"`
+		FirstPort        uint16 `json:"first_port"`
+		FirstPrintedPort uint16 `json:"first_printed_port"`
+		Description      string `json:"description"`
+	}{}
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+
+	if len(v.SessionID) != 64 {
+		return errors.New("invalid session id")
+	}
+	if v.NumPorts == 0 {
+		return errors.New("invalid number of ports")
+	}
+	if v.NumPorts > 512 {
+		return errors.New("too many ports")
+	}
+	if len(v.Description) > 255 {
+		return errors.New("too long description")
+	}
+	if uint32(v.FirstPort)+uint32(v.NumPorts) > 0xFFFF {
+		return errors.New("too high first port number")
+	}
+	ok, err := regexp.MatchString("^([0-9a-fA-F]{2}:){7}([0-9a-fA-F]{2})$", v.DPID)
+	if err != nil {
+		return err
+	}
+
+	// Is the DP id in hex format?
+	if ok {
+		v.DPID = strings.Replace(v.DPID, ":", "", -1)
+		if r.DPID, err = strconv.ParseUint(v.DPID, 16, 64); err != nil {
+			return err
+		}
+	} else {
+		if r.DPID, err = strconv.ParseUint(v.DPID, 10, 64); err != nil {
+			return err
+		}
+	}
+
+	r.SessionID = v.SessionID
+	r.NumPorts = v.NumPorts
+	r.FirstPort = v.FirstPort
+	r.FirstPrintedPort = v.FirstPrintedPort
+	r.Description = v.Description
+
+	return nil
+}
+
+func (r *UI) removeSwitch(w rest.ResponseWriter, req *rest.Request) {
+	p := new(removeSwitchParam)
+	if err := req.DecodeJsonPayload(p); err != nil {
+		logger.Warningf("failed to decode params: %v", err)
+		w.WriteJson(&response{Status: statusInvalidParameter, Message: err.Error()})
+		return
+	}
+	logger.Debugf("removeSwitch request from %v: %v", req.RemoteAddr, spew.Sdump(p))
+
+	if _, ok := r.session.Get(p.SessionID); ok == false {
+		logger.Warningf("unknown session id: %v", p.SessionID)
+		w.WriteJson(&response{Status: statusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		return
+	}
+
+	if err := r.DB.RemoveSwitch(p.ID); err != nil {
+		logger.Errorf("failed to remove switch info: %v", err)
+		w.WriteJson(&response{Status: statusInternalServerError, Message: err.Error()})
+		return
+	}
+	logger.Debugf("removed switch info: %v", spew.Sdump(p))
+
+	logger.Debug("removing all flows from the entire switches")
+	if err := r.Controller.RemoveFlows(); err != nil {
+		// Ignore this error.
+		logger.Errorf("failed to remove flows: %v", err)
+	}
+	logger.Debug("removed all flows from the entire switches")
+
+	w.WriteJson(&response{Status: statusOkay})
+}
+
+type removeSwitchParam struct {
+	SessionID string
+	ID        uint64
+}
+
+func (r *removeSwitchParam) UnmarshalJSON(data []byte) error {
+	v := struct {
+		SessionID string `json:"session_id"`
+		ID        uint64 `json:"id"`
+	}{}
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	*r = removeSwitchParam(v)
+
+	return r.validate()
+}
+
+func (r *removeSwitchParam) validate() error {
+	if len(r.SessionID) != 64 {
+		return errors.New("invalid session id")
+	}
+	if r.ID == 0 {
+		return errors.New("invalid switch id")
+	}
+
+	return nil
+}
+
 func (r *UI) listNetwork(w rest.ResponseWriter, req *rest.Request) {
 	p := new(listNetworkParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
@@ -1040,20 +1301,6 @@ func (r *listIPParam) validate() error {
 	}
 
 	return nil
-}
-
-type Switch struct {
-	ID               uint64 `json:"id"`
-	DPID             uint64 `json:"dpid"`
-	NumPorts         uint16 `json:"n_ports"`
-	FirstPort        uint16 `json:"first_port"`
-	FirstPrintedPort uint16 `json:"first_printed_port"`
-	Description      string `json:"description"`
-}
-
-type SwitchPort struct {
-	ID     uint64 `json:"id"`
-	Number uint   `json:"number"`
 }
 
 type Host struct {

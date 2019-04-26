@@ -422,9 +422,10 @@ func (r *MySQL) UpdateGroup(id uint64, name string) (duplicated bool, err error)
 func (r *MySQL) RemoveGroup(id uint64) error {
 	f := func(tx *sql.Tx) error {
 		_, err := tx.Exec("DELETE FROM `group` WHERE `id` = ?", id)
-		if isForeignkeyErr(err) {
+		if err != nil && isForeignkeyErr(err) {
 			return errors.New("failed to remove a group: it has child hosts that are being used by group")
 		}
+
 		return err
 	}
 
@@ -527,14 +528,20 @@ func (r *MySQL) Location(mac net.HardwareAddr) (dpid string, port uint32, status
 	return dpid, port, status, nil
 }
 
-func (r *MySQL) Switches() (sw []api.Switch, err error) {
+func (r *MySQL) Switches(offset uint32, limit uint8) (sw []api.Switch, err error) {
 	f := func(tx *sql.Tx) error {
-		rows, err := tx.Query("SELECT id, dpid, n_ports, first_port, first_printed_port, description FROM switch ORDER BY id DESC")
+		qry := "SELECT `id`, `dpid`, `n_ports`, `first_port`, `first_printed_port`, `description` "
+		qry += "FROM `switch` "
+		qry += "ORDER BY `id` DESC "
+		qry += "LIMIT ?, ?"
+
+		rows, err := tx.Query(qry, offset, limit)
 		if err != nil {
 			return err
 		}
 		defer rows.Close()
 
+		sw = []api.Switch{}
 		for rows.Next() {
 			v := api.Switch{}
 			if err := rows.Scan(&v.ID, &v.DPID, &v.NumPorts, &v.FirstPort, &v.FirstPrintedPort, &v.Description); err != nil {
@@ -552,10 +559,16 @@ func (r *MySQL) Switches() (sw []api.Switch, err error) {
 	return sw, nil
 }
 
-func (r *MySQL) AddSwitch(dpid uint64, nPorts, firstPort, firstPrintedPort uint16, desc string) (swID uint64, err error) {
+func (r *MySQL) AddSwitch(dpid uint64, nPorts, firstPort, firstPrintedPort uint16, desc string) (swID uint64, duplicated bool, err error) {
 	f := func(tx *sql.Tx) error {
 		swID, err = r.addSwitch(tx, dpid, nPorts, firstPort, firstPrintedPort, desc)
 		if err != nil {
+			// No error.
+			if isDuplicated(err) {
+				duplicated = true
+				return nil
+			}
+
 			return err
 		}
 		if err := r.addPorts(tx, swID, firstPort, nPorts); err != nil {
@@ -565,10 +578,10 @@ func (r *MySQL) AddSwitch(dpid uint64, nPorts, firstPort, firstPrintedPort uint1
 		return nil
 	}
 	if err = r.query(f); err != nil {
-		return 0, err
+		return 0, false, err
 	}
 
-	return swID, nil
+	return swID, duplicated, nil
 }
 
 func (r *MySQL) addSwitch(tx *sql.Tx, dpid uint64, nPorts, firstPort, firstPrintedPort uint16, desc string) (swID uint64, err error) {
@@ -601,88 +614,17 @@ func (r *MySQL) addPorts(tx *sql.Tx, swID uint64, firstPort, n_ports uint16) err
 	return nil
 }
 
-func (r *MySQL) Switch(dpid uint64) (sw api.Switch, ok bool, err error) {
+func (r *MySQL) RemoveSwitch(id uint64) error {
 	f := func(tx *sql.Tx) error {
-		row, err := tx.Query("SELECT id, dpid, n_ports, first_port, first_printed_port, description FROM switch WHERE dpid = ?", dpid)
-		if err != nil {
-			return err
+		_, err := tx.Exec("DELETE FROM `switch` WHERE `id` = ?", id)
+		if err != nil && isForeignkeyErr(err) {
+			return errors.New("failed to remove a switch: it has child hosts connected to this switch")
 		}
-		defer row.Close()
 
-		// Empty row?
-		if !row.Next() {
-			return nil
-		}
-		if err := row.Scan(&sw.ID, &sw.DPID, &sw.NumPorts, &sw.FirstPort, &sw.FirstPrintedPort, &sw.Description); err != nil {
-			return err
-		}
-		ok = true
-
-		return nil
-	}
-	if err = r.query(f); err != nil {
-		return api.Switch{}, false, err
+		return err
 	}
 
-	return sw, ok, nil
-}
-
-func (r *MySQL) RemoveSwitch(id uint64) (ok bool, err error) {
-	f := func(tx *sql.Tx) error {
-		result, err := tx.Exec("DELETE FROM switch WHERE id = ?", id)
-		if err != nil {
-			return err
-		}
-		nRows, err := result.RowsAffected()
-		if err != nil {
-			return err
-		}
-		if nRows > 0 {
-			ok = true
-		}
-
-		return nil
-	}
-	if err = r.query(f); err != nil {
-		if isForeignkeyErr(err) {
-			return false, errors.New("failed to remove a switch: it has child hosts connected to this switch")
-		}
-		return false, err
-	}
-
-	return ok, nil
-}
-
-func (r *MySQL) SwitchPorts(swID uint64) (ports []api.SwitchPort, err error) {
-	f := func(tx *sql.Tx) error {
-		qry := `SELECT A.id, A.number, B.first_port
-			FROM port A
-			JOIN switch B ON A.switch_id = B.id
-			WHERE A.switch_id = ?
-			ORDER BY id ASC`
-		rows, err := tx.Query(qry, swID)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-
-		for rows.Next() {
-			var firstPort uint
-			v := api.SwitchPort{}
-			if err := rows.Scan(&v.ID, &v.Number, &firstPort); err != nil {
-				return err
-			}
-			v.Number = v.Number - firstPort + 1
-			ports = append(ports, v)
-		}
-
-		return rows.Err()
-	}
-	if err = r.query(f); err != nil {
-		return nil, err
-	}
-
-	return ports, nil
+	return r.query(f)
 }
 
 func (r *MySQL) Networks(offset uint32, limit uint8) (network []api.Network, err error) {
@@ -776,9 +718,10 @@ func (r *MySQL) addIPAddrs(tx *sql.Tx, netID uint64, addr net.IP, mask net.IPMas
 func (r *MySQL) RemoveNetwork(id uint64) error {
 	f := func(tx *sql.Tx) error {
 		_, err := tx.Exec("DELETE FROM `network` WHERE `id` = ?", id)
-		if isForeignkeyErr(err) {
+		if err != nil && isForeignkeyErr(err) {
 			return errors.New("failed to remove a network: it has child IP addresses that are being used by hosts")
 		}
+
 		return err
 	}
 
