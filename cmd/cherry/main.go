@@ -35,6 +35,7 @@ import (
 
 	"github.com/superkkt/cherry"
 	"github.com/superkkt/cherry/api"
+	"github.com/superkkt/cherry/api/core"
 	"github.com/superkkt/cherry/database"
 	"github.com/superkkt/cherry/election"
 	"github.com/superkkt/cherry/log"
@@ -152,16 +153,16 @@ func initElectionObserver(ctx context.Context, db *database.MySQL) *election.Obs
 
 func initAPIServer(observer *election.Observer, controller *network.Controller) {
 	go func() {
-		conf := api.Config{}
-		conf.Port = uint16(viper.GetInt("rest.port"))
+		s := api.Server{}
+		s.Port = uint16(viper.GetInt("rest.port"))
 		if viper.GetBool("rest.tls") == true {
-			conf.TLS.Cert = viper.GetString("rest.cert_file")
-			conf.TLS.Key = viper.GetString("rest.key_file")
+			s.TLS.Cert = viper.GetString("rest.cert_file")
+			s.TLS.Key = viper.GetString("rest.key_file")
 		}
-		conf.Observer = observer
-		conf.Controller = controller
+		s.Observer = observer
+		s.Controller = controller
 
-		srv := &api.Core{Config: conf}
+		srv := &core.API{Server: s}
 		if err := srv.Serve(); err != nil {
 			logger.Fatalf("failed to run the API server: %v", err)
 		}

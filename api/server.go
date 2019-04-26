@@ -32,14 +32,9 @@ import (
 	"net/http"
 
 	"github.com/ant0ine/go-json-rest/rest"
-	"github.com/superkkt/go-logging"
 )
 
-var (
-	logger = logging.MustGetLogger("api")
-)
-
-type Config struct {
+type Server struct {
 	Port uint16
 	TLS  struct {
 		Cert string // Path for a TLS certification file.
@@ -59,7 +54,7 @@ type Controller interface {
 	RemoveFlowsByMAC(net.HardwareAddr) error
 }
 
-func (r *Config) validate() error {
+func (r *Server) validate() error {
 	if r.Observer == nil {
 		return errors.New("nil observer")
 	}
@@ -70,7 +65,7 @@ func (r *Config) validate() error {
 	return nil
 }
 
-func (r *Config) serve(routes ...*rest.Route) error {
+func (r *Server) Serve(routes ...*rest.Route) error {
 	if err := r.validate(); err != nil {
 		return err
 	}
@@ -80,7 +75,7 @@ func (r *Config) serve(routes ...*rest.Route) error {
 	api.Use(rest.MiddlewareSimple(func(handler rest.HandlerFunc) rest.HandlerFunc {
 		return func(writer rest.ResponseWriter, request *rest.Request) {
 			if r.Observer.IsMaster() == false {
-				writer.WriteJson(response{Status: statusServiceUnavailable, Message: "use the master controller server"})
+				writer.WriteJson(Response{Status: StatusServiceUnavailable, Message: "use the master controller server"})
 				return
 			}
 			handler(writer, request)

@@ -23,34 +23,13 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-package api
+package ui
 
-/*
- * Status Codes:
- *
- * 200 = Okay.
- * 4xx = Client-side errors.
- * 5xx = Server-side errors.
- */
-type Status int
-
-const (
-	StatusOkay = 200
-
-	StatusInvalidParameter    = 400
-	StatusIncorrectCredential = 401
-	StatusUnknownSession      = 402
-	StatusPermissionDenied    = 403
-	StatusDuplicated          = 404
-	StatusNotFound            = 405
-	StatusBlockedAccount      = 406
-
-	StatusInternalServerError = 500
-	StatusServiceUnavailable  = 501
-)
-
-type Response struct {
-	Status  Status      `json:"status"`
-	Message string      `json:"message,omitempty"` // Human readable message related with the status code.
-	Data    interface{} `json:"data,omitempty"`
+type Host struct {
+	ID          string `json:"id"`
+	IP          string `json:"ip"` // FIXME: Use a native type.
+	Port        string `json:"port"`
+	MAC         string `json:"mac"` // FIXME: Use a native type.
+	Description string `json:"description"`
+	Stale       bool   `json:"stale"`
 }

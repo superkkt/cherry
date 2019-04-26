@@ -33,7 +33,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/superkkt/cherry/api"
+	"github.com/superkkt/cherry/api/ui"
 	"github.com/superkkt/cherry/network"
 	"github.com/superkkt/cherry/northbound/app/announcer"
 	"github.com/superkkt/cherry/northbound/app/discovery"
@@ -209,9 +209,9 @@ func caller() string {
 	return fmt.Sprintf("%v (%v:%v)", f.Name(), file, line)
 }
 
-func (r *MySQL) Auth(name, password string) (user *api.User, err error) {
+func (r *MySQL) Auth(name, password string) (user *ui.User, err error) {
 	f := func(tx *sql.Tx) error {
-		v := new(api.User)
+		v := new(ui.User)
 		qry := "SELECT `id`, `name`, `enabled`, `admin`, `timestamp` FROM `user` WHERE `name` = ? AND `password` = SHA2(?, 256)"
 		if err := tx.QueryRow(qry, name, name+password).Scan(&v.ID, &v.Name, &v.Enabled, &v.Admin, &v.Timestamp); err != nil {
 			if err == sql.ErrNoRows {
@@ -231,7 +231,7 @@ func (r *MySQL) Auth(name, password string) (user *api.User, err error) {
 	return user, nil
 }
 
-func (r *MySQL) Users(offset uint32, limit uint8) (user []api.User, err error) {
+func (r *MySQL) Users(offset uint32, limit uint8) (user []ui.User, err error) {
 	f := func(tx *sql.Tx) error {
 		qry := "SELECT `id`, `name`, `enabled`, `admin`, `timestamp` "
 		qry += "FROM `user` "
@@ -244,9 +244,9 @@ func (r *MySQL) Users(offset uint32, limit uint8) (user []api.User, err error) {
 		}
 		defer rows.Close()
 
-		user = []api.User{}
+		user = []ui.User{}
 		for rows.Next() {
-			v := api.User{}
+			v := ui.User{}
 			if err := rows.Scan(&v.ID, &v.Name, &v.Enabled, &v.Admin, &v.Timestamp); err != nil {
 				return err
 			}
@@ -338,7 +338,7 @@ func (r *MySQL) DeactivateUser(id uint64) error {
 	return r.query(f)
 }
 
-func (r *MySQL) Groups(offset uint32, limit uint8) (group []api.Group, err error) {
+func (r *MySQL) Groups(offset uint32, limit uint8) (group []ui.Group, err error) {
 	f := func(tx *sql.Tx) error {
 		qry := "SELECT `id`, `name`, `timestamp` "
 		qry += "FROM `group` "
@@ -351,9 +351,9 @@ func (r *MySQL) Groups(offset uint32, limit uint8) (group []api.Group, err error
 		}
 		defer rows.Close()
 
-		group = []api.Group{}
+		group = []ui.Group{}
 		for rows.Next() {
-			v := api.Group{}
+			v := ui.Group{}
 			if err := rows.Scan(&v.ID, &v.Name, &v.Timestamp); err != nil {
 				return err
 			}
@@ -528,7 +528,7 @@ func (r *MySQL) Location(mac net.HardwareAddr) (dpid string, port uint32, status
 	return dpid, port, status, nil
 }
 
-func (r *MySQL) Switches(offset uint32, limit uint8) (sw []api.Switch, err error) {
+func (r *MySQL) Switches(offset uint32, limit uint8) (sw []ui.Switch, err error) {
 	f := func(tx *sql.Tx) error {
 		qry := "SELECT `id`, `dpid`, `n_ports`, `first_port`, `first_printed_port`, `description` "
 		qry += "FROM `switch` "
@@ -541,9 +541,9 @@ func (r *MySQL) Switches(offset uint32, limit uint8) (sw []api.Switch, err error
 		}
 		defer rows.Close()
 
-		sw = []api.Switch{}
+		sw = []ui.Switch{}
 		for rows.Next() {
-			v := api.Switch{}
+			v := ui.Switch{}
 			if err := rows.Scan(&v.ID, &v.DPID, &v.NumPorts, &v.FirstPort, &v.FirstPrintedPort, &v.Description); err != nil {
 				return err
 			}
@@ -627,7 +627,7 @@ func (r *MySQL) RemoveSwitch(id uint64) error {
 	return r.query(f)
 }
 
-func (r *MySQL) Networks(offset uint32, limit uint8) (network []api.Network, err error) {
+func (r *MySQL) Networks(offset uint32, limit uint8) (network []ui.Network, err error) {
 	f := func(tx *sql.Tx) error {
 		qry := "SELECT `id`, INET_NTOA(`address`), `mask` "
 		qry += "FROM `network` "
@@ -640,9 +640,9 @@ func (r *MySQL) Networks(offset uint32, limit uint8) (network []api.Network, err
 		}
 		defer rows.Close()
 
-		network = []api.Network{}
+		network = []ui.Network{}
 		for rows.Next() {
-			v := api.Network{}
+			v := ui.Network{}
 			if err := rows.Scan(&v.ID, &v.Address, &v.Mask); err != nil {
 				return err
 			}
@@ -728,7 +728,7 @@ func (r *MySQL) RemoveNetwork(id uint64) error {
 	return r.query(f)
 }
 
-func (r *MySQL) IPAddrs(networkID uint64) (address []api.IP, err error) {
+func (r *MySQL) IPAddrs(networkID uint64) (address []ui.IP, err error) {
 	f := func(tx *sql.Tx) error {
 		qry := "SELECT A.`id`, INET_NTOA(A.`address`), A.`used`, C.`description`, IFNULL(CONCAT(E.`description`, '/', D.`number` - E.`first_port` + E.`first_printed_port`), '') "
 		qry += "FROM `ip` A "
@@ -744,9 +744,9 @@ func (r *MySQL) IPAddrs(networkID uint64) (address []api.IP, err error) {
 		}
 		defer rows.Close()
 
-		address = []api.IP{}
+		address = []ui.IP{}
 		for rows.Next() {
-			v := api.IP{}
+			v := ui.IP{}
 			var host, port sql.NullString
 			if err := rows.Scan(&v.ID, &v.Address, &v.Used, &host, &port); err != nil {
 				return err
@@ -777,7 +777,7 @@ func decodeMAC(s string) (net.HardwareAddr, error) {
 	return net.HardwareAddr(v), nil
 }
 
-func (r *MySQL) Hosts() (hosts []api.Host, err error) {
+func (r *MySQL) Hosts() (hosts []ui.Host, err error) {
 	f := func(tx *sql.Tx) error {
 		qry := `SELECT A.id, CONCAT(INET_NTOA(B.address), '/', E.mask), 
 				IFNULL(CONCAT(D.description, '/', C.number - D.first_port + D.first_printed_port), ''), 
@@ -795,7 +795,7 @@ func (r *MySQL) Hosts() (hosts []api.Host, err error) {
 		defer rows.Close()
 
 		for rows.Next() {
-			v := api.Host{}
+			v := ui.Host{}
 			var timestamp time.Time
 
 			if err := rows.Scan(&v.ID, &v.IP, &v.Port, &v.MAC, &v.Description, &timestamp); err != nil {
@@ -825,7 +825,7 @@ func (r *MySQL) Hosts() (hosts []api.Host, err error) {
 	return hosts, nil
 }
 
-func (r *MySQL) Host(id uint64) (host api.Host, ok bool, err error) {
+func (r *MySQL) Host(id uint64) (host ui.Host, ok bool, err error) {
 	f := func(tx *sql.Tx) error {
 		qry := `SELECT A.id, CONCAT(INET_NTOA(B.address), '/', E.mask), 
 				IFNULL(CONCAT(D.description, '/', C.number - D.first_port + D.first_printed_port), ''), 
@@ -867,7 +867,7 @@ func (r *MySQL) Host(id uint64) (host api.Host, ok bool, err error) {
 		return nil
 	}
 	if err = r.query(f); err != nil {
-		return api.Host{}, false, err
+		return ui.Host{}, false, err
 	}
 
 	return host, ok, nil
@@ -1215,7 +1215,7 @@ func hostMAC(tx *sql.Tx, hostID uint64) (net.HardwareAddr, error) {
 	return mac, nil
 }
 
-func (r *MySQL) VIPs() (result []api.VIP, err error) {
+func (r *MySQL) VIPs() (result []ui.VIP, err error) {
 	vips, err := r.getVIPs()
 	if err != nil {
 		return nil, err
@@ -1238,7 +1238,7 @@ func (r *MySQL) VIPs() (result []api.VIP, err error) {
 			return nil, fmt.Errorf("unknown standby host (ID=%v)", v.standby)
 		}
 
-		result = append(result, api.VIP{
+		result = append(result, ui.VIP{
 			ID:          v.id,
 			IP:          v.address,
 			ActiveHost:  active,

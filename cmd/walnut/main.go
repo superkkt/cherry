@@ -36,6 +36,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/superkkt/cherry/api/ui"
+
 	"github.com/superkkt/cherry"
 	"github.com/superkkt/cherry/api"
 	"github.com/superkkt/cherry/database"
@@ -175,17 +177,17 @@ func initCoreSDK() *coreSDK {
 
 func initAPIServer() {
 	go func() {
-		conf := api.Config{}
-		conf.Port = uint16(viper.GetInt("rest.port"))
+		s := api.Server{}
+		s.Port = uint16(viper.GetInt("rest.port"))
 		if viper.GetBool("rest.tls") == true {
-			conf.TLS.Cert = viper.GetString("rest.cert_file")
-			conf.TLS.Key = viper.GetString("rest.key_file")
+			s.TLS.Cert = viper.GetString("rest.cert_file")
+			s.TLS.Key = viper.GetString("rest.key_file")
 		}
 		sdk := initCoreSDK()
-		conf.Observer = sdk
-		conf.Controller = sdk
+		s.Observer = sdk
+		s.Controller = sdk
 
-		srv := &api.UI{Config: conf, DB: initDatabase()}
+		srv := &ui.API{Server: s, DB: initDatabase()}
 		if err := srv.Serve(); err != nil {
 			logger.Fatalf("failed to run the API server: %v", err)
 		}
