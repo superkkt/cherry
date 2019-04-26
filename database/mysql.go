@@ -685,23 +685,26 @@ func (r *MySQL) SwitchPorts(swID uint64) (ports []api.SwitchPort, err error) {
 	return ports, nil
 }
 
-func (r *MySQL) Networks() (networks []api.Network, err error) {
+func (r *MySQL) Networks(offset uint32, limit uint8) (network []api.Network, err error) {
 	f := func(tx *sql.Tx) error {
-		qry := `SELECT id, INET_NTOA(address), mask
-			FROM network
-			ORDER BY address ASC, mask ASC`
-		rows, err := tx.Query(qry)
+		qry := "SELECT `id`, INET_NTOA(`address`), `mask` "
+		qry += "FROM `network` "
+		qry += "ORDER BY `address` ASC, `mask` ASC "
+		qry += "LIMIT ?, ?"
+
+		rows, err := tx.Query(qry, offset, limit)
 		if err != nil {
 			return err
 		}
 		defer rows.Close()
 
+		network = []api.Network{}
 		for rows.Next() {
 			v := api.Network{}
 			if err := rows.Scan(&v.ID, &v.Address, &v.Mask); err != nil {
 				return err
 			}
-			networks = append(networks, v)
+			network = append(network, v)
 		}
 
 		return rows.Err()
@@ -710,13 +713,18 @@ func (r *MySQL) Networks() (networks []api.Network, err error) {
 		return nil, err
 	}
 
-	return networks, nil
+	return network, nil
 }
 
-func (r *MySQL) AddNetwork(addr net.IP, mask net.IPMask) (netID uint64, err error) {
+func (r *MySQL) AddNetwork(addr net.IP, mask net.IPMask) (netID uint64, duplicated bool, err error) {
 	f := func(tx *sql.Tx) error {
 		netID, err = r.addNetwork(tx, addr, mask)
 		if err != nil {
+			// No error.
+			if isDuplicated(err) {
+				duplicated = true
+				return nil
+			}
 			return err
 		}
 		if err := r.addIPAddrs(tx, netID, addr, mask); err != nil {
@@ -726,10 +734,10 @@ func (r *MySQL) AddNetwork(addr net.IP, mask net.IPMask) (netID uint64, err erro
 		return nil
 	}
 	if err = r.query(f); err != nil {
-		return 0, err
+		return 0, false, err
 	}
 
-	return netID, nil
+	return netID, duplicated, nil
 }
 
 func (r *MySQL) addNetwork(tx *sql.Tx, addr net.IP, mask net.IPMask) (netID uint64, err error) {
@@ -765,83 +773,44 @@ func (r *MySQL) addIPAddrs(tx *sql.Tx, netID uint64, addr net.IP, mask net.IPMas
 	return nil
 }
 
-func (r *MySQL) Network(addr net.IP) (n api.Network, ok bool, err error) {
+func (r *MySQL) RemoveNetwork(id uint64) error {
 	f := func(tx *sql.Tx) error {
-		row, err := tx.Query("SELECT id, INET_NTOA(address), mask FROM network WHERE address = INET_ATON(?)", addr.String())
-		if err != nil {
-			return err
-		}
-		defer row.Close()
-
-		// Empty row?
-		if !row.Next() {
-			return nil
-		}
-		if err := row.Scan(&n.ID, &n.Address, &n.Mask); err != nil {
-			return err
-		}
-		ok = true
-
-		return nil
-	}
-	if err = r.query(f); err != nil {
-		return api.Network{}, false, err
-	}
-
-	return n, ok, nil
-}
-
-func (r *MySQL) RemoveNetwork(id uint64) (ok bool, err error) {
-	f := func(tx *sql.Tx) error {
-		result, err := tx.Exec("DELETE FROM network WHERE id = ?", id)
-		if err != nil {
-			return err
-		}
-		nRows, err := result.RowsAffected()
-		if err != nil {
-			return err
-		}
-		if nRows > 0 {
-			ok = true
-		}
-
-		return nil
-	}
-	if err = r.query(f); err != nil {
+		_, err := tx.Exec("DELETE FROM `network` WHERE `id` = ?", id)
 		if isForeignkeyErr(err) {
-			return false, errors.New("failed to remove a network: it has child IP addresses that are being used by hosts")
+			return errors.New("failed to remove a network: it has child IP addresses that are being used by hosts")
 		}
-		return false, err
+		return err
 	}
 
-	return ok, nil
+	return r.query(f)
 }
 
-func (r *MySQL) IPAddrs(networkID uint64) (addresses []api.IP, err error) {
+func (r *MySQL) IPAddrs(networkID uint64) (address []api.IP, err error) {
 	f := func(tx *sql.Tx) error {
-		qry := `SELECT A.id, INET_NTOA(A.address), A.used, C.description, 
-				IFNULL(CONCAT(E.description, '/', D.number - E.first_port + E.first_printed_port), '') 
-			FROM ip A 
-			JOIN network B ON A.network_id = B.id 
-			LEFT JOIN host C ON C.ip_id = A.id 
-			LEFT JOIN port D ON D.id = C.port_id 
-			LEFT JOIN switch E ON E.id = D.switch_id 
-			WHERE A.network_id = ?`
+		qry := "SELECT A.`id`, INET_NTOA(A.`address`), A.`used`, C.`description`, IFNULL(CONCAT(E.`description`, '/', D.`number` - E.`first_port` + E.`first_printed_port`), '') "
+		qry += "FROM `ip` A "
+		qry += "JOIN `network` B ON A.`network_id` = B.`id` "
+		qry += "LEFT JOIN `host` C ON C.`ip_id` = A.`id` "
+		qry += "LEFT JOIN `port` D ON D.`id` = C.`port_id` "
+		qry += "LEFT JOIN `switch` E ON E.`id` = D.`switch_id` "
+		qry += "WHERE A.`network_id` = ?"
+
 		rows, err := tx.Query(qry, networkID)
 		if err != nil {
 			return err
 		}
 		defer rows.Close()
 
+		address = []api.IP{}
 		for rows.Next() {
-			var host, port sql.NullString
 			v := api.IP{}
+			var host, port sql.NullString
 			if err := rows.Scan(&v.ID, &v.Address, &v.Used, &host, &port); err != nil {
 				return err
 			}
 			v.Host = host.String
 			v.Port = port.String
-			addresses = append(addresses, v)
+			address = append(address, v)
 		}
 
 		return rows.Err()
@@ -850,7 +819,7 @@ func (r *MySQL) IPAddrs(networkID uint64) (addresses []api.IP, err error) {
 		return nil, err
 	}
 
-	return addresses, nil
+	return address, nil
 }
 
 func decodeMAC(s string) (net.HardwareAddr, error) {
