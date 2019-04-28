@@ -69,6 +69,12 @@ type Database interface {
 	AddNetwork(addr net.IP, mask net.IPMask) (id uint64, duplicated bool, err error)
 	RemoveNetwork(id uint64) error
 	IPAddrs(networkID uint64) ([]IP, error)
+
+	VIP(id uint64) (*VIP, error)
+	VIPs(offset uint32, limit uint8) ([]VIP, error)
+	AddVIP(ipID, activeID, standbyID uint64, desc string) (id uint64, duplicated bool, err error)
+	RemoveVIP(id uint64) error
+	ToggleVIP(id uint64) error
 }
 
 func (r *API) Serve() error {
@@ -96,6 +102,10 @@ func (r *API) Serve() error {
 		rest.Post("/api/v1/network/add", r.addNetwork),
 		rest.Post("/api/v1/network/remove", r.removeNetwork),
 		rest.Post("/api/v1/network/ip", r.listIP),
+		rest.Post("/api/v1/vip/list", r.listVIP),
+		rest.Post("/api/v1/vip/add", r.addVIP),
+		rest.Post("/api/v1/vip/remove", r.removeVIP),
+		rest.Post("/api/v1/vip/toggle", r.toggleVIP),
 	)
 }
 
@@ -106,4 +116,25 @@ func (r *API) validateAdminSession(sessionID string) bool {
 	}
 
 	return session.(*User).Admin
+}
+
+func (r *API) announce(cidr, mac string) error {
+	i, _, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return err
+	}
+	m, err := net.ParseMAC(mac)
+	if err != nil {
+		return err
+	}
+
+	logger.Debugf("sending ARP announcement to all hosts to update their ARP caches: ip=%v, mac=%v", i, m)
+	if err := r.Controller.Announce(i, m); err != nil {
+		// Ignore this error.
+		logger.Errorf("failed to send ARP announcement: %v", err)
+	} else {
+		logger.Debugf("updated all hosts ARP caches: ip=%v, mac=%v", i, m)
+	}
+
+	return nil
 }

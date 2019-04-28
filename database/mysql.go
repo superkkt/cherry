@@ -968,55 +968,35 @@ func (r *MySQL) RemoveHost(id uint64) (ok bool, err error) {
 	return ok, nil
 }
 
-func (r *MySQL) ToggleVIP(id uint64) (ip net.IP, mac net.HardwareAddr, err error) {
+func (r *MySQL) ToggleVIP(id uint64) error {
 	f := func(tx *sql.Tx) error {
 		vip, err := getVIP(tx, id)
 		if err != nil {
 			return err
 		}
-		ip = vip.address
-		if err := swapVIPHosts(tx, *vip); err != nil {
-			return err
-		}
-		// Get standby's MAC address as the standby host will be active soon!
-		mac, err = hostMAC(tx, vip.standby)
-		if err != nil {
-			return err
-		}
 
-		return nil
-	}
-	if err = r.query(f); err != nil {
-		return nil, nil, err
+		return swapVIPHosts(tx, vip)
 	}
 
-	return ip, mac, nil
+	return r.query(f)
 }
 
-func getVIP(tx *sql.Tx, id uint64) (*vip, error) {
-	qry := `SELECT A.id, INET_NTOA(B.address), A.active_host_id, A.standby_host_id 
-		FROM vip A 
-		JOIN ip B ON A.ip_id = B.id 
-		WHERE A.id = ? 
-		FOR UPDATE`
-	row, err := tx.Query(qry, id)
-	if err != nil {
-		return nil, err
-	}
-	defer row.Close()
-	// Empty row?
-	if !row.Next() {
-		return nil, fmt.Errorf("unknown VIP (ID=%v)", id)
+func getVIP(tx *sql.Tx, id uint64) (vip, error) {
+	qry := "SELECT A.`id`, INET_NTOA(B.`address`), A.`active_host_id`, A.`standby_host_id` "
+	qry += "FROM `vip` A "
+	qry += "JOIN `ip` B ON A.`ip_id` = B.`id` "
+	qry += "WHERE A.`id` = ? "
+	qry += "FOR UPDATE"
+
+	v := vip{}
+	var address string
+	if err := tx.QueryRow(qry, id).Scan(&v.id, &address, &v.active, &v.standby); err != nil {
+		return vip{}, err
 	}
 
-	v := &vip{}
-	var address string
-	if err := row.Scan(&v.id, &address, &v.active, &v.standby); err != nil {
-		return nil, err
-	}
 	v.address = net.ParseIP(address)
 	if v.address == nil {
-		return nil, fmt.Errorf("invalid IPv4 address: %v", address)
+		return vip{}, fmt.Errorf("invalid IP address: %v", address)
 	}
 
 	return v, nil
@@ -1215,19 +1195,20 @@ func hostMAC(tx *sql.Tx, hostID uint64) (net.HardwareAddr, error) {
 	return mac, nil
 }
 
-func (r *MySQL) VIPs() (result []ui.VIP, err error) {
-	vips, err := r.getVIPs()
+func (r *MySQL) VIPs(offset uint32, limit uint8) (vip []ui.VIP, err error) {
+	reg, err := r.getVIPs(offset, limit)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, v := range vips {
+	vip = []ui.VIP{}
+	for _, v := range reg {
 		active, ok, err := r.Host(v.active)
 		if err != nil {
 			return nil, err
 		}
 		if !ok {
-			return nil, fmt.Errorf("unknown active host (ID=%v)", v.active)
+			return nil, fmt.Errorf("unknown active host: id=%v", v.active)
 		}
 
 		standby, ok, err := r.Host(v.standby)
@@ -1235,10 +1216,10 @@ func (r *MySQL) VIPs() (result []ui.VIP, err error) {
 			return nil, err
 		}
 		if !ok {
-			return nil, fmt.Errorf("unknown standby host (ID=%v)", v.standby)
+			return nil, fmt.Errorf("unknown standby host: id=%v", v.standby)
 		}
 
-		result = append(result, ui.VIP{
+		vip = append(vip, ui.VIP{
 			ID:          v.id,
 			IP:          v.address,
 			ActiveHost:  active,
@@ -1247,7 +1228,7 @@ func (r *MySQL) VIPs() (result []ui.VIP, err error) {
 		})
 	}
 
-	return result, nil
+	return vip, nil
 }
 
 type registeredVIP struct {
@@ -1258,26 +1239,28 @@ type registeredVIP struct {
 	description string
 }
 
-func (r *MySQL) getVIPs() (result []registeredVIP, err error) {
+func (r *MySQL) getVIPs(offset uint32, limit uint8) (vip []registeredVIP, err error) {
 	f := func(tx *sql.Tx) error {
-		qry := `SELECT A.id, CONCAT(INET_NTOA(B.address), '/', C.mask), A.active_host_id, A.standby_host_id, A.description 
-			FROM vip A 
-			JOIN ip B ON A.ip_id = B.id 
-			JOIN network C ON C.id = B.network_id 
-			ORDER BY A.id DESC`
-		rows, err := tx.Query(qry)
+		qry := "SELECT A.`id`, CONCAT(INET_NTOA(B.`address`), '/', C.`mask`), A.`active_host_id`, A.`standby_host_id`, A.`description` "
+		qry += "FROM `vip` A "
+		qry += "JOIN `ip` B ON A.`ip_id` = B.`id` "
+		qry += "JOIN `network` C ON C.`id` = B.`network_id` "
+		qry += "ORDER BY A.`id` DESC "
+		qry += "LIMIT ?, ?"
+
+		rows, err := tx.Query(qry, offset, limit)
 		if err != nil {
 			return err
 		}
 		defer rows.Close()
 
+		vip = []registeredVIP{}
 		for rows.Next() {
-			var id, active, standby uint64
-			var address, description string
-			if err := rows.Scan(&id, &address, &active, &standby, &description); err != nil {
+			v := registeredVIP{}
+			if err := rows.Scan(&v.id, &v.address, &v.active, &v.standby, &v.description); err != nil {
 				return err
 			}
-			result = append(result, registeredVIP{id, address, active, standby, description})
+			vip = append(vip, v)
 		}
 
 		return rows.Err()
@@ -1286,23 +1269,74 @@ func (r *MySQL) getVIPs() (result []registeredVIP, err error) {
 		return nil, err
 	}
 
-	return result, nil
+	return vip, nil
 }
 
-func (r *MySQL) AddVIP(ipID, activeID, standbyID uint64, desc string) (id uint64, cidr string, err error) {
+func (r *MySQL) VIP(id uint64) (*ui.VIP, error) {
+	reg, err := r.getVIP(id)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// No error.
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	active, ok, err := r.Host(reg.active)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, fmt.Errorf("unknown active host: id=%v", reg.active)
+	}
+
+	standby, ok, err := r.Host(reg.standby)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, fmt.Errorf("unknown standby host: id=%v", reg.standby)
+	}
+
+	return &ui.VIP{
+		ID:          reg.id,
+		IP:          reg.address,
+		ActiveHost:  active,
+		StandbyHost: standby,
+		Description: reg.description,
+	}, nil
+}
+
+func (r *MySQL) getVIP(id uint64) (vip registeredVIP, err error) {
+	f := func(tx *sql.Tx) error {
+		qry := "SELECT A.`id`, CONCAT(INET_NTOA(B.`address`), '/', C.`mask`), A.`active_host_id`, A.`standby_host_id`, A.`description` "
+		qry += "FROM `vip` A "
+		qry += "JOIN `ip` B ON A.`ip_id` = B.`id` "
+		qry += "JOIN `network` C ON C.`id` = B.`network_id` "
+		qry += "WHERE A.`id` = ?"
+
+		return tx.QueryRow(qry, id).Scan(&vip.id, &vip.address, &vip.active, &vip.standby, &vip.description)
+	}
+	if err := r.query(f); err != nil {
+		return registeredVIP{}, err
+	}
+
+	return vip, nil
+}
+
+func (r *MySQL) AddVIP(ipID, activeID, standbyID uint64, desc string) (id uint64, duplicated bool, err error) {
 	f := func(tx *sql.Tx) error {
 		ok, err := isAvailableIP(tx, ipID)
 		if err != nil {
 			return err
 		}
-		if !ok {
-			return errors.New("already used IP address")
+		// No error.
+		if ok == false {
+			duplicated = true
+			return nil
 		}
+
 		id, err = addNewVIP(tx, ipID, activeID, standbyID, desc)
-		if err != nil {
-			return err
-		}
-		cidr, err = getIP(tx, ipID)
 		if err != nil {
 			return err
 		}
@@ -1310,10 +1344,10 @@ func (r *MySQL) AddVIP(ipID, activeID, standbyID uint64, desc string) (id uint64
 		return nil
 	}
 	if err = r.query(f); err != nil {
-		return 0, "", err
+		return 0, false, err
 	}
 
-	return id, cidr, nil
+	return id, duplicated, nil
 }
 
 func addNewVIP(tx *sql.Tx, ipID, activeID, standbyID uint64, desc string) (uint64, error) {
@@ -1334,53 +1368,32 @@ func addNewVIP(tx *sql.Tx, ipID, activeID, standbyID uint64, desc string) (uint6
 	return uint64(id), nil
 }
 
-func getIP(tx *sql.Tx, id uint64) (cidr string, err error) {
-	qry := `SELECT CONCAT(INET_NTOA(A.address), '/', B.mask) 
-		FROM ip A 
-		JOIN network B ON A.network_id = B.id 
-		WHERE A.id = ?`
-	row, err := tx.Query(qry, id)
-	if err != nil {
-		return "", err
-	}
-	defer row.Close()
-	// Empty row?
-	if !row.Next() {
-		return "", fmt.Errorf("unknown IP (ID=%v)", id)
+func getIP(tx *sql.Tx, id uint64) (net.IP, error) {
+	var ip string
+	qry := "SELECT INET_NTOA(`address`) FROM `ip` WHERE `id` = ?"
+	if err := tx.QueryRow(qry, id).Scan(&ip); err != nil {
+		return nil, err
 	}
 
-	if err := row.Scan(&cidr); err != nil {
-		return "", err
+	v := net.ParseIP(ip)
+	if v == nil {
+		return nil, fmt.Errorf("invalid IP address: %v", ip)
 	}
 
-	return cidr, nil
+	return v, nil
 }
 
-func (r *MySQL) RemoveVIP(id uint64) (ok bool, err error) {
+func (r *MySQL) RemoveVIP(id uint64) error {
 	f := func(tx *sql.Tx) error {
 		if err := updateARPTableEntryByVIP(tx, id, true); err != nil {
 			return err
 		}
+		_, err := tx.Exec("DELETE FROM `vip` WHERE `id` = ?", id)
 
-		result, err := tx.Exec("DELETE FROM vip WHERE id = ?", id)
-		if err != nil {
-			return err
-		}
-		nRows, err := result.RowsAffected()
-		if err != nil {
-			return err
-		}
-		if nRows > 0 {
-			ok = true
-		}
-
-		return nil
-	}
-	if err = r.query(f); err != nil {
-		return false, err
+		return err
 	}
 
-	return ok, nil
+	return r.query(f)
 }
 
 // GetUndiscoveredHosts returns IP addresses whose physical location is still
