@@ -25,6 +25,13 @@
 
 package api
 
+import (
+	"net/http"
+
+	"github.com/ant0ine/go-json-rest/rest"
+	"github.com/davecgh/go-spew/spew"
+)
+
 /*
  * Status Codes:
  *
@@ -54,4 +61,49 @@ type Response struct {
 	Status  Status      `json:"status"`
 	Message string      `json:"message,omitempty"` // Human readable message related with the status code.
 	Data    interface{} `json:"data,omitempty"`
+}
+
+func ResponseHandler(f func(ResponseWriter, *rest.Request)) func(rest.ResponseWriter, *rest.Request) {
+	return func(w rest.ResponseWriter, req *rest.Request) {
+		lw := &logWriter{w: w}
+		f(lw, req)
+	}
+}
+
+type ResponseWriter interface {
+	// Identical to the http.ResponseWriter interface
+	Header() http.Header
+
+	Write(Response)
+
+	// Similar to the http.ResponseWriter interface, with additional JSON related
+	// headers set.
+	WriteHeader(int)
+}
+
+type logWriter struct {
+	w rest.ResponseWriter
+}
+
+func (r *logWriter) Header() http.Header {
+	return r.w.Header()
+}
+
+func (r *logWriter) Write(resp Response) {
+	switch {
+	case resp.Status >= StatusInternalServerError:
+		logger.Errorf("server-side error response: status=%v, message=%v", resp.Status, resp.Message)
+	case resp.Status >= StatusInvalidParameter:
+		logger.Infof("client-side error response: status=%v, message=%v", resp.Status, resp.Message)
+	default:
+		logger.Debugf("success response: %v", spew.Sdump(resp))
+	}
+
+	if err := r.w.WriteJson(resp); err != nil {
+		logger.Errorf("failed to write a JSON response: %v", err)
+	}
+}
+
+func (r *logWriter) WriteHeader(status int) {
+	r.w.WriteHeader(status)
 }

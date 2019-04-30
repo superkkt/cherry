@@ -32,6 +32,11 @@ import (
 	"net/http"
 
 	"github.com/ant0ine/go-json-rest/rest"
+	"github.com/superkkt/go-logging"
+)
+
+var (
+	logger = logging.MustGetLogger("api")
 )
 
 type Server struct {

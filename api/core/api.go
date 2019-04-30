@@ -47,16 +47,16 @@ type API struct {
 
 func (r *API) Serve() error {
 	return r.Server.Serve(
-		rest.Post("/api/v1/status", r.status),
-		rest.Post("/api/v1/remove", r.remove),
-		rest.Post("/api/v1/announce", r.announce),
+		rest.Post("/api/v1/status", api.ResponseHandler(r.status)),
+		rest.Post("/api/v1/remove", api.ResponseHandler(r.remove)),
+		rest.Post("/api/v1/announce", api.ResponseHandler(r.announce)),
 	)
 }
 
-func (r *API) status(w rest.ResponseWriter, req *rest.Request) {
+func (r *API) status(w api.ResponseWriter, req *rest.Request) {
 	logger.Debugf("status request from %v", req.RemoteAddr)
 
-	w.WriteJson(&api.Response{
+	w.Write(api.Response{
 		Status: api.StatusOkay,
 		Data: struct {
 			Master bool `json:"master"`
@@ -66,27 +66,27 @@ func (r *API) status(w rest.ResponseWriter, req *rest.Request) {
 	})
 }
 
-func (r *API) remove(w rest.ResponseWriter, req *rest.Request) {
+func (r *API) remove(w api.ResponseWriter, req *rest.Request) {
 	p := new(removeParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
-		w.WriteJson(api.Response{Status: api.StatusInvalidParameter, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode param: %v", err.Error())})
 		return
 	}
 	logger.Debugf("remove request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
 	if p.MAC == nil {
 		if err := r.Controller.RemoveFlows(); err != nil {
-			w.WriteJson(api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
+			w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to remove flows: %v", err.Error())})
 			return
 		}
 	} else {
 		if err := r.Controller.RemoveFlowsByMAC(p.MAC); err != nil {
-			w.WriteJson(api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
+			w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to remove flows by MAC: %v", err.Error())})
 			return
 		}
 	}
 
-	w.WriteJson(api.Response{Status: api.StatusOkay})
+	w.Write(api.Response{Status: api.StatusOkay})
 }
 
 type removeParam struct {
@@ -115,20 +115,20 @@ func (r *removeParam) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (r *API) announce(w rest.ResponseWriter, req *rest.Request) {
+func (r *API) announce(w api.ResponseWriter, req *rest.Request) {
 	p := new(announceParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
-		w.WriteJson(api.Response{Status: api.StatusInvalidParameter, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode param: %v", err.Error())})
 		return
 	}
 	logger.Debugf("announce request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
 	if err := r.Controller.Announce(p.IP, p.MAC); err != nil {
-		w.WriteJson(api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to announce a new ARP entry: %v", err.Error())})
 		return
 	}
 
-	w.WriteJson(api.Response{Status: api.StatusOkay})
+	w.Write(api.Response{Status: api.StatusOkay})
 }
 
 type announceParam struct {

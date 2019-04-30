@@ -61,7 +61,7 @@ func (r *User) MarshalJSON() ([]byte, error) {
 	})
 }
 
-func (r *API) login(w responseWriter, req *rest.Request) {
+func (r *API) login(w api.ResponseWriter, req *rest.Request) {
 	p := new(loginParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
 		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode param: %v", err.Error())})
@@ -129,7 +129,7 @@ func (r *loginParam) validate() error {
 	return nil
 }
 
-func (r *API) logout(w responseWriter, req *rest.Request) {
+func (r *API) logout(w api.ResponseWriter, req *rest.Request) {
 	p := new(logoutParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
 		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode param: %v", err.Error())})
@@ -170,7 +170,7 @@ func (r *logoutParam) validate() error {
 	return nil
 }
 
-func (r *API) listUser(w responseWriter, req *rest.Request) {
+func (r *API) listUser(w api.ResponseWriter, req *rest.Request) {
 	p := new(listUserParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
 		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode param: %v", err.Error())})
@@ -224,7 +224,7 @@ func (r *listUserParam) validate() error {
 	return nil
 }
 
-func (r *API) addUser(w responseWriter, req *rest.Request) {
+func (r *API) addUser(w api.ResponseWriter, req *rest.Request) {
 	p := new(addUserParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
 		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode params: %v", err.Error())})
@@ -285,7 +285,7 @@ func (r *addUserParam) validate() error {
 	return nil
 }
 
-func (r *API) updateUser(w responseWriter, req *rest.Request) {
+func (r *API) updateUser(w api.ResponseWriter, req *rest.Request) {
 	p := new(updateUserParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
 		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode params: %v", err.Error())})
@@ -352,7 +352,7 @@ func (r *updateUserParam) validate() error {
 	return nil
 }
 
-func (r *API) activateUser(w responseWriter, req *rest.Request) {
+func (r *API) activateUser(w api.ResponseWriter, req *rest.Request) {
 	p := new(activateUserParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
 		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode params: %v", err.Error())})
@@ -403,7 +403,7 @@ func (r *activateUserParam) validate() error {
 	return nil
 }
 
-func (r *API) deactivateUser(w responseWriter, req *rest.Request) {
+func (r *API) deactivateUser(w api.ResponseWriter, req *rest.Request) {
 	p := new(deactivateUserParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
 		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode params: %v", err.Error())})

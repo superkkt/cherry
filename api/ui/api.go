@@ -28,13 +28,11 @@ package ui
 import (
 	"errors"
 	"net"
-	"net/http"
 	"time"
 
 	"github.com/superkkt/cherry/api"
 
 	"github.com/ant0ine/go-json-rest/rest"
-	"github.com/davecgh/go-spew/spew"
 	"github.com/superkkt/go-logging"
 )
 
@@ -96,13 +94,13 @@ func (r *API) Serve() error {
 	r.session = newSession(256, 2*time.Hour)
 
 	return r.Server.Serve(
-		rest.Post("/api/v1/user/login", handler(r.login)),
-		rest.Post("/api/v1/user/logout", handler(r.logout)),
-		rest.Post("/api/v1/user/list", handler(r.listUser)),
-		rest.Post("/api/v1/user/add", handler(r.addUser)),
-		rest.Post("/api/v1/user/update", handler(r.updateUser)),
-		rest.Post("/api/v1/user/activate", handler(r.activateUser)),
-		rest.Post("/api/v1/user/deactivate", handler(r.deactivateUser)),
+		rest.Post("/api/v1/user/login", api.ResponseHandler(r.login)),
+		rest.Post("/api/v1/user/logout", api.ResponseHandler(r.logout)),
+		rest.Post("/api/v1/user/list", api.ResponseHandler(r.listUser)),
+		rest.Post("/api/v1/user/add", api.ResponseHandler(r.addUser)),
+		rest.Post("/api/v1/user/update", api.ResponseHandler(r.updateUser)),
+		rest.Post("/api/v1/user/activate", api.ResponseHandler(r.activateUser)),
+		rest.Post("/api/v1/user/deactivate", api.ResponseHandler(r.deactivateUser)),
 		rest.Post("/api/v1/group/list", r.listGroup),
 		rest.Post("/api/v1/group/add", r.addGroup),
 		rest.Post("/api/v1/group/update", r.updateGroup),
@@ -154,49 +152,4 @@ func (r *API) announce(cidr, mac string) error {
 	}
 
 	return nil
-}
-
-func handler(f func(responseWriter, *rest.Request)) func(rest.ResponseWriter, *rest.Request) {
-	return func(w rest.ResponseWriter, req *rest.Request) {
-		lw := &logWriter{w: w}
-		f(lw, req)
-	}
-}
-
-type responseWriter interface {
-	// Identical to the http.ResponseWriter interface
-	Header() http.Header
-
-	Write(api.Response)
-
-	// Similar to the http.ResponseWriter interface, with additional JSON related
-	// headers set.
-	WriteHeader(int)
-}
-
-type logWriter struct {
-	w rest.ResponseWriter
-}
-
-func (r *logWriter) Header() http.Header {
-	return r.w.Header()
-}
-
-func (r *logWriter) Write(resp api.Response) {
-	switch {
-	case resp.Status >= api.StatusInternalServerError:
-		logger.Errorf("server-side error response: status=%v, message=%v", resp.Status, resp.Message)
-	case resp.Status >= api.StatusInvalidParameter:
-		logger.Infof("client-side error response: status=%v, message=%v", resp.Status, resp.Message)
-	default:
-		logger.Debugf("success response: %v", spew.Sdump(resp))
-	}
-
-	if err := r.w.WriteJson(resp); err != nil {
-		logger.Errorf("failed to write a JSON response: %v", err)
-	}
-}
-
-func (r *logWriter) WriteHeader(status int) {
-	r.w.WriteHeader(status)
 }
