@@ -70,6 +70,16 @@ type Database interface {
 	RemoveNetwork(id uint64) error
 	IPAddrs(networkID uint64) ([]IP, error)
 
+	Host(id uint64) (*Host, error)
+	AddHost(ipID []uint64, groupID *uint64, mac net.HardwareAddr, desc string) (host []*Host, duplicated bool, err error)
+	UpdateHost(id, ipID uint64, groupID *uint64, mac net.HardwareAddr, desc string) (host *Host, duplicated bool, err error)
+	// ActivateHost enables a host specified by id and then returns information of the host. It returns nil if the host does not exist.
+	ActivateHost(id uint64) (*Host, error)
+	// DeactivateHost disables a host specified by id and then returns information of the host. It returns nil if the host does not exist.
+	DeactivateHost(id uint64) (*Host, error)
+	// RemoveHost removes a host specified by id and then returns information of the host before removing. It returns nil if the host does not exist.
+	RemoveHost(id uint64) (*Host, error)
+
 	VIP(id uint64) (*VIP, error)
 	VIPs(offset uint32, limit uint8) ([]VIP, error)
 	AddVIP(ipID, activeID, standbyID uint64, desc string) (id uint64, duplicated bool, err error)
@@ -102,6 +112,11 @@ func (r *API) Serve() error {
 		rest.Post("/api/v1/network/add", r.addNetwork),
 		rest.Post("/api/v1/network/remove", r.removeNetwork),
 		rest.Post("/api/v1/network/ip", r.listIP),
+		rest.Post("/api/v1/host/add", r.addHost),
+		rest.Post("/api/v1/host/update", r.updateHost),
+		rest.Post("/api/v1/host/activate", r.activateHost),
+		rest.Post("/api/v1/host/deactivate", r.deactivateHost),
+		rest.Post("/api/v1/host/remove", r.removeHost),
 		rest.Post("/api/v1/vip/list", r.listVIP),
 		rest.Post("/api/v1/vip/add", r.addVIP),
 		rest.Post("/api/v1/vip/remove", r.removeVIP),

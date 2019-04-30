@@ -44,6 +44,7 @@ const (
 	StatusDuplicated          = 404
 	StatusNotFound            = 405
 	StatusBlockedAccount      = 406
+	StatusBlockedHost         = 407
 
 	StatusInternalServerError = 500
 	StatusServiceUnavailable  = 501
