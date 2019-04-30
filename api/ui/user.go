@@ -61,36 +61,32 @@ func (r *User) MarshalJSON() ([]byte, error) {
 	})
 }
 
-func (r *API) login(w rest.ResponseWriter, req *rest.Request) {
+func (r *API) login(w responseWriter, req *rest.Request) {
 	p := new(loginParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
-		logger.Warningf("failed to decode params: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInvalidParameter, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode param: %v", err.Error())})
 		return
 	}
 	logger.Debugf("login request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
 	user, err := r.DB.Auth(p.Name, p.Password)
 	if err != nil {
-		logger.Errorf("failed to authenticate an user account: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to authenticate an user account: %v", err.Error())})
 		return
 	}
 	if user == nil {
-		logger.Infof("incorrect credential: user=%v, password=%v", p.Name, p.Password)
-		w.WriteJson(&api.Response{Status: api.StatusIncorrectCredential, Message: "incorrect username or password"})
+		w.Write(api.Response{Status: api.StatusIncorrectCredential, Message: fmt.Sprintf("incorrect username or password: username=%v", p.Name)})
 		return
 	}
 	if user.Enabled == false {
-		logger.Infof("login attempt with a blocked account: user=%v", p.Name)
-		w.WriteJson(&api.Response{Status: api.StatusBlockedAccount, Message: fmt.Sprintf("blocked account: %v", p.Name)})
+		w.Write(api.Response{Status: api.StatusBlockedAccount, Message: fmt.Sprintf("login attempt with a blocked account: %v", p.Name)})
 		return
 	}
 
 	id := r.session.Add(user)
 	logger.Debugf("login success: user=%v, sessionID=%v", spew.Sdump(user), id)
 
-	w.WriteJson(&api.Response{
+	w.Write(api.Response{
 		Status: api.StatusOkay,
 		Data: struct {
 			SessionID string `json:"session_id"`
@@ -133,23 +129,21 @@ func (r *loginParam) validate() error {
 	return nil
 }
 
-func (r *API) logout(w rest.ResponseWriter, req *rest.Request) {
+func (r *API) logout(w responseWriter, req *rest.Request) {
 	p := new(logoutParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
-		logger.Warningf("failed to decode params: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInvalidParameter, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode param: %v", err.Error())})
 		return
 	}
 	logger.Debugf("logout request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
 	if r.session.Remove(p.SessionID) == false {
-		logger.Infof("logout attempt with an unknown session ID: %v", p.SessionID)
-		w.WriteJson(&api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session ID: %v", p.SessionID)})
+		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("logout attempt with an unknown session ID: %v", p.SessionID)})
 		return
 	}
 	logger.Debugf("session removed: sessionID=%v", p.SessionID)
 
-	w.WriteJson(&api.Response{Status: api.StatusOkay})
+	w.Write(api.Response{Status: api.StatusOkay})
 }
 
 type logoutParam struct {
@@ -176,30 +170,27 @@ func (r *logoutParam) validate() error {
 	return nil
 }
 
-func (r *API) listUser(w rest.ResponseWriter, req *rest.Request) {
+func (r *API) listUser(w responseWriter, req *rest.Request) {
 	p := new(listUserParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
-		logger.Warningf("failed to decode params: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInvalidParameter, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode param: %v", err.Error())})
 		return
 	}
 	logger.Debugf("listUser request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
 	if r.validateAdminSession(p.SessionID) == false {
-		logger.Warningf("invalid (or not allowed) admin session id: %v", p.SessionID)
-		w.WriteJson(&api.Response{Status: api.StatusPermissionDenied, Message: fmt.Sprintf("not allowed admin session id: %v", p.SessionID)})
+		w.Write(api.Response{Status: api.StatusPermissionDenied, Message: fmt.Sprintf("not allowed admin session id: %v", p.SessionID)})
 		return
 	}
 
 	user, err := r.DB.Users(p.Offset, p.Limit)
 	if err != nil {
-		logger.Errorf("failed to query the user list: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to query the user list: %v", err.Error())})
 		return
 	}
 	logger.Debugf("queried user list: %v", spew.Sdump(user))
 
-	w.WriteJson(&api.Response{Status: api.StatusOkay, Data: user})
+	w.Write(api.Response{Status: api.StatusOkay, Data: user})
 }
 
 type listUserParam struct {
@@ -233,35 +224,31 @@ func (r *listUserParam) validate() error {
 	return nil
 }
 
-func (r *API) addUser(w rest.ResponseWriter, req *rest.Request) {
+func (r *API) addUser(w responseWriter, req *rest.Request) {
 	p := new(addUserParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
-		logger.Warningf("failed to decode params: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInvalidParameter, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode params: %v", err.Error())})
 		return
 	}
 	logger.Debugf("addUser request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
 	if r.validateAdminSession(p.SessionID) == false {
-		logger.Warningf("invalid (or not allowed) admin session id: %v", p.SessionID)
-		w.WriteJson(&api.Response{Status: api.StatusPermissionDenied, Message: fmt.Sprintf("not allowed admin session id: %v", p.SessionID)})
+		w.Write(api.Response{Status: api.StatusPermissionDenied, Message: fmt.Sprintf("not allowed admin session id: %v", p.SessionID)})
 		return
 	}
 
 	id, duplicated, err := r.DB.AddUser(p.Name, p.Password)
 	if err != nil {
-		logger.Errorf("failed to add a new user: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to add a new user: %v", err.Error())})
 		return
 	}
 	if duplicated {
-		logger.Infof("duplicated user account: name=%v", p.Name)
-		w.WriteJson(&api.Response{Status: api.StatusDuplicated, Message: fmt.Sprintf("duplicated user account: %v", p.Name)})
+		w.Write(api.Response{Status: api.StatusDuplicated, Message: fmt.Sprintf("duplicated user account: %v", p.Name)})
 		return
 	}
 	logger.Debugf("added user info: %v", spew.Sdump(p))
 
-	w.WriteJson(&api.Response{Status: api.StatusOkay, Data: id})
+	w.Write(api.Response{Status: api.StatusOkay, Data: id})
 }
 
 type addUserParam struct {
@@ -298,19 +285,17 @@ func (r *addUserParam) validate() error {
 	return nil
 }
 
-func (r *API) updateUser(w rest.ResponseWriter, req *rest.Request) {
+func (r *API) updateUser(w responseWriter, req *rest.Request) {
 	p := new(updateUserParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
-		logger.Warningf("failed to decode params: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInvalidParameter, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode params: %v", err.Error())})
 		return
 	}
 	logger.Debugf("updateUser request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
 	s, ok := r.session.Get(p.SessionID)
 	if ok == false || (s.(*User).Admin == false && s.(*User).ID != p.ID) {
-		logger.Warningf("invalid (or not allowed) session id: %v", p.SessionID)
-		w.WriteJson(&api.Response{Status: api.StatusPermissionDenied, Message: fmt.Sprintf("not allowed session id: %v", p.SessionID)})
+		w.Write(api.Response{Status: api.StatusPermissionDenied, Message: fmt.Sprintf("not allowed session id: %v", p.SessionID)})
 		return
 	}
 
@@ -320,13 +305,12 @@ func (r *API) updateUser(w rest.ResponseWriter, req *rest.Request) {
 	}
 
 	if err := r.DB.UpdateUser(p.ID, p.Password, p.Admin); err != nil {
-		logger.Errorf("failed to update user info: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to update user info: %v", err.Error())})
 		return
 	}
 	logger.Debugf("updated user info: %v", spew.Sdump(p))
 
-	w.WriteJson(&api.Response{Status: api.StatusOkay})
+	w.Write(api.Response{Status: api.StatusOkay})
 }
 
 type updateUserParam struct {
@@ -368,29 +352,26 @@ func (r *updateUserParam) validate() error {
 	return nil
 }
 
-func (r *API) activateUser(w rest.ResponseWriter, req *rest.Request) {
+func (r *API) activateUser(w responseWriter, req *rest.Request) {
 	p := new(activateUserParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
-		logger.Warningf("failed to decode params: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInvalidParameter, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode params: %v", err.Error())})
 		return
 	}
 	logger.Debugf("activateUser request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
 	if r.validateAdminSession(p.SessionID) == false {
-		logger.Warningf("invalid (or not allowed) admin session id: %v", p.SessionID)
-		w.WriteJson(&api.Response{Status: api.StatusPermissionDenied, Message: fmt.Sprintf("not allowed admin session id: %v", p.SessionID)})
+		w.Write(api.Response{Status: api.StatusPermissionDenied, Message: fmt.Sprintf("not allowed admin session id: %v", p.SessionID)})
 		return
 	}
 
 	if err := r.DB.ActivateUser(p.ID); err != nil {
-		logger.Errorf("failed to activate an user account: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to activate an user account: %v", err.Error())})
 		return
 	}
 	logger.Debugf("activated an user account: ID=%v", p.ID)
 
-	w.WriteJson(&api.Response{Status: api.StatusOkay})
+	w.Write(api.Response{Status: api.StatusOkay})
 }
 
 type activateUserParam struct {
@@ -422,29 +403,26 @@ func (r *activateUserParam) validate() error {
 	return nil
 }
 
-func (r *API) deactivateUser(w rest.ResponseWriter, req *rest.Request) {
+func (r *API) deactivateUser(w responseWriter, req *rest.Request) {
 	p := new(deactivateUserParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
-		logger.Warningf("failed to decode params: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInvalidParameter, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode params: %v", err.Error())})
 		return
 	}
 	logger.Debugf("deactivateUser request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
 	if r.validateAdminSession(p.SessionID) == false {
-		logger.Warningf("invalid (or not allowed) admin session id: %v", p.SessionID)
-		w.WriteJson(&api.Response{Status: api.StatusPermissionDenied, Message: fmt.Sprintf("not allowed admin session id: %v", p.SessionID)})
+		w.Write(api.Response{Status: api.StatusPermissionDenied, Message: fmt.Sprintf("not allowed admin session id: %v", p.SessionID)})
 		return
 	}
 
 	if err := r.DB.DeactivateUser(p.ID); err != nil {
-		logger.Errorf("failed to deactivate an user account: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to deactivate an user account: %v", err.Error())})
 		return
 	}
 	logger.Debugf("deactivated an user account: ID=%v", p.ID)
 
-	w.WriteJson(&api.Response{Status: api.StatusOkay})
+	w.Write(api.Response{Status: api.StatusOkay})
 }
 
 type deactivateUserParam struct {
