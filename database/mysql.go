@@ -1061,27 +1061,22 @@ func getHost(tx *sql.Tx, id uint64) (*ui.Host, error) {
 	return v, nil
 }
 
-func (r *uiTx) AddHost(ipID []uint64, groupID *uint64, mac net.HardwareAddr, desc string) (host []*ui.Host, duplicated bool, err error) {
-	host = []*ui.Host{}
-	for _, v := range ipID {
-		ok, err := isAvailableIP(r.handle, v)
-		if err != nil {
-			return nil, false, err
-		}
-		if ok == false {
-			return nil, true, nil
-		}
+func (r *uiTx) AddHost(ipID uint64, groupID *uint64, mac net.HardwareAddr, desc string) (host *ui.Host, duplicated bool, err error) {
+	ok, err := isAvailableIP(r.handle, ipID)
+	if err != nil {
+		return nil, false, err
+	}
+	if ok == false {
+		return nil, true, nil
+	}
 
-		id, err := addNewHost(r.handle, v, groupID, mac, desc)
-		if err != nil {
-			return nil, false, err
-		}
-		v, err := getHost(r.handle, id)
-		if err != nil {
-			return nil, false, err
-		}
-
-		host = append(host, v)
+	id, err := addNewHost(r.handle, ipID, groupID, mac, desc)
+	if err != nil {
+		return nil, false, err
+	}
+	host, err = getHost(r.handle, id)
+	if err != nil {
+		return nil, false, err
 	}
 
 	return host, false, nil
@@ -1141,39 +1136,6 @@ func decodeMAC(s string) (net.HardwareAddr, error) {
 	return net.HardwareAddr(v), nil
 }
 
-func (r *uiTx) UpdateHost(id, ipID uint64, groupID *uint64, mac net.HardwareAddr, desc string) (host *ui.Host, duplicated bool, err error) {
-	count, err := countVIPByHostID(r.handle, id)
-	if err != nil {
-		return nil, false, err
-	}
-	if count > 0 {
-		return nil, false, errors.New("VIP member host cannot be updated")
-	}
-
-	if err := removeHost(r.handle, id); err != nil {
-		return nil, false, err
-	}
-
-	ok, err := isAvailableIP(r.handle, ipID)
-	if err != nil {
-		return nil, false, err
-	}
-	if ok == false {
-		return nil, true, nil
-	}
-
-	id, err = addNewHost(r.handle, ipID, groupID, mac, desc)
-	if err != nil {
-		return nil, false, err
-	}
-	host, err = getHost(r.handle, id)
-	if err != nil {
-		return nil, false, err
-	}
-
-	return host, false, nil
-}
-
 func (r *uiTx) ActivateHost(id uint64) (host *ui.Host, err error) {
 	qry := "UPDATE `host` SET `enabled` = TRUE WHERE `id` = ?"
 	result, err := r.handle.Exec(qry, id)
@@ -1202,14 +1164,6 @@ func (r *uiTx) ActivateHost(id uint64) (host *ui.Host, err error) {
 }
 
 func (r *uiTx) DeactivateHost(id uint64) (host *ui.Host, err error) {
-	count, err := countVIPByHostID(r.handle, id)
-	if err != nil {
-		return nil, err
-	}
-	if count > 0 {
-		return nil, errors.New("VIP member host cannot be disabled")
-	}
-
 	qry := "UPDATE `host` SET `enabled` = FALSE WHERE `id` = ?"
 	result, err := r.handle.Exec(qry, id)
 	if err != nil {
@@ -1236,9 +1190,9 @@ func (r *uiTx) DeactivateHost(id uint64) (host *ui.Host, err error) {
 	return host, nil
 }
 
-func countVIPByHostID(tx *sql.Tx, id uint64) (count uint64, err error) {
+func (r *uiTx) CountVIPByHostID(id uint64) (count uint64, err error) {
 	qry := "SELECT COUNT(*) FROM `vip` WHERE `active_host_id` = ? OR `standby_host_id` = ?"
-	if err := tx.QueryRow(qry, id, id).Scan(&count); err != nil {
+	if err := r.handle.QueryRow(qry, id, id).Scan(&count); err != nil {
 		return 0, err
 	}
 
@@ -1569,7 +1523,6 @@ func (r *uiTx) DeactivateUser(id uint64) error {
 	qry := "UPDATE `user` SET `enabled` = FALSE WHERE `id` = ?"
 	_, err := r.handle.Exec(qry, id)
 	return err
-
 }
 
 func (r *uiTx) VIPs(offset uint32, limit uint8) (vip []ui.VIP, err error) {

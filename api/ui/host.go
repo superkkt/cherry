@@ -38,14 +38,20 @@ import (
 	"github.com/davecgh/go-spew/spew"
 )
 
+var (
+	errDuplicated = errors.New("duplicated error")
+	errNotFound   = errors.New("not found error")
+	errBlocked    = errors.New("blocked error")
+)
+
 type HostTransaction interface {
 	Host(id uint64) (*Host, error)
-	AddHost(ipID []uint64, groupID *uint64, mac net.HardwareAddr, desc string) (host []*Host, duplicated bool, err error)
-	UpdateHost(id, ipID uint64, groupID *uint64, mac net.HardwareAddr, desc string) (host *Host, duplicated bool, err error)
+	AddHost(ipID uint64, groupID *uint64, mac net.HardwareAddr, desc string) (host *Host, duplicated bool, err error)
 	// ActivateHost enables a host specified by id and then returns information of the host. It returns nil if the host does not exist.
 	ActivateHost(id uint64) (*Host, error)
 	// DeactivateHost disables a host specified by id and then returns information of the host. It returns nil if the host does not exist.
 	DeactivateHost(id uint64) (*Host, error)
+	CountVIPByHostID(id uint64) (count uint64, err error)
 	// RemoveHost removes a host specified by id and then returns information of the host before removing. It returns nil if the host does not exist.
 	RemoveHost(id uint64) (*Host, error)
 }
@@ -102,21 +108,31 @@ func (r *API) addHost(w rest.ResponseWriter, req *rest.Request) {
 	}
 
 	var host []*Host
-	var duplicated bool
 	f := func(tx Transaction) (err error) {
-		host, duplicated, err = tx.AddHost(p.IPID, p.GroupID, p.MAC, p.Description)
-		return err
+		for _, v := range p.IPID {
+			h, duplicated, err := tx.AddHost(v, p.GroupID, p.MAC, p.Description)
+			if err != nil {
+				return err
+			}
+			if duplicated {
+				return errDuplicated
+			}
+
+			host = append(host, h)
+		}
+
+		return nil
 	}
 	if err := r.DB.Exec(f); err != nil {
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to add a new host: %v", err.Error())})
+		if err == errDuplicated {
+			logger.Infof("duplicated host: ip_id=%v", p.IPID)
+			w.WriteJson(&api.Response{Status: api.StatusDuplicated, Message: fmt.Sprintf("duplicated host: ip_id=%v", p.IPID)})
+		} else {
+			w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to add a new host: %v", err.Error())})
+		}
 		return
 	}
 
-	if duplicated {
-		logger.Infof("duplicated host: ip_id=%v", p.IPID)
-		w.WriteJson(&api.Response{Status: api.StatusDuplicated, Message: fmt.Sprintf("duplicated host: ip_id=%v", p.IPID)})
-		return
-	}
 	logger.Debugf("added host info: %v", spew.Sdump(host))
 
 	for _, v := range host {
@@ -196,40 +212,54 @@ func (r *API) updateHost(w rest.ResponseWriter, req *rest.Request) {
 	}
 
 	var old, new *Host
-	var duplicated bool
 	f := func(tx Transaction) (err error) {
-		old, err = tx.Host(p.ID)
+		count, err := tx.CountVIPByHostID(p.ID)
 		if err != nil {
 			return err
 		}
-		if old == nil || old.Enabled == false {
-			return nil
+		if count > 0 {
+			return errors.New("VIP member host cannot be updated")
 		}
 
-		// TODO: Split UpdateHost into RemoveHost and AddHost.
-		new, duplicated, err = tx.UpdateHost(p.ID, p.IPID, p.GroupID, p.MAC, p.Description)
-		return err
+		old, err = tx.RemoveHost(p.ID)
+		if err != nil {
+			return err
+		}
+		if old == nil {
+			return errNotFound
+		}
+		if old.Enabled == false {
+			return errBlocked
+		}
+
+		v, duplicated, err := tx.AddHost(p.IPID, p.GroupID, p.MAC, p.Description)
+		if err != nil {
+			return err
+		}
+		if duplicated {
+			return errDuplicated
+		}
+		new = v
+
+		return nil
 	}
 	if err := r.DB.Exec(f); err != nil {
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to update a host: %v", err.Error())})
+		switch err {
+		case errNotFound:
+			logger.Infof("not found host to update: %v", p.ID)
+			w.WriteJson(&api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found host to update: %v", p.ID)})
+		case errBlocked:
+			logger.Infof("unable to update blocked host: %v", p.ID)
+			w.WriteJson(&api.Response{Status: api.StatusBlockedHost, Message: fmt.Sprintf("unable to update blocked host: %v", p.ID)})
+		case errDuplicated:
+			logger.Infof("duplicated host: ip_id=%v", p.IPID)
+			w.WriteJson(&api.Response{Status: api.StatusDuplicated, Message: fmt.Sprintf("duplicated host: ip_id=%v", p.IPID)})
+		default:
+			w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to update a host: %v", err.Error())})
+		}
 		return
 	}
 
-	if old == nil {
-		logger.Infof("not found host to update: %v", p.ID)
-		w.WriteJson(&api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found host to update: %v", p.ID)})
-		return
-	}
-	if old.Enabled == false {
-		logger.Infof("unable to update blocked host: %v", p.ID)
-		w.WriteJson(&api.Response{Status: api.StatusBlockedHost, Message: fmt.Sprintf("unable to update blocked host: %v", p.ID)})
-		return
-	}
-	if duplicated {
-		logger.Infof("duplicated host: ip_id=%v", p.IPID)
-		w.WriteJson(&api.Response{Status: api.StatusDuplicated, Message: fmt.Sprintf("duplicated host: ip_id=%v", p.IPID)})
-		return
-	}
 	logger.Debugf("updated host info: %v", spew.Sdump(new))
 
 	if err := r.announce(old.IP, "00:00:00:00:00:00"); err != nil {
@@ -379,6 +409,14 @@ func (r *API) deactivateHost(w rest.ResponseWriter, req *rest.Request) {
 
 	var host *Host
 	f := func(tx Transaction) (err error) {
+		count, err := tx.CountVIPByHostID(p.ID)
+		if err != nil {
+			return err
+		}
+		if count > 0 {
+			return errors.New("VIP member host cannot be disabled")
+		}
+
 		host, err = tx.DeactivateHost(p.ID)
 		return err
 	}
