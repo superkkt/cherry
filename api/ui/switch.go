@@ -39,6 +39,12 @@ import (
 	"github.com/davecgh/go-spew/spew"
 )
 
+type SwitchTransaction interface {
+	Switches(offset uint32, limit uint8) ([]Switch, error)
+	AddSwitch(dpid uint64, nPorts, firstPort, firstPrintedPort uint16, desc string) (id uint64, duplicated bool, err error)
+	RemoveSwitch(id uint64) error
+}
+
 type Switch struct {
 	ID               uint64 `json:"id"`
 	DPID             uint64 `json:"dpid"`
@@ -93,10 +99,13 @@ func (r *API) listSwitch(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	sw, err := r.DB.Switches(p.Offset, p.Limit)
-	if err != nil {
-		logger.Errorf("failed to query the switch list: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
+	var sw []Switch
+	f := func(tx Transaction) (err error) {
+		sw, err = tx.Switches(p.Offset, p.Limit)
+		return err
+	}
+	if err := r.DB.Exec(f); err != nil {
+		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to query the switch list: %v", err.Error())})
 		return
 	}
 	logger.Debugf("queried switch list: %v", spew.Sdump(sw))
@@ -150,12 +159,17 @@ func (r *API) addSwitch(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	id, duplicated, err := r.DB.AddSwitch(p.DPID, p.NumPorts, p.FirstPort, p.FirstPrintedPort, p.Description)
-	if err != nil {
-		logger.Errorf("failed to add a new switch: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
+	var id uint64
+	var duplicated bool
+	f := func(tx Transaction) (err error) {
+		id, duplicated, err = tx.AddSwitch(p.DPID, p.NumPorts, p.FirstPort, p.FirstPrintedPort, p.Description)
+		return err
+	}
+	if err := r.DB.Exec(f); err != nil {
+		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to add a new switch: %v", err.Error())})
 		return
 	}
+
 	if duplicated {
 		logger.Infof("duplicated switch: dpid=%v", p.DPID)
 		w.WriteJson(&api.Response{Status: api.StatusDuplicated, Message: fmt.Sprintf("duplicated switch: dpid=%v", p.DPID)})
@@ -244,19 +258,22 @@ func (r *API) removeSwitch(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	if err := r.DB.RemoveSwitch(p.ID); err != nil {
-		logger.Errorf("failed to remove switch info: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
+	f := func(tx Transaction) (err error) {
+		return tx.RemoveSwitch(p.ID)
+	}
+	if err := r.DB.Exec(f); err != nil {
+		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to remove a switch: %v", err.Error())})
 		return
 	}
-	logger.Debugf("removed switch info: %v", spew.Sdump(p))
+	logger.Debugf("removed a switch: %v", spew.Sdump(p))
 
 	logger.Debug("removing all flows from the entire switches")
 	if err := r.Controller.RemoveFlows(); err != nil {
 		// Ignore this error.
 		logger.Errorf("failed to remove flows: %v", err)
+	} else {
+		logger.Debug("removed all flows from the entire switches")
 	}
-	logger.Debug("removed all flows from the entire switches")
 
 	w.WriteJson(&api.Response{Status: api.StatusOkay})
 }

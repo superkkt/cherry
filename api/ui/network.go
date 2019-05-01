@@ -37,6 +37,12 @@ import (
 	"github.com/davecgh/go-spew/spew"
 )
 
+type NetworkTransaction interface {
+	Networks(offset uint32, limit uint8) ([]Network, error)
+	AddNetwork(addr net.IP, mask net.IPMask) (id uint64, duplicated bool, err error)
+	RemoveNetwork(id uint64) error
+}
+
 type Network struct {
 	ID      uint64 `json:"id"`
 	Address string `json:"address"` // FIXME: Use a native type.
@@ -58,10 +64,13 @@ func (r *API) listNetwork(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	network, err := r.DB.Networks(p.Offset, p.Limit)
-	if err != nil {
-		logger.Errorf("failed to query the network list: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
+	var network []Network
+	f := func(tx Transaction) (err error) {
+		network, err = tx.Networks(p.Offset, p.Limit)
+		return err
+	}
+	if err := r.DB.Exec(f); err != nil {
+		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to query the network list: %v", err.Error())})
 		return
 	}
 	logger.Debugf("queried network list: %v", spew.Sdump(network))
@@ -115,12 +124,17 @@ func (r *API) addNetwork(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	id, duplicated, err := r.DB.AddNetwork(p.Address, p.Mask)
-	if err != nil {
-		logger.Errorf("failed to add a new network: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
+	var id uint64
+	var duplicated bool
+	f := func(tx Transaction) (err error) {
+		id, duplicated, err = tx.AddNetwork(p.Address, p.Mask)
+		return err
+	}
+	if err := r.DB.Exec(f); err != nil {
+		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to add a new network: %v", err.Error())})
 		return
 	}
+
 	if duplicated {
 		logger.Infof("duplicated network: address=%v, mask=%v", p.Address, p.Mask)
 		w.WriteJson(&api.Response{Status: api.StatusDuplicated, Message: fmt.Sprintf("duplicated network: address=%v, mask=%v", p.Address, p.Mask)})
@@ -180,19 +194,22 @@ func (r *API) removeNetwork(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	if err := r.DB.RemoveNetwork(p.ID); err != nil {
-		logger.Errorf("failed to remove network info: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
+	f := func(tx Transaction) (err error) {
+		return tx.RemoveNetwork(p.ID)
+	}
+	if err := r.DB.Exec(f); err != nil {
+		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to remove a network: %v", err.Error())})
 		return
 	}
-	logger.Debugf("removed network info: %v", spew.Sdump(p))
+	logger.Debugf("removed a network: %v", spew.Sdump(p))
 
 	logger.Debug("removing all flows from the entire switches")
 	if err := r.Controller.RemoveFlows(); err != nil {
 		// Ignore this error.
 		logger.Errorf("failed to remove flows: %v", err)
+	} else {
+		logger.Debug("removed all flows from the entire switches")
 	}
-	logger.Debug("removed all flows from the entire switches")
 
 	w.WriteJson(&api.Response{Status: api.StatusOkay})
 }

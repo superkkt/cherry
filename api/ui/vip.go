@@ -36,6 +36,14 @@ import (
 	"github.com/davecgh/go-spew/spew"
 )
 
+type VIPTransaction interface {
+	VIP(id uint64) (*VIP, error)
+	VIPs(offset uint32, limit uint8) ([]VIP, error)
+	AddVIP(ipID, activeID, standbyID uint64, desc string) (id uint64, duplicated bool, err error)
+	RemoveVIP(id uint64) error
+	ToggleVIP(id uint64) error
+}
+
 type VIP struct {
 	ID          uint64 `json:"id"`
 	IP          string `json:"ip"` // FIXME: Use a native type.
@@ -59,10 +67,13 @@ func (r *API) listVIP(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	vip, err := r.DB.VIPs(p.Offset, p.Limit)
-	if err != nil {
-		logger.Errorf("failed to query the VIP list: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
+	var vip []VIP
+	f := func(tx Transaction) (err error) {
+		vip, err = tx.VIPs(p.Offset, p.Limit)
+		return err
+	}
+	if err := r.DB.Exec(f); err != nil {
+		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to query the VIP list: %v", err.Error())})
 		return
 	}
 	logger.Debugf("queried VIP list: %v", spew.Sdump(vip))
@@ -116,30 +127,32 @@ func (r *API) addVIP(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	id, duplicated, err := r.DB.AddVIP(p.IPID, p.ActiveHostID, p.StandbyHostID, p.Description)
-	if err != nil {
-		logger.Errorf("failed to add a new VIP: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
+	var id uint64
+	var duplicated bool
+	var vip *VIP
+	f := func(tx Transaction) (err error) {
+		id, duplicated, err = tx.AddVIP(p.IPID, p.ActiveHostID, p.StandbyHostID, p.Description)
+		if err != nil {
+			return err
+		}
+		if duplicated == true {
+			return nil
+		}
+
+		vip, err = tx.VIP(id)
+		return err
+	}
+	if err := r.DB.Exec(f); err != nil {
+		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to add a new VIP: %v", err.Error())})
 		return
 	}
+
 	if duplicated {
 		logger.Infof("duplicated VIP: ip_id=%v", p.IPID)
 		w.WriteJson(&api.Response{Status: api.StatusDuplicated, Message: fmt.Sprintf("duplicated VIP: ip_id=%v", p.IPID)})
 		return
 	}
-	logger.Debugf("added VIP info: %v", spew.Sdump(p))
-
-	vip, err := r.DB.VIP(id)
-	if err != nil {
-		logger.Errorf("failed to query the VIP: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
-		return
-	}
-	if vip == nil {
-		logger.Criticalf("not found added VIP: %v", id)
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
-		return
-	}
+	logger.Debugf("added a new VIP: %v", spew.Sdump(vip))
 
 	if err := r.announce(vip.IP, vip.ActiveHost.MAC); err != nil {
 		// Ignore this error.
@@ -208,24 +221,29 @@ func (r *API) removeVIP(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	vip, err := r.DB.VIP(p.ID)
-	if err != nil {
-		logger.Errorf("failed to query the VIP: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
+	var vip *VIP
+	f := func(tx Transaction) (err error) {
+		vip, err = tx.VIP(p.ID)
+		if err != nil {
+			return err
+		}
+		if vip == nil {
+			return nil
+		}
+
+		return tx.RemoveVIP(p.ID)
+	}
+	if err := r.DB.Exec(f); err != nil {
+		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to remove a VIP: %v", err.Error())})
 		return
 	}
+
 	if vip == nil {
 		logger.Infof("unknown VIP: %v", p.ID)
 		w.WriteJson(&api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("unknown VIP: %v", p.ID)})
 		return
 	}
-
-	if err := r.DB.RemoveVIP(p.ID); err != nil {
-		logger.Errorf("failed to remove VIP info: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
-		return
-	}
-	logger.Debugf("removed VIP info: %v", spew.Sdump(p))
+	logger.Debugf("removed the VIP: %v", spew.Sdump(vip))
 
 	if err := r.announce(vip.IP, "00:00:00:00:00:00"); err != nil {
 		// Ignore this error.
@@ -279,24 +297,20 @@ func (r *API) toggleVIP(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	if err := r.DB.ToggleVIP(p.ID); err != nil {
-		logger.Errorf("failed to swap active host and standby host: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
-		return
-	}
-	logger.Debugf("toggled VIP info: %v", spew.Sdump(p))
+	var vip *VIP
+	f := func(tx Transaction) (err error) {
+		if err := tx.ToggleVIP(p.ID); err != nil {
+			return err
+		}
 
-	vip, err := r.DB.VIP(p.ID)
-	if err != nil {
-		logger.Errorf("failed to query the VIP: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
+		vip, err = tx.VIP(p.ID)
+		return err
+	}
+	if err := r.DB.Exec(f); err != nil {
+		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to toggle a VIP: %v", err.Error())})
 		return
 	}
-	if vip == nil {
-		logger.Criticalf("not found toggled VIP: %v", p.ID)
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
-		return
-	}
+	logger.Debugf("toggled the VIP: %v", spew.Sdump(vip))
 
 	if err := r.announce(vip.IP, vip.ActiveHost.MAC); err != nil {
 		// Ignore this error.

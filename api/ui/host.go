@@ -38,6 +38,18 @@ import (
 	"github.com/davecgh/go-spew/spew"
 )
 
+type HostTransaction interface {
+	Host(id uint64) (*Host, error)
+	AddHost(ipID []uint64, groupID *uint64, mac net.HardwareAddr, desc string) (host []*Host, duplicated bool, err error)
+	UpdateHost(id, ipID uint64, groupID *uint64, mac net.HardwareAddr, desc string) (host *Host, duplicated bool, err error)
+	// ActivateHost enables a host specified by id and then returns information of the host. It returns nil if the host does not exist.
+	ActivateHost(id uint64) (*Host, error)
+	// DeactivateHost disables a host specified by id and then returns information of the host. It returns nil if the host does not exist.
+	DeactivateHost(id uint64) (*Host, error)
+	// RemoveHost removes a host specified by id and then returns information of the host before removing. It returns nil if the host does not exist.
+	RemoveHost(id uint64) (*Host, error)
+}
+
 type Host struct {
 	ID          uint64
 	IP          string // FIXME: Use a native type.
@@ -89,12 +101,17 @@ func (r *API) addHost(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	host, duplicated, err := r.DB.AddHost(p.IPID, p.GroupID, p.MAC, p.Description)
-	if err != nil {
-		logger.Errorf("failed to add a new host: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
+	var host []*Host
+	var duplicated bool
+	f := func(tx Transaction) (err error) {
+		host, duplicated, err = tx.AddHost(p.IPID, p.GroupID, p.MAC, p.Description)
+		return err
+	}
+	if err := r.DB.Exec(f); err != nil {
+		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to add a new host: %v", err.Error())})
 		return
 	}
+
 	if duplicated {
 		logger.Infof("duplicated host: ip_id=%v", p.IPID)
 		w.WriteJson(&api.Response{Status: api.StatusDuplicated, Message: fmt.Sprintf("duplicated host: ip_id=%v", p.IPID)})
@@ -178,12 +195,26 @@ func (r *API) updateHost(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	old, err := r.DB.Host(p.ID)
-	if err != nil {
-		logger.Errorf("failed to query the host: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
+	var old, new *Host
+	var duplicated bool
+	f := func(tx Transaction) (err error) {
+		old, err = tx.Host(p.ID)
+		if err != nil {
+			return err
+		}
+		if old == nil || old.Enabled == false {
+			return nil
+		}
+
+		// TODO: Split UpdateHost into RemoveHost and AddHost.
+		new, duplicated, err = tx.UpdateHost(p.ID, p.IPID, p.GroupID, p.MAC, p.Description)
+		return err
+	}
+	if err := r.DB.Exec(f); err != nil {
+		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to update a host: %v", err.Error())})
 		return
 	}
+
 	if old == nil {
 		logger.Infof("not found host to update: %v", p.ID)
 		w.WriteJson(&api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found host to update: %v", p.ID)})
@@ -192,13 +223,6 @@ func (r *API) updateHost(w rest.ResponseWriter, req *rest.Request) {
 	if old.Enabled == false {
 		logger.Infof("unable to update blocked host: %v", p.ID)
 		w.WriteJson(&api.Response{Status: api.StatusBlockedHost, Message: fmt.Sprintf("unable to update blocked host: %v", p.ID)})
-		return
-	}
-
-	new, duplicated, err := r.DB.UpdateHost(p.ID, p.IPID, p.GroupID, p.MAC, p.Description)
-	if err != nil {
-		logger.Errorf("failed to update host info: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
 		return
 	}
 	if duplicated {
@@ -284,12 +308,16 @@ func (r *API) activateHost(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	host, err := r.DB.ActivateHost(p.ID)
-	if err != nil {
-		logger.Errorf("failed to activate a host: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
+	var host *Host
+	f := func(tx Transaction) (err error) {
+		host, err = tx.ActivateHost(p.ID)
+		return err
+	}
+	if err := r.DB.Exec(f); err != nil {
+		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to activate a host: %v", err.Error())})
 		return
 	}
+
 	if host == nil {
 		logger.Infof("not found host to activate: %v", p.ID)
 		w.WriteJson(&api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found host to activate: %v", p.ID)})
@@ -349,12 +377,16 @@ func (r *API) deactivateHost(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	host, err := r.DB.DeactivateHost(p.ID)
-	if err != nil {
-		logger.Errorf("failed to deactivate a host: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
+	var host *Host
+	f := func(tx Transaction) (err error) {
+		host, err = tx.DeactivateHost(p.ID)
+		return err
+	}
+	if err := r.DB.Exec(f); err != nil {
+		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to deactivate a host: %v", err.Error())})
 		return
 	}
+
 	if host == nil {
 		logger.Infof("not found host to deactivate: %v", p.ID)
 		w.WriteJson(&api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found host to deactivate: %v", p.ID)})
@@ -414,12 +446,16 @@ func (r *API) removeHost(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	host, err := r.DB.RemoveHost(p.ID)
-	if err != nil {
-		logger.Errorf("failed to remove host info: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
+	var host *Host
+	f := func(tx Transaction) (err error) {
+		host, err = tx.RemoveHost(p.ID)
+		return err
+	}
+	if err := r.DB.Exec(f); err != nil {
+		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to remove a host: %v", err.Error())})
 		return
 	}
+
 	if host == nil {
 		logger.Infof("not found host to remove: %v", p.ID)
 		w.WriteJson(&api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found host to remove: %v", p.ID)})

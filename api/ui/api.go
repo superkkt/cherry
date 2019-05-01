@@ -48,43 +48,19 @@ type API struct {
 }
 
 type Database interface {
-	// Auth returns information for a user if name and password match. Otherwise, it returns nil.
-	Auth(name, password string) (*User, error)
-	Users(offset uint32, limit uint8) ([]User, error)
-	AddUser(name, password string) (id uint64, duplicated bool, err error)
-	UpdateUser(id uint64, password *string, admin *bool) error
-	ActivateUser(id uint64) error
-	DeactivateUser(id uint64) error
+	// Exec executes all queries of f in a single transaction. f should return the error raised from the Transaction
+	// without any change or wrapping it for deadlock protection.
+	Exec(f func(Transaction) error) error
+}
 
-	Groups(offset uint32, limit uint8) ([]Group, error)
-	AddGroup(name string) (id uint64, duplicated bool, err error)
-	UpdateGroup(id uint64, name string) (duplicated bool, err error)
-	RemoveGroup(id uint64) error
-
-	Switches(offset uint32, limit uint8) ([]Switch, error)
-	AddSwitch(dpid uint64, nPorts, firstPort, firstPrintedPort uint16, desc string) (id uint64, duplicated bool, err error)
-	RemoveSwitch(id uint64) error
-
-	Networks(offset uint32, limit uint8) ([]Network, error)
-	AddNetwork(addr net.IP, mask net.IPMask) (id uint64, duplicated bool, err error)
-	RemoveNetwork(id uint64) error
-	IPAddrs(networkID uint64) ([]IP, error)
-
-	Host(id uint64) (*Host, error)
-	AddHost(ipID []uint64, groupID *uint64, mac net.HardwareAddr, desc string) (host []*Host, duplicated bool, err error)
-	UpdateHost(id, ipID uint64, groupID *uint64, mac net.HardwareAddr, desc string) (host *Host, duplicated bool, err error)
-	// ActivateHost enables a host specified by id and then returns information of the host. It returns nil if the host does not exist.
-	ActivateHost(id uint64) (*Host, error)
-	// DeactivateHost disables a host specified by id and then returns information of the host. It returns nil if the host does not exist.
-	DeactivateHost(id uint64) (*Host, error)
-	// RemoveHost removes a host specified by id and then returns information of the host before removing. It returns nil if the host does not exist.
-	RemoveHost(id uint64) (*Host, error)
-
-	VIP(id uint64) (*VIP, error)
-	VIPs(offset uint32, limit uint8) ([]VIP, error)
-	AddVIP(ipID, activeID, standbyID uint64, desc string) (id uint64, duplicated bool, err error)
-	RemoveVIP(id uint64) error
-	ToggleVIP(id uint64) error
+type Transaction interface {
+	UserTransaction
+	GroupTransaction
+	SwitchTransaction
+	NetworkTransaction
+	IPTransaction
+	HostTransaction
+	VIPTransaction
 }
 
 func (r *API) Serve() error {

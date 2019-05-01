@@ -36,6 +36,10 @@ import (
 	"github.com/davecgh/go-spew/spew"
 )
 
+type IPTransaction interface {
+	IPAddrs(networkID uint64) ([]IP, error)
+}
+
 type IP struct {
 	ID      uint64 `json:"id"`
 	Address string `json:"address"` // FIXME: Use a native type.
@@ -59,10 +63,13 @@ func (r *API) listIP(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	ip, err := r.DB.IPAddrs(p.NetworkID)
-	if err != nil {
-		logger.Errorf("failed to query the network ip list: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
+	var ip []IP
+	f := func(tx Transaction) (err error) {
+		ip, err = tx.IPAddrs(p.NetworkID)
+		return err
+	}
+	if err := r.DB.Exec(f); err != nil {
+		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to query the network ip list: %v", err.Error())})
 		return
 	}
 	logger.Debugf("queried network ip list: %v", spew.Sdump(ip))

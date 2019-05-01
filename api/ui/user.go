@@ -37,6 +37,16 @@ import (
 	"github.com/davecgh/go-spew/spew"
 )
 
+type UserTransaction interface {
+	// Auth returns information for a user if name and password match. Otherwise, it returns nil.
+	Auth(name, password string) (*User, error)
+	Users(offset uint32, limit uint8) ([]User, error)
+	AddUser(name, password string) (id uint64, duplicated bool, err error)
+	UpdateUser(id uint64, password *string, admin *bool) error
+	ActivateUser(id uint64) error
+	DeactivateUser(id uint64) error
+}
+
 type User struct {
 	ID        uint64
 	Name      string
@@ -69,11 +79,16 @@ func (r *API) login(w api.ResponseWriter, req *rest.Request) {
 	}
 	logger.Debugf("login request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
-	user, err := r.DB.Auth(p.Name, p.Password)
-	if err != nil {
+	var user *User
+	f := func(tx Transaction) (err error) {
+		user, err = tx.Auth(p.Name, p.Password)
+		return err
+	}
+	if err := r.DB.Exec(f); err != nil {
 		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to authenticate an user account: %v", err.Error())})
 		return
 	}
+
 	if user == nil {
 		w.Write(api.Response{Status: api.StatusIncorrectCredential, Message: fmt.Sprintf("incorrect username or password: username=%v", p.Name)})
 		return
@@ -183,12 +198,16 @@ func (r *API) listUser(w api.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	user, err := r.DB.Users(p.Offset, p.Limit)
-	if err != nil {
-		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to query the user list: %v", err.Error())})
+	var user []User
+	f := func(tx Transaction) (err error) {
+		user, err = tx.Users(p.Offset, p.Limit)
+		return err
+	}
+	if err := r.DB.Exec(f); err != nil {
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to query the user accounts: %v", err.Error())})
 		return
 	}
-	logger.Debugf("queried user list: %v", spew.Sdump(user))
+	logger.Debugf("queried user accounts: %v", spew.Sdump(user))
 
 	w.Write(api.Response{Status: api.StatusOkay, Data: user})
 }
@@ -237,16 +256,22 @@ func (r *API) addUser(w api.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	id, duplicated, err := r.DB.AddUser(p.Name, p.Password)
-	if err != nil {
-		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to add a new user: %v", err.Error())})
+	var id uint64
+	var duplicated bool
+	f := func(tx Transaction) (err error) {
+		id, duplicated, err = tx.AddUser(p.Name, p.Password)
+		return err
+	}
+	if err := r.DB.Exec(f); err != nil {
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to add a new user account: %v", err.Error())})
 		return
 	}
+
 	if duplicated {
 		w.Write(api.Response{Status: api.StatusDuplicated, Message: fmt.Sprintf("duplicated user account: %v", p.Name)})
 		return
 	}
-	logger.Debugf("added user info: %v", spew.Sdump(p))
+	logger.Debugf("added the new user account (id=%v): %v", id, spew.Sdump(p))
 
 	w.Write(api.Response{Status: api.StatusOkay, Data: id})
 }
@@ -304,11 +329,14 @@ func (r *API) updateUser(w api.ResponseWriter, req *rest.Request) {
 		p.Admin = nil
 	}
 
-	if err := r.DB.UpdateUser(p.ID, p.Password, p.Admin); err != nil {
-		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to update user info: %v", err.Error())})
+	f := func(tx Transaction) (err error) {
+		return tx.UpdateUser(p.ID, p.Password, p.Admin)
+	}
+	if err := r.DB.Exec(f); err != nil {
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to update a user account: %v", err.Error())})
 		return
 	}
-	logger.Debugf("updated user info: %v", spew.Sdump(p))
+	logger.Debugf("updated the user account: %v", spew.Sdump(p))
 
 	w.Write(api.Response{Status: api.StatusOkay})
 }
@@ -365,11 +393,14 @@ func (r *API) activateUser(w api.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	if err := r.DB.ActivateUser(p.ID); err != nil {
+	f := func(tx Transaction) (err error) {
+		return tx.ActivateUser(p.ID)
+	}
+	if err := r.DB.Exec(f); err != nil {
 		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to activate an user account: %v", err.Error())})
 		return
 	}
-	logger.Debugf("activated an user account: ID=%v", p.ID)
+	logger.Debugf("activated the user account: ID=%v", p.ID)
 
 	w.Write(api.Response{Status: api.StatusOkay})
 }
@@ -416,11 +447,14 @@ func (r *API) deactivateUser(w api.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	if err := r.DB.DeactivateUser(p.ID); err != nil {
+	f := func(tx Transaction) (err error) {
+		return tx.DeactivateUser(p.ID)
+	}
+	if err := r.DB.Exec(f); err != nil {
 		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to deactivate an user account: %v", err.Error())})
 		return
 	}
-	logger.Debugf("deactivated an user account: ID=%v", p.ID)
+	logger.Debugf("deactivated the user account: ID=%v", p.ID)
 
 	w.Write(api.Response{Status: api.StatusOkay})
 }

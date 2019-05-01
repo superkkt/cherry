@@ -37,6 +37,13 @@ import (
 	"github.com/davecgh/go-spew/spew"
 )
 
+type GroupTransaction interface {
+	Groups(offset uint32, limit uint8) ([]Group, error)
+	AddGroup(name string) (id uint64, duplicated bool, err error)
+	UpdateGroup(id uint64, name string) (duplicated bool, err error)
+	RemoveGroup(id uint64) error
+}
+
 type Group struct {
 	ID        uint64    `json:"id"`
 	Name      string    `json:"name"`
@@ -70,10 +77,13 @@ func (r *API) listGroup(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	group, err := r.DB.Groups(p.Offset, p.Limit)
-	if err != nil {
-		logger.Errorf("failed to query the group list: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
+	var group []Group
+	f := func(tx Transaction) (err error) {
+		group, err = tx.Groups(p.Offset, p.Limit)
+		return err
+	}
+	if err := r.DB.Exec(f); err != nil {
+		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to query the groups: %v", err.Error())})
 		return
 	}
 	logger.Debugf("queried group list: %v", spew.Sdump(group))
@@ -127,12 +137,17 @@ func (r *API) addGroup(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	id, duplicated, err := r.DB.AddGroup(p.Name)
-	if err != nil {
-		logger.Errorf("failed to add a new group: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
+	var id uint64
+	var duplicated bool
+	f := func(tx Transaction) (err error) {
+		id, duplicated, err = tx.AddGroup(p.Name)
+		return err
+	}
+	if err := r.DB.Exec(f); err != nil {
+		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to add a new group: %v", err.Error())})
 		return
 	}
+
 	if duplicated {
 		logger.Infof("duplicated group: name=%v", p.Name)
 		w.WriteJson(&api.Response{Status: api.StatusDuplicated, Message: fmt.Sprintf("duplicated group: %v", p.Name)})
@@ -187,18 +202,22 @@ func (r *API) updateGroup(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	duplicated, err := r.DB.UpdateGroup(p.ID, p.Name)
-	if err != nil {
-		logger.Errorf("failed to update group info: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
+	var duplicated bool
+	f := func(tx Transaction) (err error) {
+		duplicated, err = tx.UpdateGroup(p.ID, p.Name)
+		return err
+	}
+	if err := r.DB.Exec(f); err != nil {
+		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to update a group: %v", err.Error())})
 		return
 	}
+
 	if duplicated {
 		logger.Infof("duplicated group: name=%v", p.Name)
 		w.WriteJson(&api.Response{Status: api.StatusDuplicated, Message: fmt.Sprintf("duplicated group: %v", p.Name)})
 		return
 	}
-	logger.Debugf("updated group info: %v", spew.Sdump(p))
+	logger.Debugf("updated the group: %v", spew.Sdump(p))
 
 	w.WriteJson(&api.Response{Status: api.StatusOkay})
 }
@@ -252,12 +271,14 @@ func (r *API) removeGroup(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	if err := r.DB.RemoveGroup(p.ID); err != nil {
-		logger.Errorf("failed to remove group info: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: err.Error()})
+	f := func(tx Transaction) (err error) {
+		return tx.RemoveGroup(p.ID)
+	}
+	if err := r.DB.Exec(f); err != nil {
+		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to remove a group: %v", err.Error())})
 		return
 	}
-	logger.Debugf("removed group info: %v", spew.Sdump(p))
+	logger.Debugf("removed the group: %v", spew.Sdump(p))
 
 	w.WriteJson(&api.Response{Status: api.StatusOkay})
 }
