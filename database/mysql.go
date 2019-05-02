@@ -23,6 +23,7 @@ package database
 
 import (
 	"database/sql"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -1014,6 +1015,153 @@ func (r *uiTx) RemoveGroup(id uint64) error {
 	}
 
 	return err
+}
+
+func (r *uiTx) Hosts(search *ui.Search, sort ui.Sort, pagination *ui.Pagination) (host []*ui.Host, err error) {
+	qry, args := buildHostsQuery(search, sort, pagination)
+	rows, err := r.handle.Query(qry, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	host = []*ui.Host{}
+	for rows.Next() {
+		v := new(ui.Host)
+		var timestamp time.Time
+		if err := rows.Scan(&v.ID, &v.IP, &v.Port, &v.Group, &v.MAC, &v.Description, &v.Enabled, &timestamp, &v.Timestamp); err != nil {
+			return nil, err
+		}
+
+		// Parse the MAC address.
+		mac, err := decodeMAC(v.MAC)
+		if err != nil {
+			return nil, err
+		}
+		v.MAC = mac.String()
+		// Check its freshness.
+		if time.Now().Sub(timestamp) > discovery.ProbeInterval*2 {
+			v.Stale = true
+		}
+
+		host = append(host, v)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return host, nil
+}
+
+func buildHostsQuery(search *ui.Search, sort ui.Sort, pagination *ui.Pagination) (qry string, args []interface{}) {
+	qry = "SELECT `host`.`id`, "                                                                                                              // ID
+	qry += "      CONCAT(INET_NTOA(`ip`.`address`), '/', `network`.`mask`), "                                                                 // IP
+	qry += "      IFNULL(CONCAT(`switch`.`description`, '/', `port`.`number` - `switch`.`first_port` + `switch`.`first_printed_port`), ''), " // Port
+	qry += "      IFNULL(`group`.`name`, ''), "                                                                                               // Group
+	qry += "      HEX(`host`.`mac`), "                                                                                                        // MAC
+	qry += "      `host`.`description`, "                                                                                                     // Description
+	qry += "      `host`.`enabled`, "                                                                                                         // Enabled
+	qry += "      `host`.`last_updated_timestamp`, "                                                                                          // Stale
+	qry += "      `host`.`timestamp` "                                                                                                        // Timestamp
+	qry += "FROM `host` "
+	qry += "JOIN `ip` ON `host`.`ip_id` = `ip`.`id` "
+	qry += "LEFT JOIN `port` ON `host`.`port_id` = `port`.`id` "
+	qry += "LEFT JOIN `switch` ON `port`.`switch_id` = `switch`.`id` "
+	qry += "JOIN `network` ON `ip`.`network_id` = `network`.`id` "
+	qry += "LEFT JOIN `group` ON `host`.`group_id` = `group`.`id` "
+
+	if search != nil {
+		switch search.Key {
+		// Query by description supports full text search.
+		case ui.ColumnDescription:
+			qry += fmt.Sprintf("WHERE MATCH (`host`.`description`) AGAINST (CONCAT(?, '*') IN BOOLEAN MODE) ")
+			args = append(args, search.Value)
+		case ui.ColumnPort:
+			qry += fmt.Sprintf("WHERE `switch`.`description` LIKE CONCAT(?, '%%') ")
+			args = append(args, search.Value)
+		case ui.ColumnGroup:
+			qry += fmt.Sprintf("WHERE `group`.`name` LIKE CONCAT(?, '%%') ")
+			args = append(args, search.Value)
+		case ui.ColumnIP:
+			start, end := rangeIP(search.Value)
+			qry += fmt.Sprintf("WHERE `ip`.`address` BETWEEN %v AND %v ", start, end)
+		case ui.ColumnMAC:
+			start, end := rangeMAC(search.Value)
+			qry += fmt.Sprintf("WHERE `host`.`mac` BETWEEN UNHEX('%v') AND UNHEX('%v') ", start, end)
+		default:
+			panic(fmt.Sprintf("invalid search key: %v", search.Key))
+		}
+	}
+
+	v := []string{}
+	switch sort.Key {
+	case ui.ColumnTime:
+		// Do nothing. It's the default order.
+	case ui.ColumnIP:
+		v = append(v, "`ip`.`address`")
+	case ui.ColumnMAC:
+		v = append(v, "`host`.`mac`")
+	case ui.ColumnGroup:
+		v = append(v, "`group`.`name`")
+	case ui.ColumnPort:
+		v = append(v, "`port`.`switch_id`")
+		v = append(v, "`port`.`number`")
+	default:
+		panic(fmt.Sprintf("invalid sort key: %v", sort.Key))
+	}
+	// If duplicated value is existed, sort by id.
+	v = append(v, "`host`.`id`")
+
+	switch sort.Order {
+	case ui.OrderAscending:
+		qry += fmt.Sprintf("ORDER BY %v ASC ", strings.Join(v, " ASC, "))
+	case ui.OrderDescending:
+		qry += fmt.Sprintf("ORDER BY %v DESC ", strings.Join(v, " DESC, "))
+	default:
+		panic(fmt.Sprintf("invalid sort order: %v", sort.Order))
+	}
+
+	if pagination != nil {
+		qry += fmt.Sprintf("LIMIT %v, %v", pagination.Offset, pagination.Limit)
+	}
+
+	return qry, args
+}
+
+// IP format is '1.*.*.*', '1.2.*.*', '1.2.3.*', '1.2.3.4'.
+func rangeIP(ip string) (start, end uint32) {
+	s := net.ParseIP(strings.Replace(ip, "*", "0", -1))
+	if s == nil {
+		panic("this ip should be parsed")
+	}
+	e := net.ParseIP(strings.Replace(ip, "*", "255", -1))
+	if e == nil {
+		panic("this ip should be parsed")
+	}
+
+	return convertIPToInt(s), convertIPToInt(e)
+}
+
+func convertIPToInt(ip net.IP) uint32 {
+	v := ip.To4()
+	if v == nil {
+		panic("unexpected IP address format")
+	}
+	return binary.BigEndian.Uint32(v)
+}
+
+// MAC format is 'A1:*:*:*:*:*', 'A1:A2:*:*:*:*', 'A1:A2:A3:*:*:*', 'A1:A2:A3:A4:*:*', 'A1:A2:A3:A4:A5:*', 'A1:A2:A3:A4:A5:A6'.
+func rangeMAC(mac string) (start, end string) {
+	s, err := net.ParseMAC(strings.Replace(mac, "*", "00", -1))
+	if err != nil {
+		panic("this mac should be parsed")
+	}
+	e, err := net.ParseMAC(strings.Replace(mac, "*", "FF", -1))
+	if err != nil {
+		panic("this mac should be parsed")
+	}
+
+	return encodeMAC(s), encodeMAC(e)
 }
 
 func (r *uiTx) Host(id uint64) (host *ui.Host, err error) {
