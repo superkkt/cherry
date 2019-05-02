@@ -123,7 +123,8 @@ CREATE TABLE IF NOT EXISTS `switch` (
   `first_printed_port` smallint(5) unsigned NOT NULL DEFAULT '0',
   `description` varchar(255) NOT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `dpid` (`dpid`)
+  UNIQUE KEY `dpid` (`dpid`),
+  KEY `description` (`description`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -177,12 +178,13 @@ CREATE TABLE IF NOT EXISTS `host` (
   `description` varchar(255) NOT NULL,
   `last_updated_timestamp` datetime NOT NULL,
   `enabled` tinyint(1) NOT NULL DEFAULT '1',
-  `timestamp` TIMESTAMP NOT NULL,
+  `timestamp` datetime NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `ip` (`ip_id`),
   KEY `port_id` (`port_id`),
   KEY `mac` (`mac`),
   KEY `last_updated_timestamp` (`last_updated_timestamp`),
+  FULLTEXT `description` (`description`),
   CONSTRAINT `host_ibfk_1` FOREIGN KEY (`ip_id`) REFERENCES `ip` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `host_ibfk_2` FOREIGN KEY (`port_id`) REFERENCES `port` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `host_ibfk_3` FOREIGN KEY (`group_id`) REFERENCES `group` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE

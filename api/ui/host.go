@@ -46,6 +46,8 @@ var (
 
 type HostTransaction interface {
 	Host(id uint64) (*Host, error)
+	// Hosts returns a list of registered hosts. Search and Pagination can be nil that means no search or pagination, respectively.
+	Hosts(*Search, Sort, *Pagination) ([]*Host, error)
 	AddHost(ipID uint64, groupID *uint64, mac net.HardwareAddr, desc string) (host *Host, duplicated bool, err error)
 	// ActivateHost enables a host specified by id and then returns information of the host. It returns nil if the host does not exist.
 	ActivateHost(id uint64) (*Host, error)
@@ -90,6 +92,80 @@ func (r *Host) MarshalJSON() ([]byte, error) {
 		Stale:       r.Stale,
 		Timestamp:   r.Timestamp.Unix(),
 	})
+}
+
+func (r *API) listHost(w rest.ResponseWriter, req *rest.Request) {
+	p := new(listHostParam)
+	if err := req.DecodeJsonPayload(p); err != nil {
+		logger.Warningf("failed to decode params: %v", err)
+		w.WriteJson(&api.Response{Status: api.StatusInvalidParameter, Message: err.Error()})
+		return
+	}
+	logger.Debugf("listHost request from %v: %v", req.RemoteAddr, spew.Sdump(p))
+
+	if _, ok := r.session.Get(p.SessionID); ok == false {
+		logger.Warningf("unknown session id: %v", p.SessionID)
+		w.WriteJson(&api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		return
+	}
+
+	var host []*Host
+	f := func(tx Transaction) (err error) {
+		host, err = tx.Hosts(p.Search, p.Sort, p.Pagination)
+		return err
+	}
+	if err := r.DB.Exec(f); err != nil {
+		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to query the hosts: %v", err.Error())})
+		return
+	}
+	logger.Debugf("queried host list: %v", spew.Sdump(host))
+
+	w.WriteJson(&api.Response{Status: api.StatusOkay, Data: host})
+}
+
+type listHostParam struct {
+	SessionID  string
+	Search     *Search
+	Sort       Sort
+	Pagination *Pagination
+}
+
+func (r *listHostParam) UnmarshalJSON(data []byte) error {
+	v := struct {
+		SessionID  string      `json:"session_id"`
+		Search     *Search     `json:"search"`
+		Sort       Sort        `json:"sort"`
+		Pagination *Pagination `json:"pagination"`
+	}{}
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	*r = listHostParam(v)
+
+	return r.validate()
+}
+
+func (r *listHostParam) validate() error {
+	if len(r.SessionID) != 64 {
+		return errors.New("invalid session id")
+	}
+	// If search is nil, fetch hosts without using search.
+	if r.Search != nil {
+		if err := r.Search.Validate(); err != nil {
+			return err
+		}
+	}
+	if err := r.Sort.Validate(); err != nil {
+		return err
+	}
+	// If pagination is nil, fetch hosts without using pagination.
+	if r.Pagination != nil {
+		if err := r.Pagination.Validate(); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (r *API) addHost(w rest.ResponseWriter, req *rest.Request) {
