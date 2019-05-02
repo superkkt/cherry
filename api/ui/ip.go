@@ -37,7 +37,7 @@ import (
 )
 
 type IPTransaction interface {
-	IPAddrs(networkID uint64) ([]IP, error)
+	IPAddrs(networkID uint64) ([]*IP, error)
 }
 
 type IP struct {
@@ -63,7 +63,7 @@ func (r *API) listIP(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	var ip []IP
+	var ip []*IP
 	f := func(tx Transaction) (err error) {
 		ip, err = tx.IPAddrs(p.NetworkID)
 		return err

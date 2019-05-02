@@ -40,9 +40,10 @@ import (
 )
 
 type SwitchTransaction interface {
-	Switches(offset uint32, limit uint8) ([]Switch, error)
-	AddSwitch(dpid uint64, nPorts, firstPort, firstPrintedPort uint16, desc string) (id uint64, duplicated bool, err error)
-	RemoveSwitch(id uint64) error
+	Switches(offset uint32, limit uint8) ([]*Switch, error)
+	AddSwitch(dpid uint64, nPorts, firstPort, firstPrintedPort uint16, desc string) (sw *Switch, duplicated bool, err error)
+	// RemoveSwitch removes a switch specified by id and then returns information of the switch before removing. It returns nil if the switch does not exist.
+	RemoveSwitch(id uint64) (*Switch, error)
 }
 
 type Switch struct {
@@ -99,7 +100,7 @@ func (r *API) listSwitch(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	var sw []Switch
+	var sw []*Switch
 	f := func(tx Transaction) (err error) {
 		sw, err = tx.Switches(p.Offset, p.Limit)
 		return err
@@ -159,10 +160,10 @@ func (r *API) addSwitch(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	var id uint64
+	var sw *Switch
 	var duplicated bool
 	f := func(tx Transaction) (err error) {
-		id, duplicated, err = tx.AddSwitch(p.DPID, p.NumPorts, p.FirstPort, p.FirstPrintedPort, p.Description)
+		sw, duplicated, err = tx.AddSwitch(p.DPID, p.NumPorts, p.FirstPort, p.FirstPrintedPort, p.Description)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
@@ -175,9 +176,9 @@ func (r *API) addSwitch(w rest.ResponseWriter, req *rest.Request) {
 		w.WriteJson(&api.Response{Status: api.StatusDuplicated, Message: fmt.Sprintf("duplicated switch: dpid=%v", p.DPID)})
 		return
 	}
-	logger.Debugf("added switch info: %v", spew.Sdump(p))
+	logger.Debugf("added switch info: %v", spew.Sdump(sw))
 
-	w.WriteJson(&api.Response{Status: api.StatusOkay, Data: id})
+	w.WriteJson(&api.Response{Status: api.StatusOkay, Data: sw})
 }
 
 type addSwitchParam struct {
@@ -258,14 +259,22 @@ func (r *API) removeSwitch(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
+	var sw *Switch
 	f := func(tx Transaction) (err error) {
-		return tx.RemoveSwitch(p.ID)
+		sw, err = tx.RemoveSwitch(p.ID)
+		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
 		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to remove a switch: %v", err.Error())})
 		return
 	}
-	logger.Debugf("removed a switch: %v", spew.Sdump(p))
+
+	if sw == nil {
+		logger.Infof("not found switch to remove: %v", p.ID)
+		w.WriteJson(&api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found switch to remove: %v", p.ID)})
+		return
+	}
+	logger.Debugf("removed a switch: %v", spew.Sdump(sw))
 
 	logger.Debug("removing all flows from the entire switches")
 	if err := r.Controller.RemoveFlows(); err != nil {

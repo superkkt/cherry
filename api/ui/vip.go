@@ -37,11 +37,12 @@ import (
 )
 
 type VIPTransaction interface {
-	VIP(id uint64) (*VIP, error)
-	VIPs(offset uint32, limit uint8) ([]VIP, error)
-	AddVIP(ipID, activeID, standbyID uint64, desc string) (id uint64, duplicated bool, err error)
-	RemoveVIP(id uint64) error
-	ToggleVIP(id uint64) error
+	VIPs(offset uint32, limit uint8) ([]*VIP, error)
+	AddVIP(ipID, activeID, standbyID uint64, desc string) (vip *VIP, duplicated bool, err error)
+	// RemoveVIP removes a VIP specified by id and then returns information of the VIP before removing. It returns nil if the VIP does not exist.
+	RemoveVIP(id uint64) (*VIP, error)
+	// ToggleVIP swaps active host and standby host of a VIP specified by id and then returns information of the VIP. It returns nil if the VIP does not exist.
+	ToggleVIP(id uint64) (*VIP, error)
 }
 
 type VIP struct {
@@ -67,7 +68,7 @@ func (r *API) listVIP(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	var vip []VIP
+	var vip []*VIP
 	f := func(tx Transaction) (err error) {
 		vip, err = tx.VIPs(p.Offset, p.Limit)
 		return err
@@ -127,19 +128,10 @@ func (r *API) addVIP(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	var id uint64
-	var duplicated bool
 	var vip *VIP
+	var duplicated bool
 	f := func(tx Transaction) (err error) {
-		id, duplicated, err = tx.AddVIP(p.IPID, p.ActiveHostID, p.StandbyHostID, p.Description)
-		if err != nil {
-			return err
-		}
-		if duplicated == true {
-			return nil
-		}
-
-		vip, err = tx.VIP(id)
+		vip, duplicated, err = tx.AddVIP(p.IPID, p.ActiveHostID, p.StandbyHostID, p.Description)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
@@ -159,7 +151,7 @@ func (r *API) addVIP(w rest.ResponseWriter, req *rest.Request) {
 		logger.Errorf("failed to send ARP announcement: %v", err)
 	}
 
-	w.WriteJson(&api.Response{Status: api.StatusOkay, Data: id})
+	w.WriteJson(&api.Response{Status: api.StatusOkay, Data: vip})
 }
 
 type addVIPParam struct {
@@ -223,15 +215,8 @@ func (r *API) removeVIP(w rest.ResponseWriter, req *rest.Request) {
 
 	var vip *VIP
 	f := func(tx Transaction) (err error) {
-		vip, err = tx.VIP(p.ID)
-		if err != nil {
-			return err
-		}
-		if vip == nil {
-			return nil
-		}
-
-		return tx.RemoveVIP(p.ID)
+		vip, err = tx.RemoveVIP(p.ID)
+		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
 		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to remove a VIP: %v", err.Error())})
@@ -239,8 +224,8 @@ func (r *API) removeVIP(w rest.ResponseWriter, req *rest.Request) {
 	}
 
 	if vip == nil {
-		logger.Infof("unknown VIP: %v", p.ID)
-		w.WriteJson(&api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("unknown VIP: %v", p.ID)})
+		logger.Infof("not found VIP to remove: %v", p.ID)
+		w.WriteJson(&api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found VIP to remove: %v", p.ID)})
 		return
 	}
 	logger.Debugf("removed the VIP: %v", spew.Sdump(vip))
@@ -299,15 +284,17 @@ func (r *API) toggleVIP(w rest.ResponseWriter, req *rest.Request) {
 
 	var vip *VIP
 	f := func(tx Transaction) (err error) {
-		if err := tx.ToggleVIP(p.ID); err != nil {
-			return err
-		}
-
-		vip, err = tx.VIP(p.ID)
+		vip, err = tx.ToggleVIP(p.ID)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
 		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to toggle a VIP: %v", err.Error())})
+		return
+	}
+
+	if vip == nil {
+		logger.Infof("not found VIP to toggle: %v", p.ID)
+		w.WriteJson(&api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found VIP to toggle: %v", p.ID)})
 		return
 	}
 	logger.Debugf("toggled the VIP: %v", spew.Sdump(vip))
