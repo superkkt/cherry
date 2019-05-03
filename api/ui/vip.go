@@ -37,7 +37,7 @@ import (
 )
 
 type VIPTransaction interface {
-	VIPs(offset uint32, limit uint8) ([]*VIP, error)
+	VIPs(Pagination) ([]*VIP, error)
 	AddVIP(ipID, activeID, standbyID uint64, desc string) (vip *VIP, duplicated bool, err error)
 	// RemoveVIP removes a VIP specified by id and then returns information of the VIP before removing. It returns nil if the VIP does not exist.
 	RemoveVIP(id uint64) (*VIP, error)
@@ -70,7 +70,7 @@ func (r *API) listVIP(w rest.ResponseWriter, req *rest.Request) {
 
 	var vip []*VIP
 	f := func(tx Transaction) (err error) {
-		vip, err = tx.VIPs(p.Offset, p.Limit)
+		vip, err = tx.VIPs(p.Pagination)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
@@ -83,16 +83,14 @@ func (r *API) listVIP(w rest.ResponseWriter, req *rest.Request) {
 }
 
 type listVIPParam struct {
-	SessionID string
-	Offset    uint32
-	Limit     uint8
+	SessionID  string
+	Pagination Pagination
 }
 
 func (r *listVIPParam) UnmarshalJSON(data []byte) error {
 	v := struct {
-		SessionID string `json:"session_id"`
-		Offset    uint32 `json:"offset"`
-		Limit     uint8  `json:"limit"`
+		SessionID  string     `json:"session_id"`
+		Pagination Pagination `json:"pagination"`
 	}{}
 	if err := json.Unmarshal(data, &v); err != nil {
 		return err
@@ -106,8 +104,8 @@ func (r *listVIPParam) validate() error {
 	if len(r.SessionID) != 64 {
 		return errors.New("invalid session id")
 	}
-	if r.Limit == 0 {
-		return errors.New("invalid limit")
+	if err := r.Pagination.Validate(); err != nil {
+		return err
 	}
 
 	return nil

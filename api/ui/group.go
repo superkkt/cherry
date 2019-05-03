@@ -38,7 +38,8 @@ import (
 )
 
 type GroupTransaction interface {
-	Groups(offset uint32, limit uint8) ([]*Group, error)
+	// Groups returns a list of registered groups. Pagination can be nil that means no pagination.
+	Groups(*Pagination) ([]*Group, error)
 	AddGroup(name string) (group *Group, duplicated bool, err error)
 	// UpdateGroup updates name of a group specified by id and then returns information of the group. It returns nil if the group does not exist.
 	UpdateGroup(id uint64, name string) (group *Group, duplicated bool, err error)
@@ -81,7 +82,7 @@ func (r *API) listGroup(w rest.ResponseWriter, req *rest.Request) {
 
 	var group []*Group
 	f := func(tx Transaction) (err error) {
-		group, err = tx.Groups(p.Offset, p.Limit)
+		group, err = tx.Groups(p.Pagination)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
@@ -94,16 +95,14 @@ func (r *API) listGroup(w rest.ResponseWriter, req *rest.Request) {
 }
 
 type listGroupParam struct {
-	SessionID string
-	Offset    uint32
-	Limit     uint8
+	SessionID  string
+	Pagination *Pagination
 }
 
 func (r *listGroupParam) UnmarshalJSON(data []byte) error {
 	v := struct {
-		SessionID string `json:"session_id"`
-		Offset    uint32 `json:"offset"`
-		Limit     uint8  `json:"limit"`
+		SessionID  string      `json:"session_id"`
+		Pagination *Pagination `json:"pagination"`
 	}{}
 	if err := json.Unmarshal(data, &v); err != nil {
 		return err
@@ -117,8 +116,11 @@ func (r *listGroupParam) validate() error {
 	if len(r.SessionID) != 64 {
 		return errors.New("invalid session id")
 	}
-	if r.Limit == 0 {
-		return errors.New("invalid limit")
+	// If pagination is nil, fetch groups without using pagination.
+	if r.Pagination != nil {
+		if err := r.Pagination.Validate(); err != nil {
+			return err
+		}
 	}
 
 	return nil
