@@ -65,18 +65,16 @@ func (r *Group) MarshalJSON() ([]byte, error) {
 	})
 }
 
-func (r *API) listGroup(w rest.ResponseWriter, req *rest.Request) {
+func (r *API) listGroup(w api.ResponseWriter, req *rest.Request) {
 	p := new(listGroupParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
-		logger.Warningf("failed to decode params: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInvalidParameter, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode param: %v", err.Error())})
 		return
 	}
 	logger.Debugf("listGroup request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
 	if _, ok := r.session.Get(p.SessionID); ok == false {
-		logger.Warningf("unknown session id: %v", p.SessionID)
-		w.WriteJson(&api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
 
@@ -86,12 +84,12 @@ func (r *API) listGroup(w rest.ResponseWriter, req *rest.Request) {
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to query the groups: %v", err.Error())})
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to query the groups: %v", err.Error())})
 		return
 	}
 	logger.Debugf("queried group list: %v", spew.Sdump(group))
 
-	w.WriteJson(&api.Response{Status: api.StatusOkay, Data: group})
+	w.Write(api.Response{Status: api.StatusOkay, Data: group})
 }
 
 type listGroupParam struct {
@@ -120,18 +118,16 @@ func (r *listGroupParam) validate() error {
 	return nil
 }
 
-func (r *API) addGroup(w rest.ResponseWriter, req *rest.Request) {
+func (r *API) addGroup(w api.ResponseWriter, req *rest.Request) {
 	p := new(addGroupParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
-		logger.Warningf("failed to decode params: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInvalidParameter, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode param: %v", err.Error())})
 		return
 	}
 	logger.Debugf("addGroup request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
 	if _, ok := r.session.Get(p.SessionID); ok == false {
-		logger.Warningf("unknown session id: %v", p.SessionID)
-		w.WriteJson(&api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
 
@@ -142,18 +138,17 @@ func (r *API) addGroup(w rest.ResponseWriter, req *rest.Request) {
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to add a new group: %v", err.Error())})
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to add a new group: %v", err.Error())})
 		return
 	}
 
 	if duplicated {
-		logger.Infof("duplicated group: name=%v", p.Name)
-		w.WriteJson(&api.Response{Status: api.StatusDuplicated, Message: fmt.Sprintf("duplicated group: %v", p.Name)})
+		w.Write(api.Response{Status: api.StatusDuplicated, Message: fmt.Sprintf("duplicated group: %v", p.Name)})
 		return
 	}
 	logger.Debugf("added group info: %v", spew.Sdump(group))
 
-	w.WriteJson(&api.Response{Status: api.StatusOkay, Data: group})
+	w.Write(api.Response{Status: api.StatusOkay, Data: group})
 }
 
 type addGroupParam struct {
@@ -185,18 +180,16 @@ func (r *addGroupParam) validate() error {
 	return nil
 }
 
-func (r *API) updateGroup(w rest.ResponseWriter, req *rest.Request) {
+func (r *API) updateGroup(w api.ResponseWriter, req *rest.Request) {
 	p := new(updateGroupParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
-		logger.Warningf("failed to decode params: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInvalidParameter, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode param: %v", err.Error())})
 		return
 	}
 	logger.Debugf("updateGroup request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
 	if _, ok := r.session.Get(p.SessionID); ok == false {
-		logger.Warningf("unknown session id: %v", p.SessionID)
-		w.WriteJson(&api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
 
@@ -207,23 +200,21 @@ func (r *API) updateGroup(w rest.ResponseWriter, req *rest.Request) {
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to update a group: %v", err.Error())})
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to update a group: %v", err.Error())})
 		return
 	}
 
 	if group == nil {
-		logger.Infof("not found group to update: %v", p.ID)
-		w.WriteJson(&api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found group to update: %v", p.ID)})
+		w.Write(api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found group to update: %v", p.ID)})
 		return
 	}
 	if duplicated {
-		logger.Infof("duplicated group: name=%v", p.Name)
-		w.WriteJson(&api.Response{Status: api.StatusDuplicated, Message: fmt.Sprintf("duplicated group: %v", p.Name)})
+		w.Write(api.Response{Status: api.StatusDuplicated, Message: fmt.Sprintf("duplicated group: %v", p.Name)})
 		return
 	}
 	logger.Debugf("updated the group: %v", spew.Sdump(group))
 
-	w.WriteJson(&api.Response{Status: api.StatusOkay, Data: group})
+	w.Write(api.Response{Status: api.StatusOkay, Data: group})
 }
 
 type updateGroupParam struct {
@@ -260,18 +251,16 @@ func (r *updateGroupParam) validate() error {
 	return nil
 }
 
-func (r *API) removeGroup(w rest.ResponseWriter, req *rest.Request) {
+func (r *API) removeGroup(w api.ResponseWriter, req *rest.Request) {
 	p := new(removeGroupParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
-		logger.Warningf("failed to decode params: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInvalidParameter, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode param: %v", err.Error())})
 		return
 	}
 	logger.Debugf("removeGroup request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
 	if _, ok := r.session.Get(p.SessionID); ok == false {
-		logger.Warningf("unknown session id: %v", p.SessionID)
-		w.WriteJson(&api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
 
@@ -281,18 +270,17 @@ func (r *API) removeGroup(w rest.ResponseWriter, req *rest.Request) {
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to remove a group: %v", err.Error())})
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to remove a group: %v", err.Error())})
 		return
 	}
 
 	if group == nil {
-		logger.Infof("not found group to remove: %v", p.ID)
-		w.WriteJson(&api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found group to remove: %v", p.ID)})
+		w.Write(api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found group to remove: %v", p.ID)})
 		return
 	}
 	logger.Debugf("removed the group: %v", spew.Sdump(group))
 
-	w.WriteJson(&api.Response{Status: api.StatusOkay})
+	w.Write(api.Response{Status: api.StatusOkay})
 }
 
 type removeGroupParam struct {
