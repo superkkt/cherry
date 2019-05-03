@@ -40,7 +40,7 @@ import (
 type UserTransaction interface {
 	// Auth returns information for a user if name and password match. Otherwise, it returns nil.
 	Auth(name, password string) (*User, error)
-	Users(offset uint32, limit uint8) ([]*User, error)
+	Users(Pagination) ([]*User, error)
 	AddUser(name, password string) (user *User, duplicated bool, err error)
 	// UpdateUser updates password and admin authorization of a user specified by id and then returns information of the user. It returns nil if the user does not exist.
 	UpdateUser(id uint64, password *string, admin *bool) (*User, error)
@@ -203,7 +203,7 @@ func (r *API) listUser(w api.ResponseWriter, req *rest.Request) {
 
 	var user []*User
 	f := func(tx Transaction) (err error) {
-		user, err = tx.Users(p.Offset, p.Limit)
+		user, err = tx.Users(p.Pagination)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
@@ -216,16 +216,14 @@ func (r *API) listUser(w api.ResponseWriter, req *rest.Request) {
 }
 
 type listUserParam struct {
-	SessionID string
-	Offset    uint32
-	Limit     uint8
+	SessionID  string
+	Pagination Pagination
 }
 
 func (r *listUserParam) UnmarshalJSON(data []byte) error {
 	v := struct {
-		SessionID string `json:"session_id"`
-		Offset    uint32 `json:"offset"`
-		Limit     uint8  `json:"limit"`
+		SessionID  string     `json:"session_id"`
+		Pagination Pagination `json:"pagination"`
 	}{}
 	if err := json.Unmarshal(data, &v); err != nil {
 		return err
@@ -239,8 +237,8 @@ func (r *listUserParam) validate() error {
 	if len(r.SessionID) != 64 {
 		return errors.New("invalid session id")
 	}
-	if r.Limit == 0 {
-		return errors.New("invalid limit")
+	if r.Pagination.Limit == 0 {
+		return errors.New("invalid pagination limit")
 	}
 
 	return nil

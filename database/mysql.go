@@ -951,13 +951,15 @@ type uiTx struct {
 	handle *sql.Tx
 }
 
-func (r *uiTx) Groups(offset uint32, limit uint8) (group []*ui.Group, err error) {
+func (r *uiTx) Groups(pagination ui.Pagination) (group []*ui.Group, err error) {
 	qry := "SELECT `id`, `name`, `timestamp` "
 	qry += "FROM `group` "
 	qry += "ORDER BY `id` DESC "
-	qry += "LIMIT ?, ?"
+	if pagination.Limit > 0 {
+		qry += fmt.Sprintf("LIMIT %v, %v", pagination.Offset, pagination.Limit)
+	}
 
-	rows, err := r.handle.Query(qry, offset, limit)
+	rows, err := r.handle.Query(qry)
 	if err != nil {
 		return nil, err
 	}
@@ -1059,7 +1061,7 @@ func (r *uiTx) RemoveGroup(id uint64) (group *ui.Group, err error) {
 	return group, nil
 }
 
-func (r *uiTx) Hosts(search *ui.Search, sort ui.Sort, pagination *ui.Pagination) (host []*ui.Host, err error) {
+func (r *uiTx) Hosts(search *ui.Search, sort ui.Sort, pagination ui.Pagination) (host []*ui.Host, err error) {
 	qry, args := buildHostsQuery(search, sort, pagination)
 	rows, err := r.handle.Query(qry, args...)
 	if err != nil {
@@ -1095,7 +1097,7 @@ func (r *uiTx) Hosts(search *ui.Search, sort ui.Sort, pagination *ui.Pagination)
 	return host, nil
 }
 
-func buildHostsQuery(search *ui.Search, sort ui.Sort, pagination *ui.Pagination) (qry string, args []interface{}) {
+func buildHostsQuery(search *ui.Search, sort ui.Sort, pagination ui.Pagination) (qry string, args []interface{}) {
 	qry = "SELECT `host`.`id`, "                                                                                                              // ID
 	qry += "      CONCAT(INET_NTOA(`ip`.`address`), '/', `network`.`mask`), "                                                                 // IP
 	qry += "      IFNULL(CONCAT(`switch`.`description`, '/', `port`.`number` - `switch`.`first_port` + `switch`.`first_printed_port`), ''), " // Port
@@ -1163,7 +1165,7 @@ func buildHostsQuery(search *ui.Search, sort ui.Sort, pagination *ui.Pagination)
 		panic(fmt.Sprintf("invalid sort order: %v", sort.Order))
 	}
 
-	if pagination != nil {
+	if pagination.Limit > 0 {
 		qry += fmt.Sprintf("LIMIT %v, %v", pagination.Offset, pagination.Limit)
 	}
 
@@ -1452,13 +1454,15 @@ func (r *uiTx) IPAddrs(networkID uint64) (address []*ui.IP, err error) {
 	return address, nil
 }
 
-func (r *uiTx) Networks(offset uint32, limit uint8) (network []*ui.Network, err error) {
+func (r *uiTx) Networks(pagination ui.Pagination) (network []*ui.Network, err error) {
 	qry := "SELECT `id`, INET_NTOA(`address`), `mask` "
 	qry += "FROM `network` "
 	qry += "ORDER BY `address` ASC, `mask` ASC "
-	qry += "LIMIT ?, ?"
+	if pagination.Limit > 0 {
+		qry += fmt.Sprintf("LIMIT %v, %v", pagination.Offset, pagination.Limit)
+	}
 
-	rows, err := r.handle.Query(qry, offset, limit)
+	rows, err := r.handle.Query(qry)
 	if err != nil {
 		return nil, err
 	}
@@ -1566,13 +1570,13 @@ func (r *uiTx) RemoveNetwork(id uint64) (network *ui.Network, err error) {
 	return network, nil
 }
 
-func (r *uiTx) Switches(offset uint32, limit uint8) (sw []*ui.Switch, err error) {
+func (r *uiTx) Switches(pagination ui.Pagination) (sw []*ui.Switch, err error) {
 	qry := "SELECT `id`, `dpid`, `n_ports`, `first_port`, `first_printed_port`, `description` "
 	qry += "FROM `switch` "
 	qry += "ORDER BY `id` DESC "
 	qry += "LIMIT ?, ?"
 
-	rows, err := r.handle.Query(qry, offset, limit)
+	rows, err := r.handle.Query(qry, pagination.Offset, pagination.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -1692,13 +1696,13 @@ func (r *uiTx) Auth(name, password string) (*ui.User, error) {
 	return v, nil
 }
 
-func (r *uiTx) Users(offset uint32, limit uint8) (user []*ui.User, err error) {
+func (r *uiTx) Users(pagination ui.Pagination) (user []*ui.User, err error) {
 	qry := "SELECT `id`, `name`, `enabled`, `admin`, `timestamp` "
 	qry += "FROM `user` "
 	qry += "ORDER BY `id` DESC "
 	qry += "LIMIT ?, ?"
 
-	rows, err := r.handle.Query(qry, offset, limit)
+	rows, err := r.handle.Query(qry, pagination.Offset, pagination.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -1840,8 +1844,8 @@ func (r *uiTx) DeactivateUser(id uint64) (user *ui.User, err error) {
 	return user, nil
 }
 
-func (r *uiTx) VIPs(offset uint32, limit uint8) (vip []*ui.VIP, err error) {
-	reg, err := r.getVIPs(offset, limit)
+func (r *uiTx) VIPs(pagination ui.Pagination) (vip []*ui.VIP, err error) {
+	reg, err := r.getVIPs(pagination)
 	if err != nil {
 		return nil, err
 	}
@@ -1884,7 +1888,7 @@ type registeredVIP struct {
 	description string
 }
 
-func (r *uiTx) getVIPs(offset uint32, limit uint8) (vip []registeredVIP, err error) {
+func (r *uiTx) getVIPs(pagination ui.Pagination) (vip []registeredVIP, err error) {
 	qry := "SELECT A.`id`, CONCAT(INET_NTOA(B.`address`), '/', C.`mask`), A.`active_host_id`, A.`standby_host_id`, A.`description` "
 	qry += "FROM `vip` A "
 	qry += "JOIN `ip` B ON A.`ip_id` = B.`id` "
@@ -1892,7 +1896,7 @@ func (r *uiTx) getVIPs(offset uint32, limit uint8) (vip []registeredVIP, err err
 	qry += "ORDER BY A.`id` DESC "
 	qry += "LIMIT ?, ?"
 
-	rows, err := r.handle.Query(qry, offset, limit)
+	rows, err := r.handle.Query(qry, pagination.Offset, pagination.Limit)
 	if err != nil {
 		return nil, err
 	}

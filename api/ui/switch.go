@@ -40,7 +40,7 @@ import (
 )
 
 type SwitchTransaction interface {
-	Switches(offset uint32, limit uint8) ([]*Switch, error)
+	Switches(Pagination) ([]*Switch, error)
 	AddSwitch(dpid uint64, nPorts, firstPort, firstPrintedPort uint16, desc string) (sw *Switch, duplicated bool, err error)
 	// RemoveSwitch removes a switch specified by id and then returns information of the switch before removing. It returns nil if the switch does not exist.
 	RemoveSwitch(id uint64) (*Switch, error)
@@ -102,7 +102,7 @@ func (r *API) listSwitch(w rest.ResponseWriter, req *rest.Request) {
 
 	var sw []*Switch
 	f := func(tx Transaction) (err error) {
-		sw, err = tx.Switches(p.Offset, p.Limit)
+		sw, err = tx.Switches(p.Pagination)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
@@ -115,16 +115,14 @@ func (r *API) listSwitch(w rest.ResponseWriter, req *rest.Request) {
 }
 
 type listSwitchParam struct {
-	SessionID string
-	Offset    uint32
-	Limit     uint8
+	SessionID  string
+	Pagination Pagination
 }
 
 func (r *listSwitchParam) UnmarshalJSON(data []byte) error {
 	v := struct {
-		SessionID string `json:"session_id"`
-		Offset    uint32 `json:"offset"`
-		Limit     uint8  `json:"limit"`
+		SessionID  string     `json:"session_id"`
+		Pagination Pagination `json:"pagination"`
 	}{}
 	if err := json.Unmarshal(data, &v); err != nil {
 		return err
@@ -138,8 +136,8 @@ func (r *listSwitchParam) validate() error {
 	if len(r.SessionID) != 64 {
 		return errors.New("invalid session id")
 	}
-	if r.Limit == 0 {
-		return errors.New("invalid limit")
+	if r.Pagination.Limit == 0 {
+		return errors.New("invalid pagination limit")
 	}
 
 	return nil

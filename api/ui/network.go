@@ -38,7 +38,8 @@ import (
 )
 
 type NetworkTransaction interface {
-	Networks(offset uint32, limit uint8) ([]*Network, error)
+	// Networks returns a list of registered networks. Pagination limit can be 0 that means no pagination.
+	Networks(Pagination) ([]*Network, error)
 	AddNetwork(addr net.IP, mask net.IPMask) (network *Network, duplicated bool, err error)
 	// RemoveNetwork removes a network specified by id and then returns information of the network before removing. It returns nil if the network does not exist.
 	RemoveNetwork(id uint64) (*Network, error)
@@ -67,7 +68,7 @@ func (r *API) listNetwork(w rest.ResponseWriter, req *rest.Request) {
 
 	var network []*Network
 	f := func(tx Transaction) (err error) {
-		network, err = tx.Networks(p.Offset, p.Limit)
+		network, err = tx.Networks(p.Pagination)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
@@ -80,16 +81,14 @@ func (r *API) listNetwork(w rest.ResponseWriter, req *rest.Request) {
 }
 
 type listNetworkParam struct {
-	SessionID string
-	Offset    uint32
-	Limit     uint8
+	SessionID  string
+	Pagination Pagination
 }
 
 func (r *listNetworkParam) UnmarshalJSON(data []byte) error {
 	v := struct {
-		SessionID string `json:"session_id"`
-		Offset    uint32 `json:"offset"`
-		Limit     uint8  `json:"limit"`
+		SessionID  string     `json:"session_id"`
+		Pagination Pagination `json:"pagination"`
 	}{}
 	if err := json.Unmarshal(data, &v); err != nil {
 		return err
@@ -102,9 +101,6 @@ func (r *listNetworkParam) UnmarshalJSON(data []byte) error {
 func (r *listNetworkParam) validate() error {
 	if len(r.SessionID) != 64 {
 		return errors.New("invalid session id")
-	}
-	if r.Limit == 0 {
-		return errors.New("invalid limit")
 	}
 
 	return nil
