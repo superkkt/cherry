@@ -104,8 +104,8 @@ func (r *listVIPParam) validate() error {
 	if len(r.SessionID) != 64 {
 		return errors.New("invalid session id")
 	}
-	if err := r.Pagination.Validate(); err != nil {
-		return err
+	if r.Pagination.Limit == 0 {
+		return errors.New("invalid pagination limit")
 	}
 
 	return nil

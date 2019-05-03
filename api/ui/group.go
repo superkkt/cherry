@@ -38,8 +38,8 @@ import (
 )
 
 type GroupTransaction interface {
-	// Groups returns a list of registered groups. Pagination can be nil that means no pagination.
-	Groups(*Pagination) ([]*Group, error)
+	// Groups returns a list of registered groups. Pagination limit can be 0 that means no pagination.
+	Groups(Pagination) ([]*Group, error)
 	AddGroup(name string) (group *Group, duplicated bool, err error)
 	// UpdateGroup updates name of a group specified by id and then returns information of the group. It returns nil if the group does not exist.
 	UpdateGroup(id uint64, name string) (group *Group, duplicated bool, err error)
@@ -96,13 +96,13 @@ func (r *API) listGroup(w rest.ResponseWriter, req *rest.Request) {
 
 type listGroupParam struct {
 	SessionID  string
-	Pagination *Pagination
+	Pagination Pagination
 }
 
 func (r *listGroupParam) UnmarshalJSON(data []byte) error {
 	v := struct {
-		SessionID  string      `json:"session_id"`
-		Pagination *Pagination `json:"pagination"`
+		SessionID  string     `json:"session_id"`
+		Pagination Pagination `json:"pagination"`
 	}{}
 	if err := json.Unmarshal(data, &v); err != nil {
 		return err
@@ -115,12 +115,6 @@ func (r *listGroupParam) UnmarshalJSON(data []byte) error {
 func (r *listGroupParam) validate() error {
 	if len(r.SessionID) != 64 {
 		return errors.New("invalid session id")
-	}
-	// If pagination is nil, fetch groups without using pagination.
-	if r.Pagination != nil {
-		if err := r.Pagination.Validate(); err != nil {
-			return err
-		}
 	}
 
 	return nil

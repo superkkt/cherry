@@ -202,14 +202,6 @@ type Pagination struct {
 	Limit  uint8  `json:"limit"`
 }
 
-func (r *Pagination) Validate() error {
-	if r.Limit == 0 {
-		return errors.New("invalid pagination limit")
-	}
-
-	return nil
-}
-
 func (r *API) Serve() error {
 	if r.DB == nil {
 		return errors.New("nil DB")
