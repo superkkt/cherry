@@ -38,9 +38,10 @@ import (
 )
 
 type NetworkTransaction interface {
-	Networks(offset uint32, limit uint8) ([]Network, error)
-	AddNetwork(addr net.IP, mask net.IPMask) (id uint64, duplicated bool, err error)
-	RemoveNetwork(id uint64) error
+	Networks(offset uint32, limit uint8) ([]*Network, error)
+	AddNetwork(addr net.IP, mask net.IPMask) (network *Network, duplicated bool, err error)
+	// RemoveNetwork removes a network specified by id and then returns information of the network before removing. It returns nil if the network does not exist.
+	RemoveNetwork(id uint64) (*Network, error)
 }
 
 type Network struct {
@@ -64,7 +65,7 @@ func (r *API) listNetwork(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	var network []Network
+	var network []*Network
 	f := func(tx Transaction) (err error) {
 		network, err = tx.Networks(p.Offset, p.Limit)
 		return err
@@ -124,10 +125,10 @@ func (r *API) addNetwork(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	var id uint64
+	var network *Network
 	var duplicated bool
 	f := func(tx Transaction) (err error) {
-		id, duplicated, err = tx.AddNetwork(p.Address, p.Mask)
+		network, duplicated, err = tx.AddNetwork(p.Address, p.Mask)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
@@ -140,9 +141,9 @@ func (r *API) addNetwork(w rest.ResponseWriter, req *rest.Request) {
 		w.WriteJson(&api.Response{Status: api.StatusDuplicated, Message: fmt.Sprintf("duplicated network: address=%v, mask=%v", p.Address, p.Mask)})
 		return
 	}
-	logger.Debugf("added network info: %v", spew.Sdump(p))
+	logger.Debugf("added network info: %v", spew.Sdump(network))
 
-	w.WriteJson(&api.Response{Status: api.StatusOkay, Data: id})
+	w.WriteJson(&api.Response{Status: api.StatusOkay, Data: network})
 }
 
 type addNetworkParam struct {
@@ -194,14 +195,22 @@ func (r *API) removeNetwork(w rest.ResponseWriter, req *rest.Request) {
 		return
 	}
 
+	var network *Network
 	f := func(tx Transaction) (err error) {
-		return tx.RemoveNetwork(p.ID)
+		network, err = tx.RemoveNetwork(p.ID)
+		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
 		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to remove a network: %v", err.Error())})
 		return
 	}
-	logger.Debugf("removed a network: %v", spew.Sdump(p))
+
+	if network == nil {
+		logger.Infof("not found network to remove: %v", p.ID)
+		w.WriteJson(&api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found network to remove: %v", p.ID)})
+		return
+	}
+	logger.Debugf("removed a network: %v", spew.Sdump(network))
 
 	logger.Debug("removing all flows from the entire switches")
 	if err := r.Controller.RemoveFlows(); err != nil {
