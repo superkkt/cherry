@@ -48,18 +48,16 @@ type IP struct {
 	Host    string `json:"host"`
 }
 
-func (r *API) listIP(w rest.ResponseWriter, req *rest.Request) {
+func (r *API) listIP(w api.ResponseWriter, req *rest.Request) {
 	p := new(listIPParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
-		logger.Warningf("failed to decode params: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInvalidParameter, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode param: %v", err.Error())})
 		return
 	}
 	logger.Debugf("listIP request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
 	if _, ok := r.session.Get(p.SessionID); ok == false {
-		logger.Warningf("unknown session id: %v", p.SessionID)
-		w.WriteJson(&api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
 
@@ -69,12 +67,12 @@ func (r *API) listIP(w rest.ResponseWriter, req *rest.Request) {
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to query the network ip list: %v", err.Error())})
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to query the network ip list: %v", err.Error())})
 		return
 	}
 	logger.Debugf("queried network ip list: %v", spew.Sdump(ip))
 
-	w.WriteJson(&api.Response{Status: api.StatusOkay, Data: ip})
+	w.Write(api.Response{Status: api.StatusOkay, Data: ip})
 }
 
 type listIPParam struct {

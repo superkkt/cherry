@@ -53,18 +53,16 @@ type VIP struct {
 	Description string `json:"description"`
 }
 
-func (r *API) listVIP(w rest.ResponseWriter, req *rest.Request) {
+func (r *API) listVIP(w api.ResponseWriter, req *rest.Request) {
 	p := new(listVIPParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
-		logger.Warningf("failed to decode params: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInvalidParameter, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode param: %v", err.Error())})
 		return
 	}
 	logger.Debugf("listVIP request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
 	if _, ok := r.session.Get(p.SessionID); ok == false {
-		logger.Warningf("unknown session id: %v", p.SessionID)
-		w.WriteJson(&api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
 
@@ -74,12 +72,12 @@ func (r *API) listVIP(w rest.ResponseWriter, req *rest.Request) {
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to query the VIP list: %v", err.Error())})
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to query the VIP list: %v", err.Error())})
 		return
 	}
 	logger.Debugf("queried VIP list: %v", spew.Sdump(vip))
 
-	w.WriteJson(&api.Response{Status: api.StatusOkay, Data: vip})
+	w.Write(api.Response{Status: api.StatusOkay, Data: vip})
 }
 
 type listVIPParam struct {
@@ -111,18 +109,16 @@ func (r *listVIPParam) validate() error {
 	return nil
 }
 
-func (r *API) addVIP(w rest.ResponseWriter, req *rest.Request) {
+func (r *API) addVIP(w api.ResponseWriter, req *rest.Request) {
 	p := new(addVIPParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
-		logger.Warningf("failed to decode params: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInvalidParameter, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode param: %v", err.Error())})
 		return
 	}
 	logger.Debugf("addVIP request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
 	if _, ok := r.session.Get(p.SessionID); ok == false {
-		logger.Warningf("unknown session id: %v", p.SessionID)
-		w.WriteJson(&api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
 
@@ -133,13 +129,12 @@ func (r *API) addVIP(w rest.ResponseWriter, req *rest.Request) {
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to add a new VIP: %v", err.Error())})
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to add a new VIP: %v", err.Error())})
 		return
 	}
 
 	if duplicated {
-		logger.Infof("duplicated VIP: ip_id=%v", p.IPID)
-		w.WriteJson(&api.Response{Status: api.StatusDuplicated, Message: fmt.Sprintf("duplicated VIP: ip_id=%v", p.IPID)})
+		w.Write(api.Response{Status: api.StatusDuplicated, Message: fmt.Sprintf("duplicated VIP: ip_id=%v", p.IPID)})
 		return
 	}
 	logger.Debugf("added a new VIP: %v", spew.Sdump(vip))
@@ -149,7 +144,7 @@ func (r *API) addVIP(w rest.ResponseWriter, req *rest.Request) {
 		logger.Errorf("failed to send ARP announcement: %v", err)
 	}
 
-	w.WriteJson(&api.Response{Status: api.StatusOkay, Data: vip})
+	w.Write(api.Response{Status: api.StatusOkay, Data: vip})
 }
 
 type addVIPParam struct {
@@ -196,18 +191,16 @@ func (r *addVIPParam) validate() error {
 	return nil
 }
 
-func (r *API) removeVIP(w rest.ResponseWriter, req *rest.Request) {
+func (r *API) removeVIP(w api.ResponseWriter, req *rest.Request) {
 	p := new(removeVIPParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
-		logger.Warningf("failed to decode params: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInvalidParameter, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode param: %v", err.Error())})
 		return
 	}
 	logger.Debugf("removeVIP request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
 	if _, ok := r.session.Get(p.SessionID); ok == false {
-		logger.Warningf("unknown session id: %v", p.SessionID)
-		w.WriteJson(&api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
 
@@ -217,13 +210,12 @@ func (r *API) removeVIP(w rest.ResponseWriter, req *rest.Request) {
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to remove a VIP: %v", err.Error())})
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to remove a VIP: %v", err.Error())})
 		return
 	}
 
 	if vip == nil {
-		logger.Infof("not found VIP to remove: %v", p.ID)
-		w.WriteJson(&api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found VIP to remove: %v", p.ID)})
+		w.Write(api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found VIP to remove: %v", p.ID)})
 		return
 	}
 	logger.Debugf("removed the VIP: %v", spew.Sdump(vip))
@@ -233,7 +225,7 @@ func (r *API) removeVIP(w rest.ResponseWriter, req *rest.Request) {
 		logger.Errorf("failed to send ARP announcement: %v", err)
 	}
 
-	w.WriteJson(&api.Response{Status: api.StatusOkay})
+	w.Write(api.Response{Status: api.StatusOkay})
 }
 
 type removeVIPParam struct {
@@ -265,18 +257,16 @@ func (r *removeVIPParam) validate() error {
 	return nil
 }
 
-func (r *API) toggleVIP(w rest.ResponseWriter, req *rest.Request) {
+func (r *API) toggleVIP(w api.ResponseWriter, req *rest.Request) {
 	p := new(toggleVIPParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
-		logger.Warningf("failed to decode params: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInvalidParameter, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode param: %v", err.Error())})
 		return
 	}
 	logger.Debugf("toggleVIP request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
 	if _, ok := r.session.Get(p.SessionID); ok == false {
-		logger.Warningf("unknown session id: %v", p.SessionID)
-		w.WriteJson(&api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
 
@@ -286,13 +276,12 @@ func (r *API) toggleVIP(w rest.ResponseWriter, req *rest.Request) {
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to toggle a VIP: %v", err.Error())})
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to toggle a VIP: %v", err.Error())})
 		return
 	}
 
 	if vip == nil {
-		logger.Infof("not found VIP to toggle: %v", p.ID)
-		w.WriteJson(&api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found VIP to toggle: %v", p.ID)})
+		w.Write(api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found VIP to toggle: %v", p.ID)})
 		return
 	}
 	logger.Debugf("toggled the VIP: %v", spew.Sdump(vip))
@@ -302,7 +291,7 @@ func (r *API) toggleVIP(w rest.ResponseWriter, req *rest.Request) {
 		logger.Errorf("failed to send ARP announcement: %v", err)
 	}
 
-	w.WriteJson(&api.Response{Status: api.StatusOkay})
+	w.Write(api.Response{Status: api.StatusOkay})
 }
 
 type toggleVIPParam struct {

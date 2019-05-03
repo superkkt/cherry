@@ -51,18 +51,16 @@ type Network struct {
 	Mask    uint8  `json:"mask"`    // FIXME: Use a native type.
 }
 
-func (r *API) listNetwork(w rest.ResponseWriter, req *rest.Request) {
+func (r *API) listNetwork(w api.ResponseWriter, req *rest.Request) {
 	p := new(listNetworkParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
-		logger.Warningf("failed to decode params: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInvalidParameter, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode param: %v", err.Error())})
 		return
 	}
 	logger.Debugf("listNetwork request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
 	if _, ok := r.session.Get(p.SessionID); ok == false {
-		logger.Warningf("unknown session id: %v", p.SessionID)
-		w.WriteJson(&api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
 
@@ -72,12 +70,12 @@ func (r *API) listNetwork(w rest.ResponseWriter, req *rest.Request) {
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to query the network list: %v", err.Error())})
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to query the network list: %v", err.Error())})
 		return
 	}
 	logger.Debugf("queried network list: %v", spew.Sdump(network))
 
-	w.WriteJson(&api.Response{Status: api.StatusOkay, Data: network})
+	w.Write(api.Response{Status: api.StatusOkay, Data: network})
 }
 
 type listNetworkParam struct {
@@ -106,18 +104,16 @@ func (r *listNetworkParam) validate() error {
 	return nil
 }
 
-func (r *API) addNetwork(w rest.ResponseWriter, req *rest.Request) {
+func (r *API) addNetwork(w api.ResponseWriter, req *rest.Request) {
 	p := new(addNetworkParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
-		logger.Warningf("failed to decode params: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInvalidParameter, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode param: %v", err.Error())})
 		return
 	}
 	logger.Debugf("addNetwork request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
 	if _, ok := r.session.Get(p.SessionID); ok == false {
-		logger.Warningf("unknown session id: %v", p.SessionID)
-		w.WriteJson(&api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
 
@@ -128,18 +124,17 @@ func (r *API) addNetwork(w rest.ResponseWriter, req *rest.Request) {
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to add a new network: %v", err.Error())})
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to add a new network: %v", err.Error())})
 		return
 	}
 
 	if duplicated {
-		logger.Infof("duplicated network: address=%v, mask=%v", p.Address, p.Mask)
-		w.WriteJson(&api.Response{Status: api.StatusDuplicated, Message: fmt.Sprintf("duplicated network: address=%v, mask=%v", p.Address, p.Mask)})
+		w.Write(api.Response{Status: api.StatusDuplicated, Message: fmt.Sprintf("duplicated network: address=%v, mask=%v", p.Address, p.Mask)})
 		return
 	}
 	logger.Debugf("added network info: %v", spew.Sdump(network))
 
-	w.WriteJson(&api.Response{Status: api.StatusOkay, Data: network})
+	w.Write(api.Response{Status: api.StatusOkay, Data: network})
 }
 
 type addNetworkParam struct {
@@ -176,18 +171,16 @@ func (r *addNetworkParam) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (r *API) removeNetwork(w rest.ResponseWriter, req *rest.Request) {
+func (r *API) removeNetwork(w api.ResponseWriter, req *rest.Request) {
 	p := new(removeNetworkParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
-		logger.Warningf("failed to decode params: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInvalidParameter, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode param: %v", err.Error())})
 		return
 	}
 	logger.Debugf("removeNetwork request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
 	if _, ok := r.session.Get(p.SessionID); ok == false {
-		logger.Warningf("unknown session id: %v", p.SessionID)
-		w.WriteJson(&api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
 
@@ -197,13 +190,12 @@ func (r *API) removeNetwork(w rest.ResponseWriter, req *rest.Request) {
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to remove a network: %v", err.Error())})
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to remove a network: %v", err.Error())})
 		return
 	}
 
 	if network == nil {
-		logger.Infof("not found network to remove: %v", p.ID)
-		w.WriteJson(&api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found network to remove: %v", p.ID)})
+		w.Write(api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found network to remove: %v", p.ID)})
 		return
 	}
 	logger.Debugf("removed a network: %v", spew.Sdump(network))
@@ -216,7 +208,7 @@ func (r *API) removeNetwork(w rest.ResponseWriter, req *rest.Request) {
 		logger.Debug("removed all flows from the entire switches")
 	}
 
-	w.WriteJson(&api.Response{Status: api.StatusOkay})
+	w.Write(api.Response{Status: api.StatusOkay})
 }
 
 type removeNetworkParam struct {
