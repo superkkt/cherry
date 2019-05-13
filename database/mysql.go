@@ -23,6 +23,7 @@ package database
 
 import (
 	"database/sql"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -991,21 +992,23 @@ type uiTx struct {
 	handle *sql.Tx
 }
 
-func (r *uiTx) Groups(offset uint32, limit uint8) (group []ui.Group, err error) {
+func (r *uiTx) Groups(pagination ui.Pagination) (group []*ui.Group, err error) {
 	qry := "SELECT `id`, `name`, `timestamp` "
 	qry += "FROM `group` "
 	qry += "ORDER BY `id` DESC "
-	qry += "LIMIT ?, ?"
+	if pagination.Limit > 0 {
+		qry += fmt.Sprintf("LIMIT %v, %v", pagination.Offset, pagination.Limit)
+	}
 
-	rows, err := r.handle.Query(qry, offset, limit)
+	rows, err := r.handle.Query(qry)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	group = []ui.Group{}
+	group = []*ui.Group{}
 	for rows.Next() {
-		v := ui.Group{}
+		v := new(ui.Group)
 		if err := rows.Scan(&v.ID, &v.Name, &v.Timestamp); err != nil {
 			return nil, err
 		}
@@ -1018,43 +1021,232 @@ func (r *uiTx) Groups(offset uint32, limit uint8) (group []ui.Group, err error) 
 	return group, nil
 }
 
-func (r *uiTx) AddGroup(name string) (groupID uint64, duplicated bool, err error) {
+func (r *uiTx) AddGroup(name string) (group *ui.Group, duplicated bool, err error) {
 	qry := "INSERT INTO `group` (`name`, `timestamp`) VALUES (?, NOW())"
 	result, err := r.handle.Exec(qry, name)
 	if err != nil {
 		if isDuplicated(err) {
-			return 0, true, nil
+			return nil, true, nil
 		}
-		return 0, false, err
+		return nil, false, err
 	}
 
 	id, err := result.LastInsertId()
 	if err != nil {
-		return 0, false, err
+		return nil, false, err
+	}
+	group, err = getGroup(r.handle, uint64(id))
+	if err != nil {
+		return nil, false, err
 	}
 
-	return uint64(id), false, nil
+	return group, false, nil
 }
 
-func (r *uiTx) UpdateGroup(id uint64, name string) (duplicated bool, err error) {
+func getGroup(tx *sql.Tx, id uint64) (*ui.Group, error) {
+	qry := "SELECT `id`, `name`, `timestamp` "
+	qry += "FROM `group` "
+	qry += "WHERE `id` = ?"
+
+	v := new(ui.Group)
+	if err := tx.QueryRow(qry, id).Scan(&v.ID, &v.Name, &v.Timestamp); err != nil {
+		return nil, err
+	}
+
+	return v, nil
+}
+
+func (r *uiTx) UpdateGroup(id uint64, name string) (group *ui.Group, duplicated bool, err error) {
 	qry := "UPDATE `group` SET `name` = ? WHERE `id` = ?"
-	if _, err := r.handle.Exec(qry, name, id); err != nil {
+	result, err := r.handle.Exec(qry, name, id)
+	if err != nil {
 		if isDuplicated(err) {
-			return true, nil
+			return nil, true, nil
 		}
-		return false, err
+		return nil, false, err
+	}
+	nRows, err := result.RowsAffected()
+	if err != nil {
+		return nil, false, err
+	}
+	// Not found group to update.
+	if nRows == 0 {
+		return nil, false, nil
 	}
 
-	return false, nil
+	group, err = getGroup(r.handle, id)
+	if err != nil {
+		return nil, false, err
+	}
+
+	return group, false, nil
 }
 
-func (r *uiTx) RemoveGroup(id uint64) error {
-	_, err := r.handle.Exec("DELETE FROM `group` WHERE `id` = ?", id)
-	if err != nil && isForeignkeyErr(err) {
-		return errors.New("failed to remove a group: it has child hosts that are being used by group")
+func (r *uiTx) RemoveGroup(id uint64) (group *ui.Group, err error) {
+	group, err = getGroup(r.handle, id)
+	if err != nil {
+		// Not found group to remove.
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
 	}
 
-	return err
+	if _, err := r.handle.Exec("DELETE FROM `group` WHERE `id` = ?", id); err != nil {
+		if isForeignkeyErr(err) {
+			return nil, errors.New("failed to remove a group: it has child hosts that are being used by group")
+		}
+		return nil, err
+	}
+
+	return group, nil
+}
+
+func (r *uiTx) Hosts(search *ui.Search, sort ui.Sort, pagination ui.Pagination) (host []*ui.Host, err error) {
+	qry, args := buildHostsQuery(search, sort, pagination)
+	rows, err := r.handle.Query(qry, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	host = []*ui.Host{}
+	for rows.Next() {
+		v := new(ui.Host)
+		var timestamp time.Time
+		if err := rows.Scan(&v.ID, &v.IP, &v.Port, &v.Group, &v.MAC, &v.Description, &v.Enabled, &timestamp, &v.Timestamp); err != nil {
+			return nil, err
+		}
+
+		// Parse the MAC address.
+		mac, err := decodeMAC(v.MAC)
+		if err != nil {
+			return nil, err
+		}
+		v.MAC = mac.String()
+		// Check its freshness.
+		if time.Now().Sub(timestamp) > discovery.ProbeInterval*2 {
+			v.Stale = true
+		}
+
+		host = append(host, v)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return host, nil
+}
+
+func buildHostsQuery(search *ui.Search, sort ui.Sort, pagination ui.Pagination) (qry string, args []interface{}) {
+	qry = "SELECT `host`.`id`, "                                                                                                              // ID
+	qry += "      CONCAT(INET_NTOA(`ip`.`address`), '/', `network`.`mask`), "                                                                 // IP
+	qry += "      IFNULL(CONCAT(`switch`.`description`, '/', `port`.`number` - `switch`.`first_port` + `switch`.`first_printed_port`), ''), " // Port
+	qry += "      IFNULL(`group`.`name`, ''), "                                                                                               // Group
+	qry += "      HEX(`host`.`mac`), "                                                                                                        // MAC
+	qry += "      `host`.`description`, "                                                                                                     // Description
+	qry += "      `host`.`enabled`, "                                                                                                         // Enabled
+	qry += "      `host`.`last_updated_timestamp`, "                                                                                          // Stale
+	qry += "      `host`.`timestamp` "                                                                                                        // Timestamp
+	qry += "FROM `host` "
+	qry += "JOIN `ip` ON `host`.`ip_id` = `ip`.`id` "
+	qry += "LEFT JOIN `port` ON `host`.`port_id` = `port`.`id` "
+	qry += "LEFT JOIN `switch` ON `port`.`switch_id` = `switch`.`id` "
+	qry += "JOIN `network` ON `ip`.`network_id` = `network`.`id` "
+	qry += "LEFT JOIN `group` ON `host`.`group_id` = `group`.`id` "
+
+	if search != nil {
+		switch search.Key {
+		// Query by description supports full text search.
+		case ui.ColumnDescription:
+			qry += fmt.Sprintf("WHERE MATCH (`host`.`description`) AGAINST (CONCAT(?, '*') IN BOOLEAN MODE) ")
+			args = append(args, search.Value)
+		case ui.ColumnPort:
+			qry += fmt.Sprintf("WHERE `switch`.`description` LIKE CONCAT(?, '%%') ")
+			args = append(args, search.Value)
+		case ui.ColumnGroup:
+			qry += fmt.Sprintf("WHERE `group`.`name` LIKE CONCAT(?, '%%') ")
+			args = append(args, search.Value)
+		case ui.ColumnIP:
+			start, end := rangeIP(search.Value)
+			qry += fmt.Sprintf("WHERE `ip`.`address` BETWEEN %v AND %v ", start, end)
+		case ui.ColumnMAC:
+			start, end := rangeMAC(search.Value)
+			qry += fmt.Sprintf("WHERE `host`.`mac` BETWEEN UNHEX('%v') AND UNHEX('%v') ", start, end)
+		default:
+			panic(fmt.Sprintf("invalid search key: %v", search.Key))
+		}
+	}
+
+	v := []string{}
+	switch sort.Key {
+	case ui.ColumnTime:
+		// Do nothing. It's the default order.
+	case ui.ColumnIP:
+		v = append(v, "`ip`.`address`")
+	case ui.ColumnMAC:
+		v = append(v, "`host`.`mac`")
+	case ui.ColumnGroup:
+		v = append(v, "`group`.`name`")
+	case ui.ColumnPort:
+		v = append(v, "`port`.`switch_id`")
+		v = append(v, "`port`.`number`")
+	default:
+		panic(fmt.Sprintf("invalid sort key: %v", sort.Key))
+	}
+	// If duplicated value is existed, sort by id.
+	v = append(v, "`host`.`id`")
+
+	switch sort.Order {
+	case ui.OrderAscending:
+		qry += fmt.Sprintf("ORDER BY %v ASC ", strings.Join(v, " ASC, "))
+	case ui.OrderDescending:
+		qry += fmt.Sprintf("ORDER BY %v DESC ", strings.Join(v, " DESC, "))
+	default:
+		panic(fmt.Sprintf("invalid sort order: %v", sort.Order))
+	}
+
+	if pagination.Limit > 0 {
+		qry += fmt.Sprintf("LIMIT %v, %v", pagination.Offset, pagination.Limit)
+	}
+
+	return qry, args
+}
+
+// IP format is '1.*.*.*', '1.2.*.*', '1.2.3.*', '1.2.3.4'.
+func rangeIP(ip string) (start, end uint32) {
+	s := net.ParseIP(strings.Replace(ip, "*", "0", -1))
+	if s == nil {
+		panic("this ip should be parsed")
+	}
+	e := net.ParseIP(strings.Replace(ip, "*", "255", -1))
+	if e == nil {
+		panic("this ip should be parsed")
+	}
+
+	return convertIPToInt(s), convertIPToInt(e)
+}
+
+func convertIPToInt(ip net.IP) uint32 {
+	v := ip.To4()
+	if v == nil {
+		panic("unexpected IP address format")
+	}
+	return binary.BigEndian.Uint32(v)
+}
+
+// MAC format is 'A1:*:*:*:*:*', 'A1:A2:*:*:*:*', 'A1:A2:A3:*:*:*', 'A1:A2:A3:A4:*:*', 'A1:A2:A3:A4:A5:*', 'A1:A2:A3:A4:A5:A6'.
+func rangeMAC(mac string) (start, end string) {
+	s, err := net.ParseMAC(strings.Replace(mac, "*", "00", -1))
+	if err != nil {
+		panic("this mac should be parsed")
+	}
+	e, err := net.ParseMAC(strings.Replace(mac, "*", "FF", -1))
+	if err != nil {
+		panic("this mac should be parsed")
+	}
+
+	return encodeMAC(s), encodeMAC(e)
 }
 
 func (r *uiTx) Host(id uint64) (host *ui.Host, err error) {
@@ -1270,7 +1462,7 @@ func removeHost(tx *sql.Tx, id uint64) error {
 	return err
 }
 
-func (r *uiTx) IPAddrs(networkID uint64) (address []ui.IP, err error) {
+func (r *uiTx) IPAddrs(networkID uint64) (address []*ui.IP, err error) {
 	qry := "SELECT A.`id`, INET_NTOA(A.`address`), A.`used`, C.`description`, IFNULL(CONCAT(E.`description`, '/', D.`number` - E.`first_port` + E.`first_printed_port`), '') "
 	qry += "FROM `ip` A "
 	qry += "JOIN `network` B ON A.`network_id` = B.`id` "
@@ -1285,9 +1477,9 @@ func (r *uiTx) IPAddrs(networkID uint64) (address []ui.IP, err error) {
 	}
 	defer rows.Close()
 
-	address = []ui.IP{}
+	address = []*ui.IP{}
 	for rows.Next() {
-		v := ui.IP{}
+		v := new(ui.IP)
 		var host, port sql.NullString
 		if err := rows.Scan(&v.ID, &v.Address, &v.Used, &host, &port); err != nil {
 			return nil, err
@@ -1303,21 +1495,23 @@ func (r *uiTx) IPAddrs(networkID uint64) (address []ui.IP, err error) {
 	return address, nil
 }
 
-func (r *uiTx) Networks(offset uint32, limit uint8) (network []ui.Network, err error) {
+func (r *uiTx) Networks(pagination ui.Pagination) (network []*ui.Network, err error) {
 	qry := "SELECT `id`, INET_NTOA(`address`), `mask` "
 	qry += "FROM `network` "
 	qry += "ORDER BY `address` ASC, `mask` ASC "
-	qry += "LIMIT ?, ?"
+	if pagination.Limit > 0 {
+		qry += fmt.Sprintf("LIMIT %v, %v", pagination.Offset, pagination.Limit)
+	}
 
-	rows, err := r.handle.Query(qry, offset, limit)
+	rows, err := r.handle.Query(qry)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	network = []ui.Network{}
+	network = []*ui.Network{}
 	for rows.Next() {
-		v := ui.Network{}
+		v := new(ui.Network)
 		if err := rows.Scan(&v.ID, &v.Address, &v.Mask); err != nil {
 			return nil, err
 		}
@@ -1330,20 +1524,25 @@ func (r *uiTx) Networks(offset uint32, limit uint8) (network []ui.Network, err e
 	return network, nil
 }
 
-func (r *uiTx) AddNetwork(addr net.IP, mask net.IPMask) (netID uint64, duplicated bool, err error) {
-	netID, err = addNetwork(r.handle, addr, mask)
+func (r *uiTx) AddNetwork(addr net.IP, mask net.IPMask) (network *ui.Network, duplicated bool, err error) {
+	id, err := addNetwork(r.handle, addr, mask)
 	if err != nil {
 		// No error.
 		if isDuplicated(err) {
-			return 0, true, nil
+			return nil, true, nil
 		}
-		return 0, false, err
+		return nil, false, err
 	}
-	if err := addIPAddrs(r.handle, netID, addr, mask); err != nil {
-		return 0, false, err
+	if err := addIPAddrs(r.handle, id, addr, mask); err != nil {
+		return nil, false, err
 	}
 
-	return netID, false, nil
+	network, err = getNetwork(r.handle, id)
+	if err != nil {
+		return nil, false, err
+	}
+
+	return network, false, nil
 }
 
 func addNetwork(tx *sql.Tx, addr net.IP, mask net.IPMask) (netID uint64, err error) {
@@ -1379,30 +1578,54 @@ func addIPAddrs(tx *sql.Tx, netID uint64, addr net.IP, mask net.IPMask) error {
 	return nil
 }
 
-func (r *uiTx) RemoveNetwork(id uint64) error {
-	_, err := r.handle.Exec("DELETE FROM `network` WHERE `id` = ?", id)
-	if err != nil && isForeignkeyErr(err) {
-		return errors.New("failed to remove a network: it has child IP addresses that are being used by hosts")
+func getNetwork(tx *sql.Tx, id uint64) (*ui.Network, error) {
+	qry := "SELECT `id`, INET_NTOA(`address`), `mask` "
+	qry += "FROM `network` "
+	qry += "WHERE `id` = ?"
+
+	v := new(ui.Network)
+	if err := tx.QueryRow(qry, id).Scan(&v.ID, &v.Address, &v.Mask); err != nil {
+		return nil, err
 	}
 
-	return err
+	return v, nil
 }
 
-func (r *uiTx) Switches(offset uint32, limit uint8) (sw []ui.Switch, err error) {
+func (r *uiTx) RemoveNetwork(id uint64) (network *ui.Network, err error) {
+	network, err = getNetwork(r.handle, id)
+	if err != nil {
+		// Not found network to remove.
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	if _, err := r.handle.Exec("DELETE FROM `network` WHERE `id` = ?", id); err != nil {
+		if isForeignkeyErr(err) {
+			return nil, errors.New("failed to remove a network: it has child IP addresses that are being used by hosts")
+		}
+		return nil, err
+	}
+
+	return network, nil
+}
+
+func (r *uiTx) Switches(pagination ui.Pagination) (sw []*ui.Switch, err error) {
 	qry := "SELECT `id`, `dpid`, `n_ports`, `first_port`, `first_printed_port`, `description` "
 	qry += "FROM `switch` "
 	qry += "ORDER BY `id` DESC "
 	qry += "LIMIT ?, ?"
 
-	rows, err := r.handle.Query(qry, offset, limit)
+	rows, err := r.handle.Query(qry, pagination.Offset, pagination.Limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	sw = []ui.Switch{}
+	sw = []*ui.Switch{}
 	for rows.Next() {
-		v := ui.Switch{}
+		v := new(ui.Switch)
 		if err := rows.Scan(&v.ID, &v.DPID, &v.NumPorts, &v.FirstPort, &v.FirstPrintedPort, &v.Description); err != nil {
 			return nil, err
 		}
@@ -1415,21 +1638,26 @@ func (r *uiTx) Switches(offset uint32, limit uint8) (sw []ui.Switch, err error) 
 	return sw, nil
 }
 
-func (r *uiTx) AddSwitch(dpid uint64, nPorts, firstPort, firstPrintedPort uint16, desc string) (swID uint64, duplicated bool, err error) {
-	swID, err = addSwitch(r.handle, dpid, nPorts, firstPort, firstPrintedPort, desc)
+func (r *uiTx) AddSwitch(dpid uint64, nPorts, firstPort, firstPrintedPort uint16, desc string) (sw *ui.Switch, duplicated bool, err error) {
+	id, err := addSwitch(r.handle, dpid, nPorts, firstPort, firstPrintedPort, desc)
 	if err != nil {
 		// No error.
 		if isDuplicated(err) {
-			return 0, true, nil
+			return nil, true, nil
 		}
 
-		return 0, false, err
+		return nil, false, err
 	}
-	if err := addPorts(r.handle, swID, firstPort, nPorts); err != nil {
-		return 0, false, err
+	if err := addPorts(r.handle, id, firstPort, nPorts); err != nil {
+		return nil, false, err
 	}
 
-	return swID, false, nil
+	sw, err = getSwitch(r.handle, id)
+	if err != nil {
+		return nil, false, err
+	}
+
+	return sw, false, nil
 }
 
 func addSwitch(tx *sql.Tx, dpid uint64, nPorts, firstPort, firstPrintedPort uint16, desc string) (swID uint64, err error) {
@@ -1462,13 +1690,37 @@ func addPorts(tx *sql.Tx, swID uint64, firstPort, n_ports uint16) error {
 	return nil
 }
 
-func (r *uiTx) RemoveSwitch(id uint64) error {
-	_, err := r.handle.Exec("DELETE FROM `switch` WHERE `id` = ?", id)
-	if err != nil && isForeignkeyErr(err) {
-		return errors.New("failed to remove a switch: it has child hosts connected to this switch")
+func getSwitch(tx *sql.Tx, id uint64) (*ui.Switch, error) {
+	qry := "SELECT `id`, `dpid`, `n_ports`, `first_port`, `first_printed_port`, `description` "
+	qry += "FROM `switch` "
+	qry += "WHERE `id` = ?"
+
+	v := new(ui.Switch)
+	if err := tx.QueryRow(qry, id).Scan(&v.ID, &v.DPID, &v.NumPorts, &v.FirstPort, &v.FirstPrintedPort, &v.Description); err != nil {
+		return nil, err
 	}
 
-	return err
+	return v, nil
+}
+
+func (r *uiTx) RemoveSwitch(id uint64) (sw *ui.Switch, err error) {
+	sw, err = getSwitch(r.handle, id)
+	if err != nil {
+		// Not found switch to remove.
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	if _, err := r.handle.Exec("DELETE FROM `switch` WHERE `id` = ?", id); err != nil {
+		if isForeignkeyErr(err) {
+			return nil, errors.New("failed to remove a switch: it has child hosts connected to this switch")
+		}
+		return nil, err
+	}
+
+	return sw, nil
 }
 
 func (r *uiTx) Auth(name, password string) (*ui.User, error) {
@@ -1485,21 +1737,21 @@ func (r *uiTx) Auth(name, password string) (*ui.User, error) {
 	return v, nil
 }
 
-func (r *uiTx) Users(offset uint32, limit uint8) (user []ui.User, err error) {
+func (r *uiTx) Users(pagination ui.Pagination) (user []*ui.User, err error) {
 	qry := "SELECT `id`, `name`, `enabled`, `admin`, `timestamp` "
 	qry += "FROM `user` "
 	qry += "ORDER BY `id` DESC "
 	qry += "LIMIT ?, ?"
 
-	rows, err := r.handle.Query(qry, offset, limit)
+	rows, err := r.handle.Query(qry, pagination.Offset, pagination.Limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	user = []ui.User{}
+	user = []*ui.User{}
 	for rows.Next() {
-		v := ui.User{}
+		v := new(ui.User)
 		if err := rows.Scan(&v.ID, &v.Name, &v.Enabled, &v.Admin, &v.Timestamp); err != nil {
 			return nil, err
 		}
@@ -1512,27 +1764,44 @@ func (r *uiTx) Users(offset uint32, limit uint8) (user []ui.User, err error) {
 	return user, nil
 }
 
-func (r *uiTx) AddUser(name, password string) (userID uint64, duplicated bool, err error) {
+func (r *uiTx) AddUser(name, password string) (user *ui.User, duplicated bool, err error) {
 	qry := "INSERT INTO `user` (`name`, `password`, `enabled`, `admin`, `timestamp`) "
 	qry += "VALUES (?, SHA2(?, 256), TRUE, FALSE, NOW())"
 	result, err := r.handle.Exec(qry, name, name+password)
 	if err != nil {
 		// No error.
 		if isDuplicated(err) {
-			return 0, true, nil
+			return nil, true, nil
 		}
-		return 0, false, err
+		return nil, false, err
 	}
 
 	id, err := result.LastInsertId()
 	if err != nil {
-		return 0, false, err
+		return nil, false, err
+	}
+	user, err = getUser(r.handle, uint64(id))
+	if err != nil {
+		return nil, false, err
 	}
 
-	return uint64(id), false, nil
+	return user, false, nil
 }
 
-func (r *uiTx) UpdateUser(id uint64, password *string, admin *bool) error {
+func getUser(tx *sql.Tx, id uint64) (*ui.User, error) {
+	qry := "SELECT `id`, `name`, `enabled`, `admin`, `timestamp` "
+	qry += "FROM `user` "
+	qry += "WHERE `id` = ?"
+
+	v := new(ui.User)
+	if err := tx.QueryRow(qry, id).Scan(&v.ID, &v.Name, &v.Enabled, &v.Admin, &v.Timestamp); err != nil {
+		return nil, err
+	}
+
+	return v, nil
+}
+
+func (r *uiTx) UpdateUser(id uint64, password *string, admin *bool) (user *ui.User, err error) {
 	set := []string{}
 	args := []interface{}{}
 
@@ -1545,34 +1814,84 @@ func (r *uiTx) UpdateUser(id uint64, password *string, admin *bool) error {
 		args = append(args, *admin)
 	}
 	if len(set) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	qry := fmt.Sprintf("UPDATE `user` SET %v WHERE `id` = %v", strings.Join(set, ","), id)
-	_, err := r.handle.Exec(qry, args...)
+	result, err := r.handle.Exec(qry, args...)
+	if err != nil {
+		return nil, err
+	}
+	nRows, err := result.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	// Not found user to update.
+	if nRows == 0 {
+		return nil, nil
+	}
 
-	return err
-}
-
-func (r *uiTx) ActivateUser(id uint64) error {
-	qry := "UPDATE `user` SET `enabled` = TRUE WHERE `id` = ?"
-	_, err := r.handle.Exec(qry, id)
-	return err
-}
-
-func (r *uiTx) DeactivateUser(id uint64) error {
-	qry := "UPDATE `user` SET `enabled` = FALSE WHERE `id` = ?"
-	_, err := r.handle.Exec(qry, id)
-	return err
-}
-
-func (r *uiTx) VIPs(offset uint32, limit uint8) (vip []ui.VIP, err error) {
-	reg, err := r.getVIPs(offset, limit)
+	user, err = getUser(r.handle, id)
 	if err != nil {
 		return nil, err
 	}
 
-	vip = []ui.VIP{}
+	return user, nil
+}
+
+func (r *uiTx) ActivateUser(id uint64) (user *ui.User, err error) {
+	qry := "UPDATE `user` SET `enabled` = TRUE WHERE `id` = ?"
+	result, err := r.handle.Exec(qry, id)
+	if err != nil {
+		return nil, err
+	}
+	nRows, err := result.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	// Not found user to activate.
+	if nRows == 0 {
+		return nil, nil
+	}
+
+	user, err = getUser(r.handle, id)
+	if err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}
+
+func (r *uiTx) DeactivateUser(id uint64) (user *ui.User, err error) {
+	qry := "UPDATE `user` SET `enabled` = FALSE WHERE `id` = ?"
+	result, err := r.handle.Exec(qry, id)
+	if err != nil {
+		return nil, err
+	}
+	nRows, err := result.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	// Not found user to deactivate.
+	if nRows == 0 {
+		return nil, nil
+	}
+
+	user, err = getUser(r.handle, id)
+	if err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}
+
+func (r *uiTx) VIPs(pagination ui.Pagination) (vip []*ui.VIP, err error) {
+	reg, err := r.getVIPs(pagination)
+	if err != nil {
+		return nil, err
+	}
+
+	vip = []*ui.VIP{}
 	for _, v := range reg {
 		active, err := r.Host(v.active)
 		if err != nil {
@@ -1590,7 +1909,7 @@ func (r *uiTx) VIPs(offset uint32, limit uint8) (vip []ui.VIP, err error) {
 			return nil, fmt.Errorf("unknown standby host: id=%v", v.standby)
 		}
 
-		vip = append(vip, ui.VIP{
+		vip = append(vip, &ui.VIP{
 			ID:          v.id,
 			IP:          v.address,
 			ActiveHost:  *active,
@@ -1610,7 +1929,7 @@ type registeredVIP struct {
 	description string
 }
 
-func (r *uiTx) getVIPs(offset uint32, limit uint8) (vip []registeredVIP, err error) {
+func (r *uiTx) getVIPs(pagination ui.Pagination) (vip []registeredVIP, err error) {
 	qry := "SELECT A.`id`, CONCAT(INET_NTOA(B.`address`), '/', C.`mask`), A.`active_host_id`, A.`standby_host_id`, A.`description` "
 	qry += "FROM `vip` A "
 	qry += "JOIN `ip` B ON A.`ip_id` = B.`id` "
@@ -1618,7 +1937,7 @@ func (r *uiTx) getVIPs(offset uint32, limit uint8) (vip []registeredVIP, err err
 	qry += "ORDER BY A.`id` DESC "
 	qry += "LIMIT ?, ?"
 
-	rows, err := r.handle.Query(qry, offset, limit)
+	rows, err := r.handle.Query(qry, pagination.Offset, pagination.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -1639,71 +1958,26 @@ func (r *uiTx) getVIPs(offset uint32, limit uint8) (vip []registeredVIP, err err
 	return vip, nil
 }
 
-func (r *uiTx) VIP(id uint64) (*ui.VIP, error) {
-	reg, err := r.getVIP(id)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			// No error.
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	active, err := r.Host(reg.active)
-	if err != nil {
-		return nil, err
-	}
-	if active == nil {
-		return nil, fmt.Errorf("unknown active host: id=%v", reg.active)
-	}
-
-	standby, err := r.Host(reg.standby)
-	if err != nil {
-		return nil, err
-	}
-	if standby == nil {
-		return nil, fmt.Errorf("unknown standby host: id=%v", reg.standby)
-	}
-
-	return &ui.VIP{
-		ID:          reg.id,
-		IP:          reg.address,
-		ActiveHost:  *active,
-		StandbyHost: *standby,
-		Description: reg.description,
-	}, nil
-}
-
-func (r *uiTx) getVIP(id uint64) (vip registeredVIP, err error) {
-	qry := "SELECT A.`id`, CONCAT(INET_NTOA(B.`address`), '/', C.`mask`), A.`active_host_id`, A.`standby_host_id`, A.`description` "
-	qry += "FROM `vip` A "
-	qry += "JOIN `ip` B ON A.`ip_id` = B.`id` "
-	qry += "JOIN `network` C ON C.`id` = B.`network_id` "
-	qry += "WHERE A.`id` = ?"
-
-	if err := r.handle.QueryRow(qry, id).Scan(&vip.id, &vip.address, &vip.active, &vip.standby, &vip.description); err != nil {
-		return registeredVIP{}, err
-	}
-
-	return vip, nil
-}
-
-func (r *uiTx) AddVIP(ipID, activeID, standbyID uint64, desc string) (id uint64, duplicated bool, err error) {
+func (r *uiTx) AddVIP(ipID, activeID, standbyID uint64, desc string) (vip *ui.VIP, duplicated bool, err error) {
 	ok, err := isAvailableIP(r.handle, ipID)
 	if err != nil {
-		return 0, false, err
+		return nil, false, err
 	}
 	// No error.
 	if ok == false {
-		return 0, true, nil
+		return nil, true, nil
 	}
 
-	id, err = addNewVIP(r.handle, ipID, activeID, standbyID, desc)
+	id, err := addNewVIP(r.handle, ipID, activeID, standbyID, desc)
 	if err != nil {
-		return 0, false, err
+		return nil, false, err
+	}
+	vip, err = getVIP(r.handle, id)
+	if err != nil {
+		return nil, false, err
 	}
 
-	return id, false, nil
+	return vip, false, nil
 }
 
 func addNewVIP(tx *sql.Tx, ipID, activeID, standbyID uint64, desc string) (uint64, error) {
@@ -1749,56 +2023,90 @@ func isEnabledHost(tx *sql.Tx, id uint64) (enabled bool, err error) {
 	return enabled, nil
 }
 
-func getIP(tx *sql.Tx, id uint64) (net.IP, error) {
-	var ip string
-	qry := "SELECT INET_NTOA(`address`) FROM `ip` WHERE `id` = ?"
-	if err := tx.QueryRow(qry, id).Scan(&ip); err != nil {
+func getVIP(tx *sql.Tx, id uint64) (vip *ui.VIP, err error) {
+	qry := "SELECT A.`id`, CONCAT(INET_NTOA(B.`address`), '/', C.`mask`), A.`active_host_id`, A.`standby_host_id`, A.`description` "
+	qry += "FROM `vip` A "
+	qry += "JOIN `ip` B ON A.`ip_id` = B.`id` "
+	qry += "JOIN `network` C ON C.`id` = B.`network_id` "
+	qry += "WHERE A.`id` = ?"
+
+	v := new(registeredVIP)
+	if err := tx.QueryRow(qry, id).Scan(&v.id, &v.address, &v.active, &v.standby, &v.description); err != nil {
 		return nil, err
 	}
 
-	v := net.ParseIP(ip)
-	if v == nil {
-		return nil, fmt.Errorf("invalid IP address: %v", ip)
-	}
-
-	return v, nil
-}
-
-func (r *uiTx) RemoveVIP(id uint64) error {
-	if err := updateARPTableEntryByVIP(r.handle, id, true); err != nil {
-		return err
-	}
-	_, err := r.handle.Exec("DELETE FROM `vip` WHERE `id` = ?", id)
-
-	return err
-}
-
-func (r *uiTx) ToggleVIP(id uint64) error {
-	vip, err := getVIP(r.handle, id)
+	active, err := getHost(tx, v.active)
 	if err != nil {
-		return err
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("unknown active host: id=%v", v.active)
+		}
+		return nil, err
+	}
+	standby, err := getHost(tx, v.standby)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("unknown standby host: id=%v", v.standby)
+		}
+		return nil, err
 	}
 
-	return swapVIPHosts(r.handle, vip)
+	return &ui.VIP{
+		ID:          v.id,
+		IP:          v.address,
+		ActiveHost:  *active,
+		StandbyHost: *standby,
+		Description: v.description,
+	}, nil
 }
 
-func getVIP(tx *sql.Tx, id uint64) (vip, error) {
-	qry := "SELECT A.`id`, INET_NTOA(B.`address`), A.`active_host_id`, A.`standby_host_id` "
-	qry += "FROM `vip` A "
-	qry += "JOIN `ip` B ON A.`ip_id` = B.`id` "
-	qry += "WHERE A.`id` = ? "
-	qry += "FOR UPDATE"
-
-	v := vip{}
-	var address string
-	if err := tx.QueryRow(qry, id).Scan(&v.id, &address, &v.active, &v.standby); err != nil {
-		return vip{}, err
+func (r *uiTx) RemoveVIP(id uint64) (vip *ui.VIP, err error) {
+	vip, err = getVIP(r.handle, id)
+	if err != nil {
+		// Not found VIP to remove.
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
 	}
 
-	v.address = net.ParseIP(address)
-	if v.address == nil {
-		return vip{}, fmt.Errorf("invalid IP address: %v", address)
+	if err := updateARPTableEntryByVIP(r.handle, id, true); err != nil {
+		return nil, err
+	}
+	if _, err := r.handle.Exec("DELETE FROM `vip` WHERE `id` = ?", id); err != nil {
+		return nil, err
 	}
 
-	return v, nil
+	return vip, nil
+}
+
+func (r *uiTx) ToggleVIP(id uint64) (res *ui.VIP, err error) {
+	v, err := getVIP(r.handle, id)
+	if err != nil {
+		// Not found VIP to toggle.
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	ip, _, err := net.ParseCIDR(v.IP)
+	if err != nil {
+		return nil, err
+	}
+
+	err = swapVIPHosts(r.handle, vip{
+		id:      v.ID,
+		address: ip,
+		active:  v.ActiveHost.ID,
+		standby: v.StandbyHost.ID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	res, err = getVIP(r.handle, id)
+	if err != nil {
+		return nil, err
+	}
+
+	return res, nil
 }

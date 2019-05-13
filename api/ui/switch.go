@@ -40,9 +40,10 @@ import (
 )
 
 type SwitchTransaction interface {
-	Switches(offset uint32, limit uint8) ([]Switch, error)
-	AddSwitch(dpid uint64, nPorts, firstPort, firstPrintedPort uint16, desc string) (id uint64, duplicated bool, err error)
-	RemoveSwitch(id uint64) error
+	Switches(Pagination) ([]*Switch, error)
+	AddSwitch(dpid uint64, nPorts, firstPort, firstPrintedPort uint16, desc string) (sw *Switch, duplicated bool, err error)
+	// RemoveSwitch removes a switch specified by id and then returns information of the switch before removing. It returns nil if the switch does not exist.
+	RemoveSwitch(id uint64) (*Switch, error)
 }
 
 type Switch struct {
@@ -84,46 +85,42 @@ func hexDPID(dpid uint64) string {
 	return strings.TrimRight(re.ReplaceAllString(hex, "$0:"), ":")
 }
 
-func (r *API) listSwitch(w rest.ResponseWriter, req *rest.Request) {
+func (r *API) listSwitch(w api.ResponseWriter, req *rest.Request) {
 	p := new(listSwitchParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
-		logger.Warningf("failed to decode params: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInvalidParameter, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode param: %v", err.Error())})
 		return
 	}
 	logger.Debugf("listSwitch request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
 	if _, ok := r.session.Get(p.SessionID); ok == false {
-		logger.Warningf("unknown session id: %v", p.SessionID)
-		w.WriteJson(&api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
 
-	var sw []Switch
+	var sw []*Switch
 	f := func(tx Transaction) (err error) {
-		sw, err = tx.Switches(p.Offset, p.Limit)
+		sw, err = tx.Switches(p.Pagination)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to query the switch list: %v", err.Error())})
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to query the switch list: %v", err.Error())})
 		return
 	}
 	logger.Debugf("queried switch list: %v", spew.Sdump(sw))
 
-	w.WriteJson(&api.Response{Status: api.StatusOkay, Data: sw})
+	w.Write(api.Response{Status: api.StatusOkay, Data: sw})
 }
 
 type listSwitchParam struct {
-	SessionID string
-	Offset    uint32
-	Limit     uint8
+	SessionID  string
+	Pagination Pagination
 }
 
 func (r *listSwitchParam) UnmarshalJSON(data []byte) error {
 	v := struct {
-		SessionID string `json:"session_id"`
-		Offset    uint32 `json:"offset"`
-		Limit     uint8  `json:"limit"`
+		SessionID  string     `json:"session_id"`
+		Pagination Pagination `json:"pagination"`
 	}{}
 	if err := json.Unmarshal(data, &v); err != nil {
 		return err
@@ -137,47 +134,44 @@ func (r *listSwitchParam) validate() error {
 	if len(r.SessionID) != 64 {
 		return errors.New("invalid session id")
 	}
-	if r.Limit == 0 {
-		return errors.New("invalid limit")
+	if r.Pagination.Limit == 0 {
+		return errors.New("invalid pagination limit")
 	}
 
 	return nil
 }
 
-func (r *API) addSwitch(w rest.ResponseWriter, req *rest.Request) {
+func (r *API) addSwitch(w api.ResponseWriter, req *rest.Request) {
 	p := new(addSwitchParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
-		logger.Warningf("failed to decode params: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInvalidParameter, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode param: %v", err.Error())})
 		return
 	}
 	logger.Debugf("addSwitch request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
 	if _, ok := r.session.Get(p.SessionID); ok == false {
-		logger.Warningf("unknown session id: %v", p.SessionID)
-		w.WriteJson(&api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
 
-	var id uint64
+	var sw *Switch
 	var duplicated bool
 	f := func(tx Transaction) (err error) {
-		id, duplicated, err = tx.AddSwitch(p.DPID, p.NumPorts, p.FirstPort, p.FirstPrintedPort, p.Description)
+		sw, duplicated, err = tx.AddSwitch(p.DPID, p.NumPorts, p.FirstPort, p.FirstPrintedPort, p.Description)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to add a new switch: %v", err.Error())})
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to add a new switch: %v", err.Error())})
 		return
 	}
 
 	if duplicated {
-		logger.Infof("duplicated switch: dpid=%v", p.DPID)
-		w.WriteJson(&api.Response{Status: api.StatusDuplicated, Message: fmt.Sprintf("duplicated switch: dpid=%v", p.DPID)})
+		w.Write(api.Response{Status: api.StatusDuplicated, Message: fmt.Sprintf("duplicated switch: dpid=%v", p.DPID)})
 		return
 	}
-	logger.Debugf("added switch info: %v", spew.Sdump(p))
+	logger.Debugf("added switch info: %v", spew.Sdump(sw))
 
-	w.WriteJson(&api.Response{Status: api.StatusOkay, Data: id})
+	w.Write(api.Response{Status: api.StatusOkay, Data: sw})
 }
 
 type addSwitchParam struct {
@@ -243,29 +237,34 @@ func (r *addSwitchParam) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (r *API) removeSwitch(w rest.ResponseWriter, req *rest.Request) {
+func (r *API) removeSwitch(w api.ResponseWriter, req *rest.Request) {
 	p := new(removeSwitchParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
-		logger.Warningf("failed to decode params: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInvalidParameter, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode param: %v", err.Error())})
 		return
 	}
 	logger.Debugf("removeSwitch request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
 	if _, ok := r.session.Get(p.SessionID); ok == false {
-		logger.Warningf("unknown session id: %v", p.SessionID)
-		w.WriteJson(&api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
 
+	var sw *Switch
 	f := func(tx Transaction) (err error) {
-		return tx.RemoveSwitch(p.ID)
+		sw, err = tx.RemoveSwitch(p.ID)
+		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to remove a switch: %v", err.Error())})
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to remove a switch: %v", err.Error())})
 		return
 	}
-	logger.Debugf("removed a switch: %v", spew.Sdump(p))
+
+	if sw == nil {
+		w.Write(api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found switch to remove: %v", p.ID)})
+		return
+	}
+	logger.Debugf("removed a switch: %v", spew.Sdump(sw))
 
 	logger.Debug("removing all flows from the entire switches")
 	if err := r.Controller.RemoveFlows(); err != nil {
@@ -275,7 +274,7 @@ func (r *API) removeSwitch(w rest.ResponseWriter, req *rest.Request) {
 		logger.Debug("removed all flows from the entire switches")
 	}
 
-	w.WriteJson(&api.Response{Status: api.StatusOkay})
+	w.Write(api.Response{Status: api.StatusOkay})
 }
 
 type removeSwitchParam struct {

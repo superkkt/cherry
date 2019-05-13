@@ -40,11 +40,14 @@ import (
 type UserTransaction interface {
 	// Auth returns information for a user if name and password match. Otherwise, it returns nil.
 	Auth(name, password string) (*User, error)
-	Users(offset uint32, limit uint8) ([]User, error)
-	AddUser(name, password string) (id uint64, duplicated bool, err error)
-	UpdateUser(id uint64, password *string, admin *bool) error
-	ActivateUser(id uint64) error
-	DeactivateUser(id uint64) error
+	Users(Pagination) ([]*User, error)
+	AddUser(name, password string) (user *User, duplicated bool, err error)
+	// UpdateUser updates password and admin authorization of a user specified by id and then returns information of the user. It returns nil if the user does not exist.
+	UpdateUser(id uint64, password *string, admin *bool) (*User, error)
+	// ActivateUser enables a user specified by id and then returns information of the user. It returns nil if the user does not exist.
+	ActivateUser(id uint64) (*User, error)
+	// DeactivateUser disables a user specified by id and then returns information of the user. It returns nil if the user does not exist.
+	DeactivateUser(id uint64) (*User, error)
 }
 
 type User struct {
@@ -198,9 +201,9 @@ func (r *API) listUser(w api.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	var user []User
+	var user []*User
 	f := func(tx Transaction) (err error) {
-		user, err = tx.Users(p.Offset, p.Limit)
+		user, err = tx.Users(p.Pagination)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
@@ -213,16 +216,14 @@ func (r *API) listUser(w api.ResponseWriter, req *rest.Request) {
 }
 
 type listUserParam struct {
-	SessionID string
-	Offset    uint32
-	Limit     uint8
+	SessionID  string
+	Pagination Pagination
 }
 
 func (r *listUserParam) UnmarshalJSON(data []byte) error {
 	v := struct {
-		SessionID string `json:"session_id"`
-		Offset    uint32 `json:"offset"`
-		Limit     uint8  `json:"limit"`
+		SessionID  string     `json:"session_id"`
+		Pagination Pagination `json:"pagination"`
 	}{}
 	if err := json.Unmarshal(data, &v); err != nil {
 		return err
@@ -236,8 +237,8 @@ func (r *listUserParam) validate() error {
 	if len(r.SessionID) != 64 {
 		return errors.New("invalid session id")
 	}
-	if r.Limit == 0 {
-		return errors.New("invalid limit")
+	if r.Pagination.Limit == 0 {
+		return errors.New("invalid pagination limit")
 	}
 
 	return nil
@@ -256,10 +257,10 @@ func (r *API) addUser(w api.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	var id uint64
+	var user *User
 	var duplicated bool
 	f := func(tx Transaction) (err error) {
-		id, duplicated, err = tx.AddUser(p.Name, p.Password)
+		user, duplicated, err = tx.AddUser(p.Name, p.Password)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
@@ -271,9 +272,9 @@ func (r *API) addUser(w api.ResponseWriter, req *rest.Request) {
 		w.Write(api.Response{Status: api.StatusDuplicated, Message: fmt.Sprintf("duplicated user account: %v", p.Name)})
 		return
 	}
-	logger.Debugf("added the new user account (id=%v): %v", id, spew.Sdump(p))
+	logger.Debugf("added the user account: %v", spew.Sdump(user))
 
-	w.Write(api.Response{Status: api.StatusOkay, Data: id})
+	w.Write(api.Response{Status: api.StatusOkay, Data: user})
 }
 
 type addUserParam struct {
@@ -329,16 +330,23 @@ func (r *API) updateUser(w api.ResponseWriter, req *rest.Request) {
 		p.Admin = nil
 	}
 
+	var user *User
 	f := func(tx Transaction) (err error) {
-		return tx.UpdateUser(p.ID, p.Password, p.Admin)
+		user, err = tx.UpdateUser(p.ID, p.Password, p.Admin)
+		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
 		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to update a user account: %v", err.Error())})
 		return
 	}
-	logger.Debugf("updated the user account: %v", spew.Sdump(p))
 
-	w.Write(api.Response{Status: api.StatusOkay})
+	if user == nil {
+		w.Write(api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found user to update: %v", p.ID)})
+		return
+	}
+	logger.Debugf("updated the user account: %v", spew.Sdump(user))
+
+	w.Write(api.Response{Status: api.StatusOkay, Data: user})
 }
 
 type updateUserParam struct {
@@ -393,14 +401,21 @@ func (r *API) activateUser(w api.ResponseWriter, req *rest.Request) {
 		return
 	}
 
+	var user *User
 	f := func(tx Transaction) (err error) {
-		return tx.ActivateUser(p.ID)
+		user, err = tx.ActivateUser(p.ID)
+		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
 		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to activate an user account: %v", err.Error())})
 		return
 	}
-	logger.Debugf("activated the user account: ID=%v", p.ID)
+
+	if user == nil {
+		w.Write(api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found user to activate: %v", p.ID)})
+		return
+	}
+	logger.Debugf("activated the user account: %v", spew.Sdump(user))
 
 	w.Write(api.Response{Status: api.StatusOkay})
 }
@@ -447,14 +462,21 @@ func (r *API) deactivateUser(w api.ResponseWriter, req *rest.Request) {
 		return
 	}
 
+	var user *User
 	f := func(tx Transaction) (err error) {
-		return tx.DeactivateUser(p.ID)
+		user, err = tx.DeactivateUser(p.ID)
+		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
 		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to deactivate an user account: %v", err.Error())})
 		return
 	}
-	logger.Debugf("deactivated the user account: ID=%v", p.ID)
+
+	if user == nil {
+		w.Write(api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found user to deactivate: %v", p.ID)})
+		return
+	}
+	logger.Debugf("deactivated the user account: %v", spew.Sdump(user))
 
 	w.Write(api.Response{Status: api.StatusOkay})
 }

@@ -46,6 +46,8 @@ var (
 
 type HostTransaction interface {
 	Host(id uint64) (*Host, error)
+	// Hosts returns a list of registered hosts. Search can be nil that means no search. Pagination limit can be 0 that means no pagination.
+	Hosts(*Search, Sort, Pagination) ([]*Host, error)
 	AddHost(ipID uint64, groupID *uint64, mac net.HardwareAddr, desc string) (host *Host, duplicated bool, err error)
 	// ActivateHost enables a host specified by id and then returns information of the host. It returns nil if the host does not exist.
 	ActivateHost(id uint64) (*Host, error)
@@ -92,18 +94,82 @@ func (r *Host) MarshalJSON() ([]byte, error) {
 	})
 }
 
-func (r *API) addHost(w rest.ResponseWriter, req *rest.Request) {
+func (r *API) listHost(w api.ResponseWriter, req *rest.Request) {
+	p := new(listHostParam)
+	if err := req.DecodeJsonPayload(p); err != nil {
+		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode param: %v", err.Error())})
+		return
+	}
+	logger.Debugf("listHost request from %v: %v", req.RemoteAddr, spew.Sdump(p))
+
+	if _, ok := r.session.Get(p.SessionID); ok == false {
+		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		return
+	}
+
+	var host []*Host
+	f := func(tx Transaction) (err error) {
+		host, err = tx.Hosts(p.Search, p.Sort, p.Pagination)
+		return err
+	}
+	if err := r.DB.Exec(f); err != nil {
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to query the hosts: %v", err.Error())})
+		return
+	}
+	logger.Debugf("queried host list: %v", spew.Sdump(host))
+
+	w.Write(api.Response{Status: api.StatusOkay, Data: host})
+}
+
+type listHostParam struct {
+	SessionID  string
+	Search     *Search
+	Sort       Sort
+	Pagination Pagination
+}
+
+func (r *listHostParam) UnmarshalJSON(data []byte) error {
+	v := struct {
+		SessionID  string     `json:"session_id"`
+		Search     *Search    `json:"search"`
+		Sort       Sort       `json:"sort"`
+		Pagination Pagination `json:"pagination"`
+	}{}
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	*r = listHostParam(v)
+
+	return r.validate()
+}
+
+func (r *listHostParam) validate() error {
+	if len(r.SessionID) != 64 {
+		return errors.New("invalid session id")
+	}
+	// If search is nil, fetch hosts without using search.
+	if r.Search != nil {
+		if err := r.Search.Validate(); err != nil {
+			return err
+		}
+	}
+	if err := r.Sort.Validate(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r *API) addHost(w api.ResponseWriter, req *rest.Request) {
 	p := new(addHostParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
-		logger.Warningf("failed to decode params: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInvalidParameter, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode param: %v", err.Error())})
 		return
 	}
 	logger.Debugf("addHost request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
 	if _, ok := r.session.Get(p.SessionID); ok == false {
-		logger.Warningf("unknown session id: %v", p.SessionID)
-		w.WriteJson(&api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
 
@@ -125,10 +191,9 @@ func (r *API) addHost(w rest.ResponseWriter, req *rest.Request) {
 	}
 	if err := r.DB.Exec(f); err != nil {
 		if err == errDuplicated {
-			logger.Infof("duplicated host: ip_id=%v", p.IPID)
-			w.WriteJson(&api.Response{Status: api.StatusDuplicated, Message: fmt.Sprintf("duplicated host: ip_id=%v", p.IPID)})
+			w.Write(api.Response{Status: api.StatusDuplicated, Message: fmt.Sprintf("duplicated host: ip_id=%v", p.IPID)})
 		} else {
-			w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to add a new host: %v", err.Error())})
+			w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to add a new host: %v", err.Error())})
 		}
 		return
 	}
@@ -142,7 +207,7 @@ func (r *API) addHost(w rest.ResponseWriter, req *rest.Request) {
 		}
 	}
 
-	w.WriteJson(&api.Response{Status: api.StatusOkay, Data: host})
+	w.Write(api.Response{Status: api.StatusOkay, Data: host})
 }
 
 type addHostParam struct {
@@ -196,18 +261,16 @@ func (r *addHostParam) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (r *API) updateHost(w rest.ResponseWriter, req *rest.Request) {
+func (r *API) updateHost(w api.ResponseWriter, req *rest.Request) {
 	p := new(updateHostParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
-		logger.Warningf("failed to decode params: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInvalidParameter, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode param: %v", err.Error())})
 		return
 	}
 	logger.Debugf("updateHost request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
 	if _, ok := r.session.Get(p.SessionID); ok == false {
-		logger.Warningf("unknown session id: %v", p.SessionID)
-		w.WriteJson(&api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
 
@@ -246,16 +309,13 @@ func (r *API) updateHost(w rest.ResponseWriter, req *rest.Request) {
 	if err := r.DB.Exec(f); err != nil {
 		switch err {
 		case errNotFound:
-			logger.Infof("not found host to update: %v", p.ID)
-			w.WriteJson(&api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found host to update: %v", p.ID)})
+			w.Write(api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found host to update: %v", p.ID)})
 		case errBlocked:
-			logger.Infof("unable to update blocked host: %v", p.ID)
-			w.WriteJson(&api.Response{Status: api.StatusBlockedHost, Message: fmt.Sprintf("unable to update blocked host: %v", p.ID)})
+			w.Write(api.Response{Status: api.StatusBlockedHost, Message: fmt.Sprintf("unable to update blocked host: %v", p.ID)})
 		case errDuplicated:
-			logger.Infof("duplicated host: ip_id=%v", p.IPID)
-			w.WriteJson(&api.Response{Status: api.StatusDuplicated, Message: fmt.Sprintf("duplicated host: ip_id=%v", p.IPID)})
+			w.Write(api.Response{Status: api.StatusDuplicated, Message: fmt.Sprintf("duplicated host: ip_id=%v", p.IPID)})
 		default:
-			w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to update a host: %v", err.Error())})
+			w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to update a host: %v", err.Error())})
 		}
 		return
 	}
@@ -271,7 +331,7 @@ func (r *API) updateHost(w rest.ResponseWriter, req *rest.Request) {
 		logger.Errorf("failed to send ARP announcement: %v", err)
 	}
 
-	w.WriteJson(&api.Response{Status: api.StatusOkay, Data: new})
+	w.Write(api.Response{Status: api.StatusOkay, Data: new})
 }
 
 type updateHostParam struct {
@@ -323,18 +383,16 @@ func (r *updateHostParam) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (r *API) activateHost(w rest.ResponseWriter, req *rest.Request) {
+func (r *API) activateHost(w api.ResponseWriter, req *rest.Request) {
 	p := new(activateHostParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
-		logger.Warningf("failed to decode params: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInvalidParameter, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode param: %v", err.Error())})
 		return
 	}
 	logger.Debugf("activateHost request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
 	if _, ok := r.session.Get(p.SessionID); ok == false {
-		logger.Warningf("unknown session id: %v", p.SessionID)
-		w.WriteJson(&api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
 
@@ -344,13 +402,12 @@ func (r *API) activateHost(w rest.ResponseWriter, req *rest.Request) {
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to activate a host: %v", err.Error())})
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to activate a host: %v", err.Error())})
 		return
 	}
 
 	if host == nil {
-		logger.Infof("not found host to activate: %v", p.ID)
-		w.WriteJson(&api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found host to activate: %v", p.ID)})
+		w.Write(api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found host to activate: %v", p.ID)})
 		return
 	}
 	logger.Debugf("activated host info: %v", spew.Sdump(host))
@@ -360,7 +417,7 @@ func (r *API) activateHost(w rest.ResponseWriter, req *rest.Request) {
 		logger.Errorf("failed to send ARP announcement: %v", err)
 	}
 
-	w.WriteJson(&api.Response{Status: api.StatusOkay})
+	w.Write(api.Response{Status: api.StatusOkay})
 }
 
 type activateHostParam struct {
@@ -392,18 +449,16 @@ func (r *activateHostParam) validate() error {
 	return nil
 }
 
-func (r *API) deactivateHost(w rest.ResponseWriter, req *rest.Request) {
+func (r *API) deactivateHost(w api.ResponseWriter, req *rest.Request) {
 	p := new(deactivateHostParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
-		logger.Warningf("failed to decode params: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInvalidParameter, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode param: %v", err.Error())})
 		return
 	}
 	logger.Debugf("deactivateHost request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
 	if _, ok := r.session.Get(p.SessionID); ok == false {
-		logger.Warningf("unknown session id: %v", p.SessionID)
-		w.WriteJson(&api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
 
@@ -421,13 +476,12 @@ func (r *API) deactivateHost(w rest.ResponseWriter, req *rest.Request) {
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to deactivate a host: %v", err.Error())})
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to deactivate a host: %v", err.Error())})
 		return
 	}
 
 	if host == nil {
-		logger.Infof("not found host to deactivate: %v", p.ID)
-		w.WriteJson(&api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found host to deactivate: %v", p.ID)})
+		w.Write(api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found host to deactivate: %v", p.ID)})
 		return
 	}
 	logger.Debugf("deactivated host info: %v", spew.Sdump(host))
@@ -437,7 +491,7 @@ func (r *API) deactivateHost(w rest.ResponseWriter, req *rest.Request) {
 		logger.Errorf("failed to send ARP announcement: %v", err)
 	}
 
-	w.WriteJson(&api.Response{Status: api.StatusOkay})
+	w.Write(api.Response{Status: api.StatusOkay})
 }
 
 type deactivateHostParam struct {
@@ -469,18 +523,16 @@ func (r *deactivateHostParam) validate() error {
 	return nil
 }
 
-func (r *API) removeHost(w rest.ResponseWriter, req *rest.Request) {
+func (r *API) removeHost(w api.ResponseWriter, req *rest.Request) {
 	p := new(removeHostParam)
 	if err := req.DecodeJsonPayload(p); err != nil {
-		logger.Warningf("failed to decode params: %v", err)
-		w.WriteJson(&api.Response{Status: api.StatusInvalidParameter, Message: err.Error()})
+		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode param: %v", err.Error())})
 		return
 	}
 	logger.Debugf("removeHost request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
 	if _, ok := r.session.Get(p.SessionID); ok == false {
-		logger.Warningf("unknown session id: %v", p.SessionID)
-		w.WriteJson(&api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
 
@@ -490,13 +542,12 @@ func (r *API) removeHost(w rest.ResponseWriter, req *rest.Request) {
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
-		w.WriteJson(&api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to remove a host: %v", err.Error())})
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to remove a host: %v", err.Error())})
 		return
 	}
 
 	if host == nil {
-		logger.Infof("not found host to remove: %v", p.ID)
-		w.WriteJson(&api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found host to remove: %v", p.ID)})
+		w.Write(api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found host to remove: %v", p.ID)})
 		return
 	}
 	logger.Debugf("removed host info: %v", spew.Sdump(host))
@@ -506,7 +557,7 @@ func (r *API) removeHost(w rest.ResponseWriter, req *rest.Request) {
 		logger.Errorf("failed to send ARP announcement: %v", err)
 	}
 
-	w.WriteJson(&api.Response{Status: api.StatusOkay})
+	w.Write(api.Response{Status: api.StatusOkay})
 }
 
 type removeHostParam struct {
