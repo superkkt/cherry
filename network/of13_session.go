@@ -64,6 +64,9 @@ func (r *of13Session) OnHello(f openflow.Factory, w transceiver.Writer, v openfl
 	if err := setLLDPSender(f, w); err != nil {
 		return errors.Wrap(err, "failed to set the LLDP sender")
 	}
+	if err := setDHCPSender(f, w); err != nil {
+		return errors.Wrap(err, "failed to set the DHCP sender")
+	}
 	if err := sendBarrierRequest(f, w); err != nil {
 		return errors.Wrap(err, "failed to send BARRIER_REQUEST")
 	}

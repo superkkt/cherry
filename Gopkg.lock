@@ -35,6 +35,21 @@
   revision = "1a676ac6e4dce68e9303a1800773861350374a9e"
 
 [[projects]]
+  digest = "1:010d46ea3c1e730897e53058d1013a963f3f987675dda87df64f891b945281db"
+  name = "github.com/google/go-cmp"
+  packages = [
+    "cmp",
+    "cmp/cmpopts",
+    "cmp/internal/diff",
+    "cmp/internal/flags",
+    "cmp/internal/function",
+    "cmp/internal/value",
+  ]
+  pruneopts = "UT"
+  revision = "6f77996f0c42f7b84e5a2b252227263f93432e9b"
+  version = "v0.3.0"
+
+[[projects]]
   digest = "1:c419ae6e1a397c8a8eb15bcdc28c2e16bbcd148da9b4bdad6daf89f98a0a6b57"
   name = "github.com/hashicorp/golang-lru"
   packages = [
@@ -190,6 +205,8 @@
     "github.com/davecgh/go-spew/spew",
     "github.com/fsnotify/fsnotify",
     "github.com/go-sql-driver/mysql",
+    "github.com/google/go-cmp/cmp",
+    "github.com/google/go-cmp/cmp/cmpopts",
     "github.com/hashicorp/golang-lru",
     "github.com/pkg/errors",
     "github.com/superkkt/go-logging",

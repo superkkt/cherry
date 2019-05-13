@@ -627,32 +627,55 @@ func sendPortDescriptionRequest(f openflow.Factory, w transceiver.Writer) error 
 
 // setARPSender installs a flow that sends all ARP packets to the controller.
 func setARPSender(f openflow.Factory, w transceiver.Writer) error {
-	// Permanent flow.
-	return setSpecialFlow(f, w, 0x0806 /* ARP */, 100, 0, 0, false)
-}
-
-// setLLDPSender installs a flow that sends all LLDP packets to the controller.
-func setLLDPSender(f openflow.Factory, w transceiver.Writer) error {
-	// Permanent flow.
-	return setSpecialFlow(f, w, 0x88CC /* LLDP */, 100, 0, 0, false)
-}
-
-// setTemporaryDrop installs a temporary flow that drops all the packets.
-func setTemporaryDrop(f openflow.Factory, w transceiver.Writer) error {
-	// Temporary flow that will be removed after a few seconds.
-	return setSpecialFlow(f, w, 0 /* wildcard */, 50, 0, 5, true)
-}
-
-func setSpecialFlow(f openflow.Factory, w transceiver.Writer, ethertype, priority, idleTimeout, hardTimeout uint16, allDrop bool) error {
 	match, err := f.NewMatch()
 	if err != nil {
 		return err
 	}
-	// 0 of ethertype is the wildcard.
-	if ethertype != 0 {
-		match.SetEtherType(ethertype)
+	match.SetEtherType(0x0806 /* ARP */)
+
+	// Permanent flow.
+	return setSpecialFlow(f, w, match, 100, 0, 0, false)
+}
+
+// setLLDPSender installs a flow that sends all LLDP packets to the controller.
+func setLLDPSender(f openflow.Factory, w transceiver.Writer) error {
+	match, err := f.NewMatch()
+	if err != nil {
+		return err
+	}
+	match.SetEtherType(0x88CC /* LLDP */)
+
+	// Permanent flow.
+	return setSpecialFlow(f, w, match, 100, 0, 0, false)
+}
+
+// setTemporaryDrop installs a temporary flow that drops all the packets.
+func setTemporaryDrop(f openflow.Factory, w transceiver.Writer) error {
+	// Wildcard to match all packets.
+	match, err := f.NewMatch()
+	if err != nil {
+		return err
 	}
 
+	// Temporary flow that will be removed after a few seconds.
+	return setSpecialFlow(f, w, match, 50, 0, 5, true)
+}
+
+func setDHCPSender(f openflow.Factory, w transceiver.Writer) error {
+	match, err := f.NewMatch()
+	if err != nil {
+		return err
+	}
+	match.SetEtherType(0x0800) // IPv4.
+	match.SetIPProtocol(0x11)  // UDP.
+	match.SetSrcPort(68)       // BOOTP Client Port.
+	match.SetDstPort(67)       // BOOTP Server Port.
+
+	// Permanent flow.
+	return setSpecialFlow(f, w, match, 100, 0, 0, false)
+}
+
+func setSpecialFlow(f openflow.Factory, w transceiver.Writer, match openflow.Match, priority, idleTimeout, hardTimeout uint16, allDrop bool) error {
 	flow, err := f.NewFlowMod(openflow.FlowAdd)
 	if err != nil {
 		return err

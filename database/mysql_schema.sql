@@ -104,6 +104,7 @@ CREATE TABLE IF NOT EXISTS `network` (
   `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   `address` int(10) unsigned NOT NULL,
   `mask` int(10) unsigned NOT NULL,
+  `gateway` int(10) unsigned NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `address` (`address`,`mask`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;

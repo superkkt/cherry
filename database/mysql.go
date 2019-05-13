@@ -36,6 +36,7 @@ import (
 	"github.com/superkkt/cherry/api/ui"
 	"github.com/superkkt/cherry/network"
 	"github.com/superkkt/cherry/northbound/app/announcer"
+	"github.com/superkkt/cherry/northbound/app/dhcp"
 	"github.com/superkkt/cherry/northbound/app/discovery"
 	"github.com/superkkt/cherry/northbound/app/virtualip"
 
@@ -906,6 +907,46 @@ func updateARPTableEntry(tx *sql.Tx, ip, mac string) error {
 	logger.Debugf("updated ARP table entry: IP=%v, MAC=%v", ip, mac)
 
 	return nil
+}
+
+func (r *MySQL) DHCP(mac net.HardwareAddr) (conf *dhcp.NetConfig, err error) {
+	f := func(tx *sql.Tx) error {
+		var ip, gateway string
+		var mask int
+
+		qry := "SELECT INET_NTOA(B.`address`), C.`mask`, INET_NTOA(C.`gateway`) "
+		qry += "FROM `host` A "
+		qry += "JOIN `ip` B ON A.`ip_id` = B.`id` "
+		qry += "JOIN `network` C ON B.`network_id` = C.`id` "
+		qry += "WHERE A.`mac` = ?"
+		if err := tx.QueryRow(qry, []byte(mac)).Scan(&ip, &mask, &gateway); err != nil {
+			if err == sql.ErrNoRows {
+				return nil
+			}
+			return err
+		}
+
+		v := &dhcp.NetConfig{
+			IP:      net.ParseIP(ip),
+			Mask:    net.CIDRMask(mask, net.IPv4len*8),
+			Gateway: net.ParseIP(gateway),
+		}
+		if v.IP == nil || v.Mask == nil || v.Gateway == nil {
+			return fmt.Errorf("invalid DHCP network configuration: MAC=%v, IP=%v, mask=%v, gateway=%v", mac, ip, mask, gateway)
+		}
+		if v.IP.Mask(v.Mask).Equal(v.Gateway.Mask(v.Mask)) == false {
+			return fmt.Errorf("invalid DHCP network configuration: invalid gateway address: MAC=%v, IP=%v, mask=%v, gateway=%v", mac, ip, mask, gateway)
+		}
+		conf = v
+
+		return nil
+	}
+
+	if err := r.query(f); err != nil {
+		return nil, err
+	}
+
+	return conf, nil
 }
 
 // Exec executes all queries of f in a single transaction. f should return the error raised from the ui.Transaction

@@ -31,6 +31,7 @@ import (
 	"github.com/superkkt/cherry/network"
 	"github.com/superkkt/cherry/northbound/app"
 	"github.com/superkkt/cherry/northbound/app/announcer"
+	"github.com/superkkt/cherry/northbound/app/dhcp"
 	"github.com/superkkt/cherry/northbound/app/discovery"
 	"github.com/superkkt/cherry/northbound/app/l2switch"
 	"github.com/superkkt/cherry/northbound/app/monitor"
@@ -73,6 +74,7 @@ func NewManager(db *database.MySQL) (*Manager, error) {
 	v.register(monitor.New())
 	v.register(virtualip.New(db))
 	v.register(announcer.New(db))
+	v.register(dhcp.New(db))
 
 	return v, nil
 }
@@ -129,10 +131,10 @@ func (r *Manager) Enable(appName string) error {
 	if r.head == nil {
 		r.head = app
 		r.tail = app
-		return nil
+	} else {
+		r.tail.SetNext(app)
+		r.tail = app
 	}
-	r.tail.SetNext(app)
-	r.tail = app
 
 	return nil
 }
