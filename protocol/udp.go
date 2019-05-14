@@ -24,6 +24,7 @@ package protocol
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"net"
 )
 
@@ -48,11 +49,14 @@ func (r UDP) MarshalBinary() ([]byte, error) {
 	if r.Payload != nil {
 		length += len(r.Payload)
 	}
+	if length > (65535 /* 2^16 */ - 20 /* IPv4 header */) {
+		return nil, fmt.Errorf("too long UDP packet: length=%v", length)
+	}
 
 	v := make([]byte, length)
 	binary.BigEndian.PutUint16(v[0:2], r.SrcPort)
 	binary.BigEndian.PutUint16(v[2:4], r.DstPort)
-	binary.BigEndian.PutUint16(v[4:6], r.Length)
+	binary.BigEndian.PutUint16(v[4:6], uint16(length))
 	// v[6:8] is checksum
 	if r.Payload != nil && len(r.Payload) > 0 {
 		copy(v[8:], r.Payload)
