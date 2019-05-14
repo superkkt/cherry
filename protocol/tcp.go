@@ -24,6 +24,7 @@ package protocol
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"net"
 )
 
@@ -52,6 +53,9 @@ func (r TCP) MarshalBinary() ([]byte, error) {
 	length := 20
 	if r.Payload != nil {
 		length += len(r.Payload)
+	}
+	if length > (0xFFFF - 20 /* IPv4 header */) {
+		return nil, fmt.Errorf("too long TCP packet: length=%v", length)
 	}
 
 	v := make([]byte, length)

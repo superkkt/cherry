@@ -49,7 +49,7 @@ func (r UDP) MarshalBinary() ([]byte, error) {
 	if r.Payload != nil {
 		length += len(r.Payload)
 	}
-	if length > (65535 /* 2^16 */ - 20 /* IPv4 header */) {
+	if length > (0xFFFF - 20 /* IPv4 header */) {
 		return nil, fmt.Errorf("too long UDP packet: length=%v", length)
 	}
 
