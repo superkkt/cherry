@@ -40,7 +40,7 @@ type ARP struct {
 	TPA         net.IP           // Target Protocol Address
 }
 
-func NewARPRequest(sha net.HardwareAddr, spa, tpa net.IP) *ARP {
+func NewARPRequest(sha, tha net.HardwareAddr, spa, tpa net.IP) *ARP {
 	return &ARP{
 		HWType:      1,      // Ethernet
 		ProtoType:   0x0800, // IPv4
@@ -49,7 +49,7 @@ func NewARPRequest(sha net.HardwareAddr, spa, tpa net.IP) *ARP {
 		Operation:   1,      // ARP request
 		SHA:         sha,
 		SPA:         spa,
-		THA:         net.HardwareAddr([]byte{0, 0, 0, 0, 0, 0}),
+		THA:         tha,
 		TPA:         tpa,
 	}
 }

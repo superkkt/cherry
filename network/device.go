@@ -436,7 +436,7 @@ func (r *Device) RemoveFlowByMAC(mac net.HardwareAddr) error {
 }
 
 func makeARPAnnouncement(ip net.IP, mac net.HardwareAddr) ([]byte, error) {
-	v := protocol.NewARPRequest(mac, ip, ip)
+	v := protocol.NewARPRequest(mac, net.HardwareAddr([]byte{0, 0, 0, 0, 0, 0}), ip, ip)
 	anon, err := v.MarshalBinary()
 	if err != nil {
 		return nil, err
@@ -486,10 +486,8 @@ func (r *Device) SendARPProbe(sha net.HardwareAddr, tpa net.IP) error {
 }
 
 func makeARPProbe(sha net.HardwareAddr, tpa net.IP) ([]byte, error) {
-	// RFC-5227 (IPv4 Address Conflict Detection) says that the all-zero sender IP address (SPA) is used for address
-	// conflict detection. This ARP probe causes actual IP conflict with Microsoft Windows OSes (See #12). So, we have
-	// to use an another SPA, instead of the all-zero one.
-	arp := protocol.NewARPRequest(sha, net.IPv4(0, 0, 0, 1), tpa)
+	// 192.0.2.1 is one of the reserved addresses (TEST-NET-1). See RFC 5737.
+	arp := protocol.NewARPRequest(sha, net.HardwareAddr([]byte{0, 0, 0, 0, 0, 0}), net.IPv4(192, 0, 2, 1), tpa)
 	probe, err := arp.MarshalBinary()
 	if err != nil {
 		return nil, err

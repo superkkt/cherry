@@ -38,7 +38,8 @@ import (
 var (
 	logger = logging.MustGetLogger("dhcp")
 
-	serverIP = net.IPv4(0, 0, 0, 2)
+	// 192.0.2.2 is one of the reserved addresses (TEST-NET-1). See RFC 5737.
+	serverIP = net.IPv4(192, 0, 2, 2)
 	// A locally administered MAC address (https://en.wikipedia.org/wiki/MAC_address#Universal_vs._local).
 	serverMAC = net.HardwareAddr([]byte{0x06, 0xff, 0x15, 0x88, 0x67, 0x76})
 )
