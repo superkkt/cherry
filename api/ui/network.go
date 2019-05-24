@@ -157,7 +157,7 @@ func (r *addNetworkParam) UnmarshalJSON(data []byte) error {
 		return errors.New("invalid session id")
 	}
 	addr := net.ParseIP(v.Address)
-	if addr == nil {
+	if addr == nil || addr.To4() == nil {
 		return fmt.Errorf("invalid network address: %v", v.Address)
 	}
 	if v.Mask < 24 || v.Mask > 30 {

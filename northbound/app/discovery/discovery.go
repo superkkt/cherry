@@ -41,7 +41,7 @@ var (
 	logger = logging.MustGetLogger("discovery")
 
 	// A locally administered MAC address (https://en.wikipedia.org/wiki/MAC_address#Universal_vs._local).
-	myMAC = net.HardwareAddr([]byte{0x06, 0xff, 0x29, 0x34, 0x82, 0x87})
+	myMAC = net.HardwareAddr([]byte{0x06, 0xff, 0x82, 0x87, 0x29, 0x34})
 )
 
 const (
@@ -59,7 +59,7 @@ type processor struct {
 type Database interface {
 	// GetUndiscoveredHosts returns IP addresses whose physical location is still
 	// undiscovered or staled more than expiration.
-	GetUndiscoveredHosts(expiration time.Duration) ([]net.IP, error)
+	GetUndiscoveredHosts(expiration time.Duration) ([]net.IPNet, error)
 
 	// UpdateHostLocation updates the physical location of a host, whose MAC and IP
 	// addresses are matched with mac and ip, to the port identified by swDPID and
@@ -135,11 +135,16 @@ func (r *processor) sendARPProbes(device *network.Device) error {
 	if err != nil {
 		return err
 	}
-	for _, ip := range hosts {
-		if err := device.SendARPProbe(myMAC, ip); err != nil {
+	for _, addr := range hosts {
+		reserved, err := network.ReservedIP(addr)
+		if err != nil {
 			return err
 		}
-		logger.Debugf("sent an ARP probe for %v on %v", ip, device.ID())
+
+		if err := device.SendARPProbe(myMAC, reserved, addr.IP); err != nil {
+			return err
+		}
+		logger.Debugf("sent an ARP probe for %v on %v", addr.IP, device.ID())
 		// Sleep to mitigate the peak latency of processing PACKET_INs.
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -209,6 +214,11 @@ func (r *processor) processARPReply(finder network.Finder, ingress *network.Port
 		return nil
 	}
 
+	// This ARP reply packet has been processed. Do not pass it to the next processors.
+	return r.macLearning(finder, ingress, arp)
+}
+
+func (r *processor) macLearning(finder network.Finder, ingress *network.Port, arp *protocol.ARP) error {
 	swDPID, err := strconv.ParseUint(ingress.Device().ID(), 10, 64)
 	if err != nil {
 		return fmt.Errorf("invalid device ID: %v", ingress.Device().ID())
@@ -234,7 +244,6 @@ func (r *processor) processARPReply(finder network.Finder, ingress *network.Port
 		logger.Debugf("skip to update host location: unknown host or no location change: IP=%v, MAC=%v, deviceID=%v, portNum=%v", arp.SPA, arp.SHA, swDPID, ingress.Number())
 	}
 
-	// This ARP reply packet has been processed. Do not pass it to the next processors.
 	return nil
 }
 

@@ -507,13 +507,13 @@ func hostMAC(tx *sql.Tx, hostID uint64) (net.HardwareAddr, error) {
 
 // GetUndiscoveredHosts returns IP addresses whose physical location is still
 // undiscovered or staled more than expiration. result can be nil on empty result.
-func (r *MySQL) GetUndiscoveredHosts(expiration time.Duration) (result []net.IP, err error) {
+func (r *MySQL) GetUndiscoveredHosts(expiration time.Duration) (result []net.IPNet, err error) {
 	f := func(tx *sql.Tx) error {
 		// NOTE: Do not include VIP addresses!
-		qry := "SELECT IFNULL(INET_NTOA(B.`address`), '0.0.0.0') "
+		qry := "SELECT IFNULL(INET_NTOA(B.`address`), '0.0.0.0'), IFNULL(C.`mask`, 0) "
 		qry += "FROM `host` A "
-		qry += "JOIN `ip` B "
-		qry += "ON A.`ip_id` = B.`id` "
+		qry += "JOIN `ip` B ON A.`ip_id` = B.`id` "
+		qry += "JOIN `network` C ON B.`network_id` = C.`id` "
 		qry += "WHERE A.`port_id` IS NULL OR A.`last_updated_timestamp` < NOW() - INTERVAL ? SECOND"
 
 		rows, err := tx.Query(qry, uint64(expiration.Seconds()))
@@ -524,9 +524,11 @@ func (r *MySQL) GetUndiscoveredHosts(expiration time.Duration) (result []net.IP,
 
 		for rows.Next() {
 			var addr string
-			if err := rows.Scan(&addr); err != nil {
+			var mask int
+			if err := rows.Scan(&addr, &mask); err != nil {
 				return err
 			}
+
 			ip := net.ParseIP(addr)
 			if ip == nil {
 				return fmt.Errorf("invalid IP address: %v", addr)
@@ -534,7 +536,13 @@ func (r *MySQL) GetUndiscoveredHosts(expiration time.Duration) (result []net.IP,
 			if ip.IsUnspecified() {
 				continue
 			}
-			result = append(result, ip)
+
+			netmask := net.CIDRMask(mask, 32)
+			if netmask == nil {
+				return fmt.Errorf("invalid network mask: IP=%v, Mask=%v", addr, mask)
+			}
+
+			result = append(result, net.IPNet{IP: ip, Mask: netmask})
 		}
 
 		return rows.Err()
@@ -1567,15 +1575,34 @@ func addIPAddrs(tx *sql.Tx, netID uint64, addr net.IP, mask net.IPMask) error {
 	}
 	defer stmt.Close()
 
+	reserved, err := network.ReservedIP(net.IPNet{IP: addr, Mask: mask})
+	if err != nil {
+		return err
+	}
+
 	ones, bits := mask.Size()
 	n_addrs := int(math.Pow(2, float64(bits-ones))) - 2 // Minus two due to network and broadcast addresses
 	for i := 0; i < n_addrs; i++ {
+		// Skip the reserved IP address.
+		if reserved.Equal(calculateIP(addr, uint32(i+1))) == true {
+			continue
+		}
 		if _, err := stmt.Exec(netID, addr.String(), i+1); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func calculateIP(network net.IP, n uint32) net.IP {
+	ip := network.To4()
+	if ip == nil {
+		panic(fmt.Sprintf("invalid IPv4 address: %v", network))
+	}
+	binary.BigEndian.PutUint32(ip, binary.BigEndian.Uint32(ip)+n)
+
+	return ip
 }
 
 func getNetwork(tx *sql.Tx, id uint64) (*ui.Network, error) {

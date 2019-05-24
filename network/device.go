@@ -468,7 +468,7 @@ func (r *Device) SendARPAnnouncement(ip net.IP, mac net.HardwareAddr) error {
 	return r.flood(nil, announcement)
 }
 
-func (r *Device) SendARPProbe(sha net.HardwareAddr, tpa net.IP) error {
+func (r *Device) SendARPProbe(sha net.HardwareAddr, spa, tpa net.IP) error {
 	// Write lock
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -477,7 +477,7 @@ func (r *Device) SendARPProbe(sha net.HardwareAddr, tpa net.IP) error {
 		return ErrClosedDevice
 	}
 
-	probe, err := makeARPProbe(sha, tpa)
+	probe, err := makeARPProbe(sha, spa, tpa)
 	if err != nil {
 		return err
 	}
@@ -485,9 +485,8 @@ func (r *Device) SendARPProbe(sha net.HardwareAddr, tpa net.IP) error {
 	return r.flood(nil, probe)
 }
 
-func makeARPProbe(sha net.HardwareAddr, tpa net.IP) ([]byte, error) {
-	// 192.0.2.1 is one of the reserved addresses (TEST-NET-1). See RFC 5737.
-	arp := protocol.NewARPRequest(sha, net.HardwareAddr([]byte{0, 0, 0, 0, 0, 0}), net.IPv4(192, 0, 2, 1), tpa)
+func makeARPProbe(sha net.HardwareAddr, spa, tpa net.IP) ([]byte, error) {
+	arp := protocol.NewARPRequest(sha, net.HardwareAddr([]byte{0, 0, 0, 0, 0, 0}), spa, tpa)
 	probe, err := arp.MarshalBinary()
 	if err != nil {
 		return nil, err
