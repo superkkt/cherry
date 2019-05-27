@@ -1598,9 +1598,10 @@ func calculateIP(network net.IP, n uint32) net.IP {
 	if ip == nil {
 		panic(fmt.Sprintf("invalid IPv4 address: %v", network))
 	}
-	binary.BigEndian.PutUint32(ip, binary.BigEndian.Uint32(ip)+n)
+	res := net.IPv4zero.To4()
+	binary.BigEndian.PutUint32(res, binary.BigEndian.Uint32(ip)+n)
 
-	return ip
+	return res
 }
 
 func getNetwork(tx *sql.Tx, id uint64) (*ui.Network, error) {
