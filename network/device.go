@@ -435,21 +435,8 @@ func (r *Device) RemoveFlowByMAC(mac net.HardwareAddr) error {
 	return r.session.Write(flowmod)
 }
 
-func makeARPAnnouncement(ip net.IP, mac net.HardwareAddr) ([]byte, error) {
-	v := protocol.NewARPRequest(mac, net.HardwareAddr([]byte{0, 0, 0, 0, 0, 0}), ip, ip)
-	anon, err := v.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
-	eth := protocol.Ethernet{
-		SrcMAC:  mac,
-		DstMAC:  net.HardwareAddr([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}),
-		Type:    0x0806,
-		Payload: anon,
-	}
-
-	return eth.MarshalBinary()
-}
+// NullMAC is a random local MAC address, which does not belong to any host, to disconnect a host from the network.
+var NullMAC = net.HardwareAddr([]byte{0x06, 0xff, 0x01, 0x21, 0x09, 0x03})
 
 func (r *Device) SendARPAnnouncement(ip net.IP, mac net.HardwareAddr) error {
 	// Write lock
@@ -460,7 +447,7 @@ func (r *Device) SendARPAnnouncement(ip net.IP, mac net.HardwareAddr) error {
 		return ErrClosedDevice
 	}
 
-	announcement, err := makeARPAnnouncement(ip, mac)
+	announcement, err := newARPRequestFrame(mac, ip, ip)
 	if err != nil {
 		return err
 	}
@@ -468,7 +455,7 @@ func (r *Device) SendARPAnnouncement(ip net.IP, mac net.HardwareAddr) error {
 	return r.flood(nil, announcement)
 }
 
-func (r *Device) SendARPProbe(sha net.HardwareAddr, spa, tpa net.IP) error {
+func (r *Device) SendARPDiscovery(sha net.HardwareAddr, spa, tpa net.IP) error {
 	// Write lock
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -477,7 +464,7 @@ func (r *Device) SendARPProbe(sha net.HardwareAddr, spa, tpa net.IP) error {
 		return ErrClosedDevice
 	}
 
-	probe, err := makeARPProbe(sha, spa, tpa)
+	probe, err := newARPRequestFrame(sha, spa, tpa)
 	if err != nil {
 		return err
 	}
@@ -485,9 +472,9 @@ func (r *Device) SendARPProbe(sha net.HardwareAddr, spa, tpa net.IP) error {
 	return r.flood(nil, probe)
 }
 
-func makeARPProbe(sha net.HardwareAddr, spa, tpa net.IP) ([]byte, error) {
+func newARPRequestFrame(sha net.HardwareAddr, spa, tpa net.IP) ([]byte, error) {
 	arp := protocol.NewARPRequest(sha, net.HardwareAddr([]byte{0, 0, 0, 0, 0, 0}), spa, tpa)
-	probe, err := arp.MarshalBinary()
+	req, err := arp.MarshalBinary()
 	if err != nil {
 		return nil, err
 	}
@@ -495,7 +482,7 @@ func makeARPProbe(sha net.HardwareAddr, spa, tpa net.IP) ([]byte, error) {
 		SrcMAC:  sha,
 		DstMAC:  net.HardwareAddr([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}),
 		Type:    0x0806,
-		Payload: probe,
+		Payload: req,
 	}
 
 	return eth.MarshalBinary()

@@ -114,7 +114,7 @@ func (r *processor) runARPSender(device *network.Device) {
 			default:
 			}
 
-			if err := r.sendARPProbes(device); err != nil {
+			if err := r.sendARPDiscovery(device); err != nil {
 				logger.Errorf("failed to send ARP probes: %v", err)
 				// Ignore this error and keep go on.
 			}
@@ -126,7 +126,7 @@ func (r *processor) runARPSender(device *network.Device) {
 	r.canceller[device.ID()] = cancel
 }
 
-func (r *processor) sendARPProbes(device *network.Device) error {
+func (r *processor) sendARPDiscovery(device *network.Device) error {
 	if device.IsClosed() {
 		return fmt.Errorf("already closed deivce: id=%v", device.ID())
 	}
@@ -141,7 +141,7 @@ func (r *processor) sendARPProbes(device *network.Device) error {
 			return err
 		}
 
-		if err := device.SendARPProbe(myMAC, reserved, addr.IP); err != nil {
+		if err := device.SendARPDiscovery(myMAC, reserved, addr.IP); err != nil {
 			return err
 		}
 		logger.Debugf("sent an ARP probe for %v on %v", addr.IP, device.ID())

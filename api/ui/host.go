@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"github.com/superkkt/cherry/api"
+	"github.com/superkkt/cherry/network"
 
 	"github.com/ant0ine/go-json-rest/rest"
 	"github.com/davecgh/go-spew/spew"
@@ -322,7 +323,7 @@ func (r *API) updateHost(w api.ResponseWriter, req *rest.Request) {
 
 	logger.Debugf("updated host info: %v", spew.Sdump(new))
 
-	if err := r.announce(old.IP, "00:00:00:00:00:00"); err != nil {
+	if err := r.announce(old.IP, network.NullMAC.String()); err != nil {
 		// Ignore this error.
 		logger.Errorf("failed to send ARP announcement: %v", err)
 	}
@@ -486,7 +487,7 @@ func (r *API) deactivateHost(w api.ResponseWriter, req *rest.Request) {
 	}
 	logger.Debugf("deactivated host info: %v", spew.Sdump(host))
 
-	if err := r.announce(host.IP, "00:00:00:00:00:00"); err != nil {
+	if err := r.announce(host.IP, network.NullMAC.String()); err != nil {
 		// Ignore this error.
 		logger.Errorf("failed to send ARP announcement: %v", err)
 	}
@@ -552,7 +553,7 @@ func (r *API) removeHost(w api.ResponseWriter, req *rest.Request) {
 	}
 	logger.Debugf("removed host info: %v", spew.Sdump(host))
 
-	if err := r.announce(host.IP, "00:00:00:00:00:00"); err != nil {
+	if err := r.announce(host.IP, network.NullMAC.String()); err != nil {
 		// Ignore this error.
 		logger.Errorf("failed to send ARP announcement: %v", err)
 	}

@@ -873,8 +873,6 @@ func (r *MySQL) GetARPTable() (result []announcer.ARPTableEntry, err error) {
 	return result, nil
 }
 
-const zeroMAC = "000000000000"
-
 func updateARPTableEntryByHost(tx *sql.Tx, id uint64, invalidate bool) error {
 	var ip, mac string
 	qry := "SELECT INET_NTOA(B.`address`), HEX(A.`mac`) "
@@ -885,7 +883,7 @@ func updateARPTableEntryByHost(tx *sql.Tx, id uint64, invalidate bool) error {
 		return err
 	}
 	if invalidate == true {
-		mac = zeroMAC
+		mac = encodeMAC(network.NullMAC)
 	}
 
 	return updateARPTableEntry(tx, ip, mac)
@@ -902,7 +900,7 @@ func updateARPTableEntryByVIP(tx *sql.Tx, id uint64, invalidate bool) error {
 		return err
 	}
 	if invalidate == true {
-		mac = zeroMAC
+		mac = encodeMAC(network.NullMAC)
 	}
 
 	return updateARPTableEntry(tx, ip, mac)

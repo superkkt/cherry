@@ -31,6 +31,7 @@ import (
 	"fmt"
 
 	"github.com/superkkt/cherry/api"
+	"github.com/superkkt/cherry/network"
 
 	"github.com/ant0ine/go-json-rest/rest"
 	"github.com/davecgh/go-spew/spew"
@@ -220,7 +221,7 @@ func (r *API) removeVIP(w api.ResponseWriter, req *rest.Request) {
 	}
 	logger.Debugf("removed the VIP: %v", spew.Sdump(vip))
 
-	if err := r.announce(vip.IP, "00:00:00:00:00:00"); err != nil {
+	if err := r.announce(vip.IP, network.NullMAC.String()); err != nil {
 		// Ignore this error.
 		logger.Errorf("failed to send ARP announcement: %v", err)
 	}
