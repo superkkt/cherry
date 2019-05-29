@@ -45,7 +45,11 @@ type IP struct {
 	Address string `json:"address"` // FIXME: Use a native type.
 	Used    bool   `json:"used"`
 	Port    string `json:"port"`
-	Host    string `json:"host"`
+	Host    struct {
+		Description string `json:"description"`
+		Enabled     bool   `json:"enabled"`
+		Stale       bool   `json:"stale"`
+	} `json:"host"`
 }
 
 func (r *API) listIP(w api.ResponseWriter, req *rest.Request) {
