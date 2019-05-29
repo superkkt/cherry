@@ -40,18 +40,19 @@ import (
 type LogType string
 
 const (
-	LogTypeUser     LogType = "USER"
-	LogTypeGroup    LogType = "GROUP"
-	LogTypeSwitch   LogType = "SWITCH"
-	LogTypeNetwork  LogType = "NETWORK"
-	LogTypeHost     LogType = "HOST"
-	LogTypeVIP      LogType = "VIP"
-	LogTypeCategory LogType = "CATEGORY"
+	LogTypeUser      LogType = "USER"
+	LogTypeGroup     LogType = "GROUP"
+	LogTypeSwitch    LogType = "SWITCH"
+	LogTypeNetwork   LogType = "NETWORK"
+	LogTypeHost      LogType = "HOST"
+	LogTypeVIP       LogType = "VIP"
+	LogTypeCategory  LogType = "CATEGORY"
+	LogTypeComponent LogType = "COMPONENT"
 )
 
 func (r LogType) Validate() error {
-	if r != LogTypeUser && r != LogTypeGroup && r != LogTypeSwitch &&
-		r != LogTypeNetwork && r != LogTypeHost && r != LogTypeVIP && r != LogTypeCategory {
+	if r != LogTypeUser && r != LogTypeGroup && r != LogTypeSwitch && r != LogTypeNetwork &&
+		r != LogTypeHost && r != LogTypeVIP && r != LogTypeCategory && r != LogTypeComponent {
 		return fmt.Errorf("invalid log type: %v", r)
 	}
 
