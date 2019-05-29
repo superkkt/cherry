@@ -49,8 +49,8 @@ type HostTransaction interface {
 	Host(id uint64) (*Host, error)
 	// Hosts returns a list of registered hosts. Search can be nil that means no search. Pagination limit can be 0 that means no pagination.
 	Hosts(*Search, Sort, Pagination) ([]*Host, error)
-	AddHost(requesterID, ipID uint64, groupID *uint64, mac net.HardwareAddr, desc string) (host *Host, duplicated bool, err error)
-	UpdateHost(requesterID, hostID, ipID uint64, groupID *uint64, mac net.HardwareAddr, desc string) (host *Host, duplicated bool, err error)
+	AddHost(requesterID, ipID uint64, groupID *uint64, mac net.HardwareAddr, desc string, spec []SpecParam) (host *Host, duplicated bool, err error)
+	UpdateHost(requesterID, hostID, ipID uint64, groupID *uint64, mac net.HardwareAddr, desc string, spec []SpecParam) (host *Host, duplicated bool, err error)
 	// ActivateHost enables a host specified by id and then returns information of the host. It returns nil if the host does not exist.
 	ActivateHost(requesterID, hostID uint64) (*Host, error)
 	// DeactivateHost disables a host specified by id and then returns information of the host. It returns nil if the host does not exist.
@@ -69,20 +69,22 @@ type Host struct {
 	Description string
 	Enabled     bool
 	Stale       bool
+	Spec        []*Spec
 	Timestamp   time.Time
 }
 
 func (r *Host) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		ID          uint64 `json:"id"`
-		IP          string `json:"ip"`
-		Port        string `json:"port"`
-		Group       string `json:"group"`
-		MAC         string `json:"mac"`
-		Description string `json:"description"`
-		Enabled     bool   `json:"enabled"`
-		Stale       bool   `json:"stale"`
-		Timestamp   int64  `json:"timestamp"`
+		ID          uint64  `json:"id"`
+		IP          string  `json:"ip"`
+		Port        string  `json:"port"`
+		Group       string  `json:"group"`
+		MAC         string  `json:"mac"`
+		Description string  `json:"description"`
+		Enabled     bool    `json:"enabled"`
+		Stale       bool    `json:"stale"`
+		Spec        []*Spec `json:"spec"`
+		Timestamp   int64   `json:"timestamp"`
 	}{
 		ID:          r.ID,
 		IP:          r.IP,
@@ -92,8 +94,15 @@ func (r *Host) MarshalJSON() ([]byte, error) {
 		Description: r.Description,
 		Enabled:     r.Enabled,
 		Stale:       r.Stale,
+		Spec:        r.Spec,
 		Timestamp:   r.Timestamp.Unix(),
 	})
+}
+
+type Spec struct {
+	ID        uint64    `json:"id"`
+	Component Component `json:"component"`
+	Count     uint16    `json:"count"`
 }
 
 func (r *API) listHost(w api.ResponseWriter, req *rest.Request) {
@@ -182,7 +191,7 @@ func (r *API) addHost(w api.ResponseWriter, req *rest.Request) {
 	var host []*Host
 	f := func(tx Transaction) (err error) {
 		for _, v := range p.IPID {
-			h, duplicated, err := tx.AddHost(session.(*User).ID, v, p.GroupID, p.MAC, p.Description)
+			h, duplicated, err := tx.AddHost(session.(*User).ID, v, p.GroupID, p.MAC, p.Description, p.Spec)
 			if err != nil {
 				return err
 			}
@@ -222,15 +231,17 @@ type addHostParam struct {
 	GroupID     *uint64
 	MAC         net.HardwareAddr
 	Description string
+	Spec        []SpecParam
 }
 
 func (r *addHostParam) UnmarshalJSON(data []byte) error {
 	v := struct {
-		SessionID   string   `json:"session_id"`
-		IPID        []uint64 `json:"ip_id"`
-		GroupID     *uint64  `json:"group_id"`
-		MAC         string   `json:"mac"`
-		Description string   `json:"description"`
+		SessionID   string      `json:"session_id"`
+		IPID        []uint64    `json:"ip_id"`
+		GroupID     *uint64     `json:"group_id"`
+		MAC         string      `json:"mac"`
+		Description string      `json:"description"`
+		Spec        []SpecParam `json:"spec"`
 	}{}
 	if err := json.Unmarshal(data, &v); err != nil {
 		return err
@@ -257,12 +268,34 @@ func (r *addHostParam) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
+	for _, v := range r.Spec {
+		if err := v.Validate(); err != nil {
+			return err
+		}
+	}
 
 	r.SessionID = v.SessionID
 	r.IPID = v.IPID
 	r.GroupID = v.GroupID
 	r.MAC = mac
 	r.Description = v.Description
+	r.Spec = v.Spec
+
+	return nil
+}
+
+type SpecParam struct {
+	ComponentID uint64 `json:"component_id"`
+	Count       uint16 `json:"count"`
+}
+
+func (r *SpecParam) Validate() error {
+	if r.ComponentID == 0 {
+		return errors.New("invalid component id")
+	}
+	if r.Count == 0 {
+		return errors.New("invalid count")
+	}
 
 	return nil
 }
@@ -302,7 +335,7 @@ func (r *API) updateHost(w api.ResponseWriter, req *rest.Request) {
 			return errBlocked
 		}
 
-		h, duplicated, err := tx.UpdateHost(session.(*User).ID, p.ID, p.IPID, p.GroupID, p.MAC, p.Description)
+		h, duplicated, err := tx.UpdateHost(session.(*User).ID, p.ID, p.IPID, p.GroupID, p.MAC, p.Description, p.Spec)
 		if err != nil {
 			return err
 		}
@@ -348,16 +381,18 @@ type updateHostParam struct {
 	GroupID     *uint64
 	MAC         net.HardwareAddr
 	Description string
+	Spec        []SpecParam
 }
 
 func (r *updateHostParam) UnmarshalJSON(data []byte) error {
 	v := struct {
-		SessionID   string  `json:"session_id"`
-		ID          uint64  `json:"id"`
-		IPID        uint64  `json:"ip_id"`
-		GroupID     *uint64 `json:"group_id"`
-		MAC         string  `json:"mac"`
-		Description string  `json:"description"`
+		SessionID   string      `json:"session_id"`
+		ID          uint64      `json:"id"`
+		IPID        uint64      `json:"ip_id"`
+		GroupID     *uint64     `json:"group_id"`
+		MAC         string      `json:"mac"`
+		Description string      `json:"description"`
+		Spec        []SpecParam `json:"spec"`
 	}{}
 	if err := json.Unmarshal(data, &v); err != nil {
 		return err
@@ -379,6 +414,11 @@ func (r *updateHostParam) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
+	for _, v := range r.Spec {
+		if err := v.Validate(); err != nil {
+			return err
+		}
+	}
 
 	r.SessionID = v.SessionID
 	r.ID = v.ID
@@ -386,6 +426,7 @@ func (r *updateHostParam) UnmarshalJSON(data []byte) error {
 	r.GroupID = v.GroupID
 	r.MAC = mac
 	r.Description = v.Description
+	r.Spec = v.Spec
 
 	return nil
 }
