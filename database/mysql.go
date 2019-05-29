@@ -1597,9 +1597,13 @@ func (r *uiTx) IPAddrs(networkID uint64) (address []*ui.IP, err error) {
 	return address, nil
 }
 
-func (r *uiTx) Networks(pagination ui.Pagination) (network []*ui.Network, err error) {
+func (r *uiTx) Networks(address *string, pagination ui.Pagination) (network []*ui.Network, err error) {
 	qry := "SELECT `id`, INET_NTOA(`address`), `mask` "
 	qry += "FROM `network` "
+	if address != nil {
+		start, end := rangeIP(*address)
+		qry += fmt.Sprintf("WHERE `address` BETWEEN %v AND %v ", start, end)
+	}
 	qry += "ORDER BY `address` ASC, `mask` ASC "
 	if pagination.Limit > 0 {
 		qry += fmt.Sprintf("LIMIT %v, %v", pagination.Offset, pagination.Limit)
