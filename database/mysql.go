@@ -1565,13 +1565,20 @@ func removeHost(tx *sql.Tx, id uint64) error {
 }
 
 func (r *uiTx) IPAddrs(networkID uint64) (address []*ui.IP, err error) {
-	qry := "SELECT A.`id`, INET_NTOA(A.`address`), A.`used`, C.`description`, IFNULL(CONCAT(E.`description`, '/', D.`number` - E.`first_port` + E.`first_printed_port`), '') "
+	qry := "SELECT A.`id`, "                                                                                        // ID
+	qry += "       INET_NTOA(A.`address`), "                                                                        // Address
+	qry += "       A.`used`, "                                                                                      // Used
+	qry += "       C.`description`, "                                                                               // Host Description
+	qry += "       C.`enabled`, "                                                                                   // Host Enabled
+	qry += "       C.`last_updated_timestamp`, "                                                                    // Host Stale
+	qry += "       IFNULL(CONCAT(E.`description`, '/', D.`number` - E.`first_port` + E.`first_printed_port`), '') " // Port
 	qry += "FROM `ip` A "
 	qry += "JOIN `network` B ON A.`network_id` = B.`id` "
 	qry += "LEFT JOIN `host` C ON C.`ip_id` = A.`id` "
 	qry += "LEFT JOIN `port` D ON D.`id` = C.`port_id` "
 	qry += "LEFT JOIN `switch` E ON E.`id` = D.`switch_id` "
-	qry += "WHERE A.`network_id` = ?"
+	qry += "WHERE A.`network_id` = ? "
+	qry += "ORDER BY A.`address` ASC"
 
 	rows, err := r.handle.Query(qry, networkID)
 	if err != nil {
@@ -1582,12 +1589,21 @@ func (r *uiTx) IPAddrs(networkID uint64) (address []*ui.IP, err error) {
 	address = []*ui.IP{}
 	for rows.Next() {
 		v := new(ui.IP)
-		var host, port sql.NullString
-		if err := rows.Scan(&v.ID, &v.Address, &v.Used, &host, &port); err != nil {
+		var desc, port sql.NullString
+		var enabled sql.NullBool
+		var timestamp *time.Time
+		if err := rows.Scan(&v.ID, &v.Address, &v.Used, &desc, &enabled, &timestamp, &port); err != nil {
 			return nil, err
 		}
-		v.Host = host.String
+
+		v.Host.Description = desc.String
+		v.Host.Enabled = enabled.Bool
 		v.Port = port.String
+		// Check its freshness.
+		if timestamp != nil && (time.Now().Sub(*timestamp) > discovery.ProbeInterval*2) {
+			v.Host.Stale = true
+		}
+
 		address = append(address, v)
 	}
 	if err := rows.Err(); err != nil {
