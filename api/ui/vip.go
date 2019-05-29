@@ -39,11 +39,11 @@ import (
 
 type VIPTransaction interface {
 	VIPs(Pagination) ([]*VIP, error)
-	AddVIP(ipID, activeID, standbyID uint64, desc string) (vip *VIP, duplicated bool, err error)
+	AddVIP(requesterID, ipID, activeID, standbyID uint64, desc string) (vip *VIP, duplicated bool, err error)
 	// RemoveVIP removes a VIP specified by id and then returns information of the VIP before removing. It returns nil if the VIP does not exist.
-	RemoveVIP(id uint64) (*VIP, error)
+	RemoveVIP(requesterID, vipID uint64) (*VIP, error)
 	// ToggleVIP swaps active host and standby host of a VIP specified by id and then returns information of the VIP. It returns nil if the VIP does not exist.
-	ToggleVIP(id uint64) (*VIP, error)
+	ToggleVIP(requesterID, vipID uint64) (*VIP, error)
 }
 
 type VIP struct {
@@ -118,7 +118,8 @@ func (r *API) addVIP(w api.ResponseWriter, req *rest.Request) {
 	}
 	logger.Debugf("addVIP request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
-	if _, ok := r.session.Get(p.SessionID); ok == false {
+	session, ok := r.session.Get(p.SessionID)
+	if ok == false {
 		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
@@ -126,7 +127,7 @@ func (r *API) addVIP(w api.ResponseWriter, req *rest.Request) {
 	var vip *VIP
 	var duplicated bool
 	f := func(tx Transaction) (err error) {
-		vip, duplicated, err = tx.AddVIP(p.IPID, p.ActiveHostID, p.StandbyHostID, p.Description)
+		vip, duplicated, err = tx.AddVIP(session.(*User).ID, p.IPID, p.ActiveHostID, p.StandbyHostID, p.Description)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
@@ -200,14 +201,15 @@ func (r *API) removeVIP(w api.ResponseWriter, req *rest.Request) {
 	}
 	logger.Debugf("removeVIP request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
-	if _, ok := r.session.Get(p.SessionID); ok == false {
+	session, ok := r.session.Get(p.SessionID)
+	if ok == false {
 		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
 
 	var vip *VIP
 	f := func(tx Transaction) (err error) {
-		vip, err = tx.RemoveVIP(p.ID)
+		vip, err = tx.RemoveVIP(session.(*User).ID, p.ID)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
@@ -266,14 +268,15 @@ func (r *API) toggleVIP(w api.ResponseWriter, req *rest.Request) {
 	}
 	logger.Debugf("toggleVIP request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
-	if _, ok := r.session.Get(p.SessionID); ok == false {
+	session, ok := r.session.Get(p.SessionID)
+	if ok == false {
 		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
 
 	var vip *VIP
 	f := func(tx Transaction) (err error) {
-		vip, err = tx.ToggleVIP(p.ID)
+		vip, err = tx.ToggleVIP(session.(*User).ID, p.ID)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {

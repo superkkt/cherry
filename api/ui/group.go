@@ -40,11 +40,11 @@ import (
 type GroupTransaction interface {
 	// Groups returns a list of registered groups. Pagination limit can be 0 that means no pagination.
 	Groups(Pagination) ([]*Group, error)
-	AddGroup(name string) (group *Group, duplicated bool, err error)
+	AddGroup(requesterID uint64, name string) (group *Group, duplicated bool, err error)
 	// UpdateGroup updates name of a group specified by id and then returns information of the group. It returns nil if the group does not exist.
-	UpdateGroup(id uint64, name string) (group *Group, duplicated bool, err error)
+	UpdateGroup(requesterID, groupID uint64, name string) (group *Group, duplicated bool, err error)
 	// RemoveGroup removes a group specified by id and then returns information of the group before removing. It returns nil if the group does not exist.
-	RemoveGroup(id uint64) (*Group, error)
+	RemoveGroup(requesterID, groupID uint64) (*Group, error)
 }
 
 type Group struct {
@@ -126,7 +126,8 @@ func (r *API) addGroup(w api.ResponseWriter, req *rest.Request) {
 	}
 	logger.Debugf("addGroup request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
-	if _, ok := r.session.Get(p.SessionID); ok == false {
+	session, ok := r.session.Get(p.SessionID)
+	if ok == false {
 		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
@@ -134,7 +135,7 @@ func (r *API) addGroup(w api.ResponseWriter, req *rest.Request) {
 	var group *Group
 	var duplicated bool
 	f := func(tx Transaction) (err error) {
-		group, duplicated, err = tx.AddGroup(p.Name)
+		group, duplicated, err = tx.AddGroup(session.(*User).ID, p.Name)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
@@ -188,7 +189,8 @@ func (r *API) updateGroup(w api.ResponseWriter, req *rest.Request) {
 	}
 	logger.Debugf("updateGroup request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
-	if _, ok := r.session.Get(p.SessionID); ok == false {
+	session, ok := r.session.Get(p.SessionID)
+	if ok == false {
 		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
@@ -196,7 +198,7 @@ func (r *API) updateGroup(w api.ResponseWriter, req *rest.Request) {
 	var group *Group
 	var duplicated bool
 	f := func(tx Transaction) (err error) {
-		group, duplicated, err = tx.UpdateGroup(p.ID, p.Name)
+		group, duplicated, err = tx.UpdateGroup(session.(*User).ID, p.ID, p.Name)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
@@ -204,12 +206,12 @@ func (r *API) updateGroup(w api.ResponseWriter, req *rest.Request) {
 		return
 	}
 
-	if group == nil {
-		w.Write(api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found group to update: %v", p.ID)})
-		return
-	}
 	if duplicated {
 		w.Write(api.Response{Status: api.StatusDuplicated, Message: fmt.Sprintf("duplicated group: %v", p.Name)})
+		return
+	}
+	if group == nil {
+		w.Write(api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found group to update: %v", p.ID)})
 		return
 	}
 	logger.Debugf("updated the group: %v", spew.Sdump(group))
@@ -259,14 +261,15 @@ func (r *API) removeGroup(w api.ResponseWriter, req *rest.Request) {
 	}
 	logger.Debugf("removeGroup request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
-	if _, ok := r.session.Get(p.SessionID); ok == false {
+	session, ok := r.session.Get(p.SessionID)
+	if ok == false {
 		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
 
 	var group *Group
 	f := func(tx Transaction) (err error) {
-		group, err = tx.RemoveGroup(p.ID)
+		group, err = tx.RemoveGroup(session.(*User).ID, p.ID)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {

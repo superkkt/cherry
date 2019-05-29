@@ -41,13 +41,13 @@ type UserTransaction interface {
 	// Auth returns information for a user if name and password match. Otherwise, it returns nil.
 	Auth(name, password string) (*User, error)
 	Users(Pagination) ([]*User, error)
-	AddUser(name, password string) (user *User, duplicated bool, err error)
+	AddUser(requesterID uint64, name, password string) (user *User, duplicated bool, err error)
 	// UpdateUser updates password and admin authorization of a user specified by id and then returns information of the user. It returns nil if the user does not exist.
-	UpdateUser(id uint64, password *string, admin *bool) (*User, error)
+	UpdateUser(requesterID, userID uint64, password *string, admin *bool) (*User, error)
 	// ActivateUser enables a user specified by id and then returns information of the user. It returns nil if the user does not exist.
-	ActivateUser(id uint64) (*User, error)
+	ActivateUser(requesterID, userID uint64) (*User, error)
 	// DeactivateUser disables a user specified by id and then returns information of the user. It returns nil if the user does not exist.
-	DeactivateUser(id uint64) (*User, error)
+	DeactivateUser(requesterID, userID uint64) (*User, error)
 }
 
 type User struct {
@@ -196,8 +196,13 @@ func (r *API) listUser(w api.ResponseWriter, req *rest.Request) {
 	}
 	logger.Debugf("listUser request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
-	if r.validateAdminSession(p.SessionID) == false {
-		w.Write(api.Response{Status: api.StatusPermissionDenied, Message: fmt.Sprintf("not allowed admin session id: %v", p.SessionID)})
+	session, ok := r.session.Get(p.SessionID)
+	if ok == false {
+		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		return
+	}
+	if session.(*User).Admin == false {
+		w.Write(api.Response{Status: api.StatusPermissionDenied, Message: fmt.Sprintf("not allowed session id: %v", p.SessionID)})
 		return
 	}
 
@@ -252,15 +257,20 @@ func (r *API) addUser(w api.ResponseWriter, req *rest.Request) {
 	}
 	logger.Debugf("addUser request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
-	if r.validateAdminSession(p.SessionID) == false {
-		w.Write(api.Response{Status: api.StatusPermissionDenied, Message: fmt.Sprintf("not allowed admin session id: %v", p.SessionID)})
+	session, ok := r.session.Get(p.SessionID)
+	if ok == false {
+		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		return
+	}
+	if session.(*User).Admin == false {
+		w.Write(api.Response{Status: api.StatusPermissionDenied, Message: fmt.Sprintf("not allowed session id: %v", p.SessionID)})
 		return
 	}
 
 	var user *User
 	var duplicated bool
 	f := func(tx Transaction) (err error) {
-		user, duplicated, err = tx.AddUser(p.Name, p.Password)
+		user, duplicated, err = tx.AddUser(session.(*User).ID, p.Name, p.Password)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
@@ -319,20 +329,24 @@ func (r *API) updateUser(w api.ResponseWriter, req *rest.Request) {
 	}
 	logger.Debugf("updateUser request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
-	s, ok := r.session.Get(p.SessionID)
-	if ok == false || (s.(*User).Admin == false && s.(*User).ID != p.ID) {
+	session, ok := r.session.Get(p.SessionID)
+	if ok == false {
+		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		return
+	}
+	if session.(*User).Admin == false && session.(*User).ID != p.ID {
 		w.Write(api.Response{Status: api.StatusPermissionDenied, Message: fmt.Sprintf("not allowed session id: %v", p.SessionID)})
 		return
 	}
 
 	// Non-admin users can modify only password.
-	if s.(*User).Admin == false {
+	if session.(*User).Admin == false {
 		p.Admin = nil
 	}
 
 	var user *User
 	f := func(tx Transaction) (err error) {
-		user, err = tx.UpdateUser(p.ID, p.Password, p.Admin)
+		user, err = tx.UpdateUser(session.(*User).ID, p.ID, p.Password, p.Admin)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
@@ -396,14 +410,19 @@ func (r *API) activateUser(w api.ResponseWriter, req *rest.Request) {
 	}
 	logger.Debugf("activateUser request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
-	if r.validateAdminSession(p.SessionID) == false {
-		w.Write(api.Response{Status: api.StatusPermissionDenied, Message: fmt.Sprintf("not allowed admin session id: %v", p.SessionID)})
+	session, ok := r.session.Get(p.SessionID)
+	if ok == false {
+		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		return
+	}
+	if session.(*User).Admin == false {
+		w.Write(api.Response{Status: api.StatusPermissionDenied, Message: fmt.Sprintf("not allowed session id: %v", p.SessionID)})
 		return
 	}
 
 	var user *User
 	f := func(tx Transaction) (err error) {
-		user, err = tx.ActivateUser(p.ID)
+		user, err = tx.ActivateUser(session.(*User).ID, p.ID)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
@@ -457,14 +476,19 @@ func (r *API) deactivateUser(w api.ResponseWriter, req *rest.Request) {
 	}
 	logger.Debugf("deactivateUser request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
-	if r.validateAdminSession(p.SessionID) == false {
-		w.Write(api.Response{Status: api.StatusPermissionDenied, Message: fmt.Sprintf("not allowed admin session id: %v", p.SessionID)})
+	session, ok := r.session.Get(p.SessionID)
+	if ok == false {
+		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		return
+	}
+	if session.(*User).Admin == false {
+		w.Write(api.Response{Status: api.StatusPermissionDenied, Message: fmt.Sprintf("not allowed session id: %v", p.SessionID)})
 		return
 	}
 
 	var user *User
 	f := func(tx Transaction) (err error) {
-		user, err = tx.DeactivateUser(p.ID)
+		user, err = tx.DeactivateUser(session.(*User).ID, p.ID)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {

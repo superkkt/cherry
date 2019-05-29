@@ -64,6 +64,7 @@ type Transaction interface {
 	IPTransaction
 	HostTransaction
 	VIPTransaction
+	LogTransaction
 }
 
 type Search struct {
@@ -77,7 +78,11 @@ func (r *Search) Validate() error {
 		return validateIP(r.Value)
 	case ColumnMAC:
 		return validateMAC(r.Value)
-	case ColumnPort, ColumnGroup, ColumnDescription:
+	case ColumnLogType:
+		return LogType(r.Value).Validate()
+	case ColumnLogMethod:
+		return LogMethod(r.Value).Validate()
+	case ColumnPort, ColumnGroup, ColumnDescription, ColumnUser:
 		if len(r.Value) == 0 {
 			return errors.New("empty search value")
 		}
@@ -187,6 +192,9 @@ const (
 	ColumnPort
 	ColumnGroup
 	ColumnDescription
+	ColumnUser
+	ColumnLogType
+	ColumnLogMethod
 )
 
 type Order int
@@ -237,16 +245,8 @@ func (r *API) Serve() error {
 		rest.Post("/api/v1/vip/add", api.ResponseHandler(r.addVIP)),
 		rest.Post("/api/v1/vip/remove", api.ResponseHandler(r.removeVIP)),
 		rest.Post("/api/v1/vip/toggle", api.ResponseHandler(r.toggleVIP)),
+		rest.Post("/api/v1/log/list", api.ResponseHandler(r.listLog)),
 	)
-}
-
-func (r *API) validateAdminSession(sessionID string) bool {
-	session, ok := r.session.Get(sessionID)
-	if ok == false {
-		return false
-	}
-
-	return session.(*User).Admin
 }
 
 func (r *API) announce(cidr, mac string) error {

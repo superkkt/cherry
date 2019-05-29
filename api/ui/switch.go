@@ -41,9 +41,9 @@ import (
 
 type SwitchTransaction interface {
 	Switches(Pagination) ([]*Switch, error)
-	AddSwitch(dpid uint64, nPorts, firstPort, firstPrintedPort uint16, desc string) (sw *Switch, duplicated bool, err error)
+	AddSwitch(requesterID, dpid uint64, nPorts, firstPort, firstPrintedPort uint16, desc string) (sw *Switch, duplicated bool, err error)
 	// RemoveSwitch removes a switch specified by id and then returns information of the switch before removing. It returns nil if the switch does not exist.
-	RemoveSwitch(id uint64) (*Switch, error)
+	RemoveSwitch(requesterID, swID uint64) (*Switch, error)
 }
 
 type Switch struct {
@@ -149,7 +149,8 @@ func (r *API) addSwitch(w api.ResponseWriter, req *rest.Request) {
 	}
 	logger.Debugf("addSwitch request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
-	if _, ok := r.session.Get(p.SessionID); ok == false {
+	session, ok := r.session.Get(p.SessionID)
+	if ok == false {
 		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
@@ -157,7 +158,7 @@ func (r *API) addSwitch(w api.ResponseWriter, req *rest.Request) {
 	var sw *Switch
 	var duplicated bool
 	f := func(tx Transaction) (err error) {
-		sw, duplicated, err = tx.AddSwitch(p.DPID, p.NumPorts, p.FirstPort, p.FirstPrintedPort, p.Description)
+		sw, duplicated, err = tx.AddSwitch(session.(*User).ID, p.DPID, p.NumPorts, p.FirstPort, p.FirstPrintedPort, p.Description)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
@@ -245,14 +246,15 @@ func (r *API) removeSwitch(w api.ResponseWriter, req *rest.Request) {
 	}
 	logger.Debugf("removeSwitch request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
-	if _, ok := r.session.Get(p.SessionID); ok == false {
+	session, ok := r.session.Get(p.SessionID)
+	if ok == false {
 		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
 
 	var sw *Switch
 	f := func(tx Transaction) (err error) {
-		sw, err = tx.RemoveSwitch(p.ID)
+		sw, err = tx.RemoveSwitch(session.(*User).ID, p.ID)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
