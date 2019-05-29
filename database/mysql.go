@@ -2321,10 +2321,11 @@ const (
 	logTypeHost
 	logTypeVIP
 	logTypeCategory
+	logTypeComponent
 )
 
 func (r logType) validate() error {
-	if r <= logTypeInvalid || r > logTypeCategory {
+	if r <= logTypeInvalid || r > logTypeComponent {
 		return fmt.Errorf("invalid log type: %v", r)
 	}
 
@@ -2486,4 +2487,131 @@ func (r *uiTx) RemoveCategory(requesterID, categoryID uint64) (category *ui.Cate
 	}
 
 	return category, nil
+}
+
+func (r *uiTx) Components(categoryID uint64, pagination ui.Pagination) (component []*ui.Component, err error) {
+	qry := "SELECT A.`id`, A.`name`, A.`timestamp`, B.`id`, B.`name`, B.`timestamp` "
+	qry += "FROM `component` A "
+	qry += "JOIN `category` B ON A.`category_id` = B.`id` "
+	qry += "WHERE B.`id`= ? "
+	qry += "ORDER BY A.`id` DESC "
+	if pagination.Limit > 0 {
+		qry += fmt.Sprintf("LIMIT %v, %v", pagination.Offset, pagination.Limit)
+	}
+
+	rows, err := r.handle.Query(qry, categoryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	component = []*ui.Component{}
+	for rows.Next() {
+		v := new(ui.Component)
+		if err := rows.Scan(&v.ID, &v.Name, &v.Timestamp, &v.Category.ID, &v.Category.Name, &v.Category.Timestamp); err != nil {
+			return nil, err
+		}
+
+		component = append(component, v)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return component, nil
+}
+
+func (r *uiTx) AddComponent(requesterID, categoryID uint64, name string) (component *ui.Component, duplicated bool, err error) {
+	qry := "INSERT INTO `component` (`category_id`, `name`, `timestamp`) VALUES (?, ?, NOW())"
+	result, err := r.handle.Exec(qry, categoryID, name)
+	if err != nil {
+		if isDuplicated(err) {
+			return nil, true, nil
+		}
+		return nil, false, err
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return nil, false, err
+	}
+	component, err = getComponent(r.handle, uint64(id))
+	if err != nil {
+		return nil, false, err
+	}
+
+	if err := r.log(requesterID, logTypeComponent, logMethodAdd, component); err != nil {
+		return nil, false, err
+	}
+
+	return component, false, nil
+}
+
+func getComponent(tx *sql.Tx, id uint64) (component *ui.Component, err error) {
+	qry := "SELECT A.`id`, A.`name`, A.`timestamp`, B.`id`, B.`name`, B.`timestamp` "
+	qry += "FROM `component` A "
+	qry += "JOIN `category` B ON A.`category_id` = B.`id` "
+	qry += "WHERE A.`id` = ?"
+
+	v := new(ui.Component)
+	if err := tx.QueryRow(qry, id).Scan(&v.ID, &v.Name, &v.Timestamp, &v.Category.ID, &v.Category.Name, &v.Category.Timestamp); err != nil {
+		return nil, err
+	}
+
+	return v, nil
+}
+
+func (r *uiTx) UpdateComponent(requesterID, componentID uint64, name string) (component *ui.Component, duplicated bool, err error) {
+	qry := "UPDATE `component` SET `name` = ? WHERE `id` = ?"
+	result, err := r.handle.Exec(qry, name, componentID)
+	if err != nil {
+		if isDuplicated(err) {
+			return nil, true, nil
+		}
+		return nil, false, err
+	}
+
+	nRows, err := result.RowsAffected()
+	if err != nil {
+		return nil, false, err
+	}
+	// Not found component to update.
+	if nRows == 0 {
+		return nil, false, nil
+	}
+
+	component, err = getComponent(r.handle, componentID)
+	if err != nil {
+		return nil, false, err
+	}
+
+	if err := r.log(requesterID, logTypeComponent, logMethodUpdate, component); err != nil {
+		return nil, false, err
+	}
+
+	return component, false, nil
+}
+
+func (r *uiTx) RemoveComponent(requesterID, componentID uint64) (component *ui.Component, err error) {
+	component, err = getComponent(r.handle, componentID)
+	if err != nil {
+		// Not found component to remove.
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	if _, err := r.handle.Exec("DELETE FROM `component` WHERE `id` = ?", componentID); err != nil {
+		if isForeignkeyErr(err) {
+			return nil, errors.New("failed to remove a component: it has child specs that are being used by component")
+		}
+		return nil, err
+	}
+
+	if err := r.log(requesterID, logTypeComponent, logMethodRemove, component); err != nil {
+		return nil, err
+	}
+
+	return component, nil
 }

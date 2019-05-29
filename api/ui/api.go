@@ -66,6 +66,7 @@ type Transaction interface {
 	VIPTransaction
 	LogTransaction
 	CategoryTransaction
+	ComponentTransaction
 }
 
 type Search struct {
@@ -251,6 +252,10 @@ func (r *API) Serve() error {
 		rest.Post("/api/v1/category/add", api.ResponseHandler(r.addCategory)),
 		rest.Post("/api/v1/category/update", api.ResponseHandler(r.updateCategory)),
 		rest.Post("/api/v1/category/remove", api.ResponseHandler(r.removeCategory)),
+		rest.Post("/api/v1/component/list", api.ResponseHandler(r.listComponent)),
+		rest.Post("/api/v1/component/add", api.ResponseHandler(r.addComponent)),
+		rest.Post("/api/v1/component/update", api.ResponseHandler(r.updateComponent)),
+		rest.Post("/api/v1/component/remove", api.ResponseHandler(r.removeComponent)),
 	)
 }
 
