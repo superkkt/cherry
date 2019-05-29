@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS `group` (
 CREATE TABLE IF NOT EXISTS `log` (
   `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   `user_id` bigint(20) unsigned NOT NULL,
-  `type` ENUM('USER', 'GROUP', 'SWITCH', 'NETWORK', 'HOST', 'VIP') NOT NULL,
+  `type` ENUM('USER', 'GROUP', 'SWITCH', 'NETWORK', 'HOST', 'VIP', 'CATEGORY') NOT NULL,
   `method` ENUM('ADD', 'UPDATE', 'REMOVE') NOT NULL,
   `data` JSON NOT NULL,
   `timestamp` TIMESTAMP NOT NULL,
@@ -65,6 +65,21 @@ CREATE TABLE IF NOT EXISTS `log` (
   KEY `type` (`type`),
   KEY `method` (`method`),
   CONSTRAINT `log_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `category`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE IF NOT EXISTS `category` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  `timestamp` TIMESTAMP NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `name` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 

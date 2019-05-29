@@ -2320,10 +2320,11 @@ const (
 	logTypeNetwork
 	logTypeHost
 	logTypeVIP
+	logTypeCategory
 )
 
 func (r logType) validate() error {
-	if r <= logTypeInvalid || r > logTypeVIP {
+	if r <= logTypeInvalid || r > logTypeCategory {
 		return fmt.Errorf("invalid log type: %v", r)
 	}
 
@@ -2362,4 +2363,127 @@ func (r *uiTx) log(userID uint64, t logType, m logMethod, data interface{}) erro
 	qry := "INSERT INTO `log` (`user_id`, `type`, `method`, `data`, `timestamp`) VALUES (?, ?, ?, ?, NOW())"
 	_, err = r.handle.Exec(qry, userID, t, m, b)
 	return err
+}
+
+func (r *uiTx) Categories(pagination ui.Pagination) (category []*ui.Category, err error) {
+	qry := "SELECT `id`, `name`, `timestamp` "
+	qry += "FROM `category` "
+	qry += "ORDER BY `id` DESC "
+	if pagination.Limit > 0 {
+		qry += fmt.Sprintf("LIMIT %v, %v", pagination.Offset, pagination.Limit)
+	}
+
+	rows, err := r.handle.Query(qry)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	category = []*ui.Category{}
+	for rows.Next() {
+		v := new(ui.Category)
+		if err := rows.Scan(&v.ID, &v.Name, &v.Timestamp); err != nil {
+			return nil, err
+		}
+		category = append(category, v)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return category, nil
+}
+
+func (r *uiTx) AddCategory(requesterID uint64, name string) (category *ui.Category, duplicated bool, err error) {
+	qry := "INSERT INTO `category` (`name`, `timestamp`) VALUES (?, NOW())"
+	result, err := r.handle.Exec(qry, name)
+	if err != nil {
+		if isDuplicated(err) {
+			return nil, true, nil
+		}
+		return nil, false, err
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return nil, false, err
+	}
+	category, err = getCategory(r.handle, uint64(id))
+	if err != nil {
+		return nil, false, err
+	}
+
+	if err := r.log(requesterID, logTypeCategory, logMethodAdd, category); err != nil {
+		return nil, false, err
+	}
+
+	return category, false, nil
+}
+
+func getCategory(tx *sql.Tx, id uint64) (category *ui.Category, err error) {
+	qry := "SELECT `id`, `name`, `timestamp` "
+	qry += "FROM `category` "
+	qry += "WHERE `id` = ?"
+
+	v := new(ui.Category)
+	if err := tx.QueryRow(qry, id).Scan(&v.ID, &v.Name, &v.Timestamp); err != nil {
+		return nil, err
+	}
+
+	return v, nil
+}
+
+func (r *uiTx) UpdateCategory(requesterID, categoryID uint64, name string) (category *ui.Category, duplicated bool, err error) {
+	qry := "UPDATE `category` SET `name` = ? WHERE `id` = ?"
+	result, err := r.handle.Exec(qry, name, categoryID)
+	if err != nil {
+		if isDuplicated(err) {
+			return nil, true, nil
+		}
+		return nil, false, err
+	}
+
+	nRows, err := result.RowsAffected()
+	if err != nil {
+		return nil, false, err
+	}
+	// Not found category to update.
+	if nRows == 0 {
+		return nil, false, nil
+	}
+
+	category, err = getCategory(r.handle, categoryID)
+	if err != nil {
+		return nil, false, err
+	}
+
+	if err := r.log(requesterID, logTypeCategory, logMethodUpdate, category); err != nil {
+		return nil, false, err
+	}
+
+	return category, false, nil
+}
+
+func (r *uiTx) RemoveCategory(requesterID, categoryID uint64) (category *ui.Category, err error) {
+	category, err = getCategory(r.handle, categoryID)
+	if err != nil {
+		// Not found category to remove.
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	if _, err = r.handle.Exec("DELETE FROM `category` WHERE `id` = ?", categoryID); err != nil {
+		if isForeignkeyErr(err) {
+			return nil, errors.New("failed to remove a category: it has child components that are being used by category")
+		}
+		return nil, err
+	}
+
+	if err := r.log(requesterID, logTypeCategory, logMethodRemove, category); err != nil {
+		return nil, err
+	}
+
+	return category, nil
 }
