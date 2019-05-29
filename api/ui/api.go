@@ -65,6 +65,7 @@ type Transaction interface {
 	HostTransaction
 	VIPTransaction
 	LogTransaction
+	CategoryTransaction
 }
 
 type Search struct {
@@ -246,6 +247,10 @@ func (r *API) Serve() error {
 		rest.Post("/api/v1/vip/remove", api.ResponseHandler(r.removeVIP)),
 		rest.Post("/api/v1/vip/toggle", api.ResponseHandler(r.toggleVIP)),
 		rest.Post("/api/v1/log/list", api.ResponseHandler(r.listLog)),
+		rest.Post("/api/v1/category/list", api.ResponseHandler(r.listCategory)),
+		rest.Post("/api/v1/category/add", api.ResponseHandler(r.addCategory)),
+		rest.Post("/api/v1/category/update", api.ResponseHandler(r.updateCategory)),
+		rest.Post("/api/v1/category/remove", api.ResponseHandler(r.removeCategory)),
 	)
 }
 
