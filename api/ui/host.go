@@ -174,6 +174,67 @@ func (r *listHostParam) validate() error {
 	return nil
 }
 
+func (r *API) getHost(w api.ResponseWriter, req *rest.Request) {
+	p := new(getHostParam)
+	if err := req.DecodeJsonPayload(p); err != nil {
+		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode params: %v", err.Error())})
+		return
+	}
+	logger.Debugf("getHost request from %v: %v", req.RemoteAddr, spew.Sdump(p))
+
+	if _, ok := r.session.Get(p.SessionID); ok == false {
+		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		return
+	}
+
+	var host *Host
+	f := func(tx Transaction) (err error) {
+		host, err = tx.Host(p.ID)
+		return err
+	}
+	if err := r.DB.Exec(f); err != nil {
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to query the host info: %v", err.Error())})
+		return
+	}
+
+	if host == nil {
+		w.Write(api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found host: %v", p.ID)})
+		return
+	}
+	logger.Debugf("queried host info: %v", spew.Sdump(host))
+
+	w.Write(api.Response{Status: api.StatusOkay, Data: host})
+}
+
+type getHostParam struct {
+	SessionID string
+	ID        uint64
+}
+
+func (r *getHostParam) UnmarshalJSON(data []byte) error {
+	v := struct {
+		SessionID string `json:"session_id"`
+		ID        uint64 `json:"id"`
+	}{}
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	*r = getHostParam(v)
+
+	return r.validate()
+}
+
+func (r *getHostParam) validate() error {
+	if len(r.SessionID) != 64 {
+		return errors.New("invalid session id")
+	}
+	if r.ID == 0 {
+		return errors.New("invalid host id")
+	}
+
+	return nil
+}
+
 func (r *API) addHost(w api.ResponseWriter, req *rest.Request) {
 	p := new(addHostParam)
 	if err := req.DecodeJsonPayload(p); err != nil {

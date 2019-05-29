@@ -238,6 +238,7 @@ func (r *API) Serve() error {
 		rest.Post("/api/v1/network/remove", api.ResponseHandler(r.removeNetwork)),
 		rest.Post("/api/v1/network/ip", api.ResponseHandler(r.listIP)),
 		rest.Post("/api/v1/host/list", api.ResponseHandler(r.listHost)),
+		rest.Post("/api/v1/host/get", api.ResponseHandler(r.getHost)),
 		rest.Post("/api/v1/host/add", api.ResponseHandler(r.addHost)),
 		rest.Post("/api/v1/host/update", api.ResponseHandler(r.updateHost)),
 		rest.Post("/api/v1/host/activate", api.ResponseHandler(r.activateHost)),
