@@ -101,6 +101,24 @@ CREATE TABLE IF NOT EXISTS `component` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `spec`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE IF NOT EXISTS `spec` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `host_id` bigint(20) unsigned NOT NULL,
+  `component_id` bigint(20) unsigned NOT NULL,
+  `count` smallint(5) unsigned NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `spec` (`host_id`, `component_id`),
+  CONSTRAINT `spec_ibfk_1` FOREIGN KEY (`host_id`) REFERENCES `host` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `spec_ibfk_2` FOREIGN KEY (`component_id`) REFERENCES `component` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `arp`
 --
 

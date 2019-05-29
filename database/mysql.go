@@ -1154,6 +1154,14 @@ func (r *uiTx) Hosts(search *ui.Search, sort ui.Sort, pagination ui.Pagination) 
 		return nil, err
 	}
 
+	for _, h := range host {
+		spec, err := getSpec(r.handle, h.ID)
+		if err != nil {
+			return nil, err
+		}
+		h.Spec = spec
+	}
+
 	return host, nil
 }
 
@@ -1310,10 +1318,16 @@ func getHost(tx *sql.Tx, id uint64) (*ui.Host, error) {
 		v.Stale = true
 	}
 
+	spec, err := getSpec(tx, id)
+	if err != nil {
+		return nil, err
+	}
+	v.Spec = spec
+
 	return v, nil
 }
 
-func (r *uiTx) AddHost(requesterID, ipID uint64, groupID *uint64, mac net.HardwareAddr, desc string) (host *ui.Host, duplicated bool, err error) {
+func (r *uiTx) AddHost(requesterID, ipID uint64, groupID *uint64, mac net.HardwareAddr, desc string, spec []ui.SpecParam) (host *ui.Host, duplicated bool, err error) {
 	ok, err := isAvailableIP(r.handle, ipID)
 	if err != nil {
 		return nil, false, err
@@ -1322,7 +1336,7 @@ func (r *uiTx) AddHost(requesterID, ipID uint64, groupID *uint64, mac net.Hardwa
 		return nil, true, nil
 	}
 
-	id, err := addNewHost(r.handle, ipID, groupID, mac, desc)
+	id, err := addNewHost(r.handle, ipID, groupID, mac, desc, spec)
 	if err != nil {
 		return nil, false, err
 	}
@@ -1338,7 +1352,7 @@ func (r *uiTx) AddHost(requesterID, ipID uint64, groupID *uint64, mac net.Hardwa
 	return host, false, nil
 }
 
-func addNewHost(tx *sql.Tx, ipID uint64, groupID *uint64, mac net.HardwareAddr, desc string) (uint64, error) {
+func addNewHost(tx *sql.Tx, ipID uint64, groupID *uint64, mac net.HardwareAddr, desc string, spec []ui.SpecParam) (uint64, error) {
 	qry := "INSERT INTO `host` (`ip_id`, `group_id`, `mac`, `description`, `last_updated_timestamp`, `enabled`, `timestamp`) VALUES (?, ?, UNHEX(?), ?, NOW(), TRUE, NOW())"
 	result, err := tx.Exec(qry, ipID, groupID, encodeMAC(mac), desc)
 	if err != nil {
@@ -1347,6 +1361,14 @@ func addNewHost(tx *sql.Tx, ipID uint64, groupID *uint64, mac net.HardwareAddr, 
 	id, err := result.LastInsertId()
 	if err != nil {
 		return 0, err
+	}
+
+	if spec != nil {
+		for _, v := range spec {
+			if err := addSpec(tx, uint64(id), v.ComponentID, v.Count); err != nil {
+				return 0, err
+			}
+		}
 	}
 
 	if err := updateARPTableEntryByHost(tx, uint64(id), false); err != nil {
@@ -1392,7 +1414,7 @@ func decodeMAC(s string) (net.HardwareAddr, error) {
 	return net.HardwareAddr(v), nil
 }
 
-func (r *uiTx) UpdateHost(requesterID, hostID, ipID uint64, groupID *uint64, mac net.HardwareAddr, desc string) (host *ui.Host, duplicated bool, err error) {
+func (r *uiTx) UpdateHost(requesterID, hostID, ipID uint64, groupID *uint64, mac net.HardwareAddr, desc string, spec []ui.SpecParam) (host *ui.Host, duplicated bool, err error) {
 	old, err := getHost(r.handle, hostID)
 	if err != nil {
 		// Not found host to update.
@@ -1414,7 +1436,7 @@ func (r *uiTx) UpdateHost(requesterID, hostID, ipID uint64, groupID *uint64, mac
 		return nil, true, nil
 	}
 
-	newID, err := addNewHost(r.handle, ipID, groupID, mac, desc)
+	newID, err := addNewHost(r.handle, ipID, groupID, mac, desc, spec)
 	if err != nil {
 		return nil, false, err
 	}
@@ -2614,4 +2636,41 @@ func (r *uiTx) RemoveComponent(requesterID, componentID uint64) (component *ui.C
 	}
 
 	return component, nil
+}
+
+func getSpec(tx *sql.Tx, hostID uint64) (spec []*ui.Spec, err error) {
+	qry := "SELECT A.`id`, A.`count`, B.`id`, B.`name`, B.`timestamp`, C.`id`, C.`name`, C.`timestamp` "
+	qry += "FROM `spec` A "
+	qry += "JOIN `component` B ON A.`component_id` = B.`id` "
+	qry += "JOIN `category` C ON B.`category_id` = C.`id` "
+	qry += "WHERE A.`host_id` = ? "
+	qry += "ORDER BY A.`id` DESC"
+
+	rows, err := tx.Query(qry, hostID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	spec = []*ui.Spec{}
+	for rows.Next() {
+		v := new(ui.Spec)
+		c := ui.Component{}
+		if err := rows.Scan(&v.ID, &v.Count, &c.ID, &c.Name, &c.Timestamp, &c.Category.ID, &c.Category.Name, &c.Category.Timestamp); err != nil {
+			return nil, err
+		}
+		v.Component = c
+		spec = append(spec, v)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return spec, nil
+}
+
+func addSpec(tx *sql.Tx, hostID, componentID uint64, count uint16) error {
+	qry := "INSERT INTO `spec` (`host_id`, `component_id`, `count`) VALUES (?, ?, ?)"
+	_, err := tx.Exec(qry, hostID, componentID, count)
+	return err
 }
