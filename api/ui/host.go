@@ -49,14 +49,15 @@ type HostTransaction interface {
 	Host(id uint64) (*Host, error)
 	// Hosts returns a list of registered hosts. Search can be nil that means no search. Pagination limit can be 0 that means no pagination.
 	Hosts(*Search, Sort, Pagination) ([]*Host, error)
-	AddHost(ipID uint64, groupID *uint64, mac net.HardwareAddr, desc string) (host *Host, duplicated bool, err error)
+	AddHost(requesterID, ipID uint64, groupID *uint64, mac net.HardwareAddr, desc string) (host *Host, duplicated bool, err error)
+	UpdateHost(requesterID, hostID, ipID uint64, groupID *uint64, mac net.HardwareAddr, desc string) (host *Host, duplicated bool, err error)
 	// ActivateHost enables a host specified by id and then returns information of the host. It returns nil if the host does not exist.
-	ActivateHost(id uint64) (*Host, error)
+	ActivateHost(requesterID, hostID uint64) (*Host, error)
 	// DeactivateHost disables a host specified by id and then returns information of the host. It returns nil if the host does not exist.
-	DeactivateHost(id uint64) (*Host, error)
+	DeactivateHost(requesterID, hostID uint64) (*Host, error)
 	CountVIPByHostID(id uint64) (count uint64, err error)
 	// RemoveHost removes a host specified by id and then returns information of the host before removing. It returns nil if the host does not exist.
-	RemoveHost(id uint64) (*Host, error)
+	RemoveHost(requesterID, hostID uint64) (*Host, error)
 }
 
 type Host struct {
@@ -150,6 +151,9 @@ func (r *listHostParam) validate() error {
 	}
 	// If search is nil, fetch hosts without using search.
 	if r.Search != nil {
+		if r.Search.Key <= ColumnTime || r.Search.Key > ColumnDescription {
+			return errors.New("invalid search key")
+		}
 		if err := r.Search.Validate(); err != nil {
 			return err
 		}
@@ -169,7 +173,8 @@ func (r *API) addHost(w api.ResponseWriter, req *rest.Request) {
 	}
 	logger.Debugf("addHost request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
-	if _, ok := r.session.Get(p.SessionID); ok == false {
+	session, ok := r.session.Get(p.SessionID)
+	if ok == false {
 		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
@@ -177,7 +182,7 @@ func (r *API) addHost(w api.ResponseWriter, req *rest.Request) {
 	var host []*Host
 	f := func(tx Transaction) (err error) {
 		for _, v := range p.IPID {
-			h, duplicated, err := tx.AddHost(v, p.GroupID, p.MAC, p.Description)
+			h, duplicated, err := tx.AddHost(session.(*User).ID, v, p.GroupID, p.MAC, p.Description)
 			if err != nil {
 				return err
 			}
@@ -270,7 +275,8 @@ func (r *API) updateHost(w api.ResponseWriter, req *rest.Request) {
 	}
 	logger.Debugf("updateHost request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
-	if _, ok := r.session.Get(p.SessionID); ok == false {
+	session, ok := r.session.Get(p.SessionID)
+	if ok == false {
 		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
@@ -285,7 +291,7 @@ func (r *API) updateHost(w api.ResponseWriter, req *rest.Request) {
 			return errors.New("VIP member host cannot be updated")
 		}
 
-		old, err = tx.RemoveHost(p.ID)
+		old, err = tx.Host(p.ID)
 		if err != nil {
 			return err
 		}
@@ -296,14 +302,14 @@ func (r *API) updateHost(w api.ResponseWriter, req *rest.Request) {
 			return errBlocked
 		}
 
-		v, duplicated, err := tx.AddHost(p.IPID, p.GroupID, p.MAC, p.Description)
+		h, duplicated, err := tx.UpdateHost(session.(*User).ID, p.ID, p.IPID, p.GroupID, p.MAC, p.Description)
 		if err != nil {
 			return err
 		}
 		if duplicated {
 			return errDuplicated
 		}
-		new = v
+		new = h
 
 		return nil
 	}
@@ -392,14 +398,15 @@ func (r *API) activateHost(w api.ResponseWriter, req *rest.Request) {
 	}
 	logger.Debugf("activateHost request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
-	if _, ok := r.session.Get(p.SessionID); ok == false {
+	session, ok := r.session.Get(p.SessionID)
+	if ok == false {
 		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
 
 	var host *Host
 	f := func(tx Transaction) (err error) {
-		host, err = tx.ActivateHost(p.ID)
+		host, err = tx.ActivateHost(session.(*User).ID, p.ID)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
@@ -458,7 +465,8 @@ func (r *API) deactivateHost(w api.ResponseWriter, req *rest.Request) {
 	}
 	logger.Debugf("deactivateHost request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
-	if _, ok := r.session.Get(p.SessionID); ok == false {
+	session, ok := r.session.Get(p.SessionID)
+	if ok == false {
 		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
@@ -473,7 +481,7 @@ func (r *API) deactivateHost(w api.ResponseWriter, req *rest.Request) {
 			return errors.New("VIP member host cannot be disabled")
 		}
 
-		host, err = tx.DeactivateHost(p.ID)
+		host, err = tx.DeactivateHost(session.(*User).ID, p.ID)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
@@ -532,14 +540,15 @@ func (r *API) removeHost(w api.ResponseWriter, req *rest.Request) {
 	}
 	logger.Debugf("removeHost request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
-	if _, ok := r.session.Get(p.SessionID); ok == false {
+	session, ok := r.session.Get(p.SessionID)
+	if ok == false {
 		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
 
 	var host *Host
 	f := func(tx Transaction) (err error) {
-		host, err = tx.RemoveHost(p.ID)
+		host, err = tx.RemoveHost(session.(*User).ID, p.ID)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {

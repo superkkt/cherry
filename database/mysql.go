@@ -25,6 +25,7 @@ import (
 	"database/sql"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -1027,7 +1028,7 @@ func (r *uiTx) Groups(pagination ui.Pagination) (group []*ui.Group, err error) {
 	return group, nil
 }
 
-func (r *uiTx) AddGroup(name string) (group *ui.Group, duplicated bool, err error) {
+func (r *uiTx) AddGroup(requesterID uint64, name string) (group *ui.Group, duplicated bool, err error) {
 	qry := "INSERT INTO `group` (`name`, `timestamp`) VALUES (?, NOW())"
 	result, err := r.handle.Exec(qry, name)
 	if err != nil {
@@ -1043,6 +1044,10 @@ func (r *uiTx) AddGroup(name string) (group *ui.Group, duplicated bool, err erro
 	}
 	group, err = getGroup(r.handle, uint64(id))
 	if err != nil {
+		return nil, false, err
+	}
+
+	if err := r.log(requesterID, logTypeGroup, logMethodAdd, group); err != nil {
 		return nil, false, err
 	}
 
@@ -1062,9 +1067,9 @@ func getGroup(tx *sql.Tx, id uint64) (*ui.Group, error) {
 	return v, nil
 }
 
-func (r *uiTx) UpdateGroup(id uint64, name string) (group *ui.Group, duplicated bool, err error) {
+func (r *uiTx) UpdateGroup(requesterID, groupID uint64, name string) (group *ui.Group, duplicated bool, err error) {
 	qry := "UPDATE `group` SET `name` = ? WHERE `id` = ?"
-	result, err := r.handle.Exec(qry, name, id)
+	result, err := r.handle.Exec(qry, name, groupID)
 	if err != nil {
 		if isDuplicated(err) {
 			return nil, true, nil
@@ -1080,16 +1085,20 @@ func (r *uiTx) UpdateGroup(id uint64, name string) (group *ui.Group, duplicated 
 		return nil, false, nil
 	}
 
-	group, err = getGroup(r.handle, id)
+	group, err = getGroup(r.handle, groupID)
 	if err != nil {
+		return nil, false, err
+	}
+
+	if err := r.log(requesterID, logTypeGroup, logMethodUpdate, group); err != nil {
 		return nil, false, err
 	}
 
 	return group, false, nil
 }
 
-func (r *uiTx) RemoveGroup(id uint64) (group *ui.Group, err error) {
-	group, err = getGroup(r.handle, id)
+func (r *uiTx) RemoveGroup(requesterID, groupID uint64) (group *ui.Group, err error) {
+	group, err = getGroup(r.handle, groupID)
 	if err != nil {
 		// Not found group to remove.
 		if err == sql.ErrNoRows {
@@ -1098,10 +1107,14 @@ func (r *uiTx) RemoveGroup(id uint64) (group *ui.Group, err error) {
 		return nil, err
 	}
 
-	if _, err := r.handle.Exec("DELETE FROM `group` WHERE `id` = ?", id); err != nil {
+	if _, err := r.handle.Exec("DELETE FROM `group` WHERE `id` = ?", groupID); err != nil {
 		if isForeignkeyErr(err) {
 			return nil, errors.New("failed to remove a group: it has child hosts that are being used by group")
 		}
+		return nil, err
+	}
+
+	if err := r.log(requesterID, logTypeGroup, logMethodRemove, group); err != nil {
 		return nil, err
 	}
 
@@ -1300,7 +1313,7 @@ func getHost(tx *sql.Tx, id uint64) (*ui.Host, error) {
 	return v, nil
 }
 
-func (r *uiTx) AddHost(ipID uint64, groupID *uint64, mac net.HardwareAddr, desc string) (host *ui.Host, duplicated bool, err error) {
+func (r *uiTx) AddHost(requesterID, ipID uint64, groupID *uint64, mac net.HardwareAddr, desc string) (host *ui.Host, duplicated bool, err error) {
 	ok, err := isAvailableIP(r.handle, ipID)
 	if err != nil {
 		return nil, false, err
@@ -1315,6 +1328,10 @@ func (r *uiTx) AddHost(ipID uint64, groupID *uint64, mac net.HardwareAddr, desc 
 	}
 	host, err = getHost(r.handle, id)
 	if err != nil {
+		return nil, false, err
+	}
+
+	if err := r.log(requesterID, logTypeHost, logMethodAdd, host); err != nil {
 		return nil, false, err
 	}
 
@@ -1375,9 +1392,54 @@ func decodeMAC(s string) (net.HardwareAddr, error) {
 	return net.HardwareAddr(v), nil
 }
 
-func (r *uiTx) ActivateHost(id uint64) (host *ui.Host, err error) {
+func (r *uiTx) UpdateHost(requesterID, hostID, ipID uint64, groupID *uint64, mac net.HardwareAddr, desc string) (host *ui.Host, duplicated bool, err error) {
+	old, err := getHost(r.handle, hostID)
+	if err != nil {
+		// Not found host to update.
+		if err == sql.ErrNoRows {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+
+	if err := removeHost(r.handle, hostID); err != nil {
+		return nil, false, err
+	}
+
+	ok, err := isAvailableIP(r.handle, ipID)
+	if err != nil {
+		return nil, false, err
+	}
+	if ok == false {
+		return nil, true, nil
+	}
+
+	newID, err := addNewHost(r.handle, ipID, groupID, mac, desc)
+	if err != nil {
+		return nil, false, err
+	}
+	new, err := getHost(r.handle, newID)
+	if err != nil {
+		return nil, false, err
+	}
+
+	err = r.log(requesterID, logTypeHost, logMethodUpdate, &struct {
+		Old *ui.Host `json:"old"`
+		New *ui.Host `json:"new"`
+	}{
+		Old: old,
+		New: new,
+	})
+	if err != nil {
+		return nil, false, err
+	}
+
+	return new, false, nil
+}
+
+func (r *uiTx) ActivateHost(requesterID, hostID uint64) (host *ui.Host, err error) {
 	qry := "UPDATE `host` SET `enabled` = TRUE WHERE `id` = ?"
-	result, err := r.handle.Exec(qry, id)
+	result, err := r.handle.Exec(qry, hostID)
 	if err != nil {
 		return nil, err
 	}
@@ -1390,21 +1452,25 @@ func (r *uiTx) ActivateHost(id uint64) (host *ui.Host, err error) {
 		return nil, nil
 	}
 
-	if err := updateARPTableEntryByHost(r.handle, id, false); err != nil {
+	if err := updateARPTableEntryByHost(r.handle, hostID, false); err != nil {
 		return nil, err
 	}
 
-	host, err = getHost(r.handle, id)
+	host, err = getHost(r.handle, hostID)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := r.log(requesterID, logTypeHost, logMethodUpdate, host); err != nil {
 		return nil, err
 	}
 
 	return host, nil
 }
 
-func (r *uiTx) DeactivateHost(id uint64) (host *ui.Host, err error) {
+func (r *uiTx) DeactivateHost(requesterID, hostID uint64) (host *ui.Host, err error) {
 	qry := "UPDATE `host` SET `enabled` = FALSE WHERE `id` = ?"
-	result, err := r.handle.Exec(qry, id)
+	result, err := r.handle.Exec(qry, hostID)
 	if err != nil {
 		return nil, err
 	}
@@ -1417,12 +1483,16 @@ func (r *uiTx) DeactivateHost(id uint64) (host *ui.Host, err error) {
 		return nil, nil
 	}
 
-	if err := updateARPTableEntryByHost(r.handle, id, true); err != nil {
+	if err := updateARPTableEntryByHost(r.handle, hostID, true); err != nil {
 		return nil, err
 	}
 
-	host, err = getHost(r.handle, id)
+	host, err = getHost(r.handle, hostID)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := r.log(requesterID, logTypeHost, logMethodUpdate, host); err != nil {
 		return nil, err
 	}
 
@@ -1438,8 +1508,8 @@ func (r *uiTx) CountVIPByHostID(id uint64) (count uint64, err error) {
 	return count, nil
 }
 
-func (r *uiTx) RemoveHost(id uint64) (host *ui.Host, err error) {
-	host, err = getHost(r.handle, id)
+func (r *uiTx) RemoveHost(requesterID, hostID uint64) (host *ui.Host, err error) {
+	host, err = getHost(r.handle, hostID)
 	if err != nil {
 		// Not found host to remove.
 		if err == sql.ErrNoRows {
@@ -1448,7 +1518,11 @@ func (r *uiTx) RemoveHost(id uint64) (host *ui.Host, err error) {
 		return nil, err
 	}
 
-	if err := removeHost(r.handle, id); err != nil {
+	if err := removeHost(r.handle, hostID); err != nil {
+		return nil, err
+	}
+
+	if err := r.log(requesterID, logTypeHost, logMethodRemove, host); err != nil {
 		return nil, err
 	}
 
@@ -1530,7 +1604,7 @@ func (r *uiTx) Networks(pagination ui.Pagination) (network []*ui.Network, err er
 	return network, nil
 }
 
-func (r *uiTx) AddNetwork(addr net.IP, mask net.IPMask) (network *ui.Network, duplicated bool, err error) {
+func (r *uiTx) AddNetwork(requesterID uint64, addr net.IP, mask net.IPMask) (network *ui.Network, duplicated bool, err error) {
 	id, err := addNetwork(r.handle, addr, mask)
 	if err != nil {
 		// No error.
@@ -1545,6 +1619,10 @@ func (r *uiTx) AddNetwork(addr net.IP, mask net.IPMask) (network *ui.Network, du
 
 	network, err = getNetwork(r.handle, id)
 	if err != nil {
+		return nil, false, err
+	}
+
+	if err := r.log(requesterID, logTypeNetwork, logMethodAdd, network); err != nil {
 		return nil, false, err
 	}
 
@@ -1617,8 +1695,8 @@ func getNetwork(tx *sql.Tx, id uint64) (*ui.Network, error) {
 	return v, nil
 }
 
-func (r *uiTx) RemoveNetwork(id uint64) (network *ui.Network, err error) {
-	network, err = getNetwork(r.handle, id)
+func (r *uiTx) RemoveNetwork(requesterID, netID uint64) (network *ui.Network, err error) {
+	network, err = getNetwork(r.handle, netID)
 	if err != nil {
 		// Not found network to remove.
 		if err == sql.ErrNoRows {
@@ -1627,10 +1705,14 @@ func (r *uiTx) RemoveNetwork(id uint64) (network *ui.Network, err error) {
 		return nil, err
 	}
 
-	if _, err := r.handle.Exec("DELETE FROM `network` WHERE `id` = ?", id); err != nil {
+	if _, err := r.handle.Exec("DELETE FROM `network` WHERE `id` = ?", netID); err != nil {
 		if isForeignkeyErr(err) {
 			return nil, errors.New("failed to remove a network: it has child IP addresses that are being used by hosts")
 		}
+		return nil, err
+	}
+
+	if err := r.log(requesterID, logTypeNetwork, logMethodRemove, network); err != nil {
 		return nil, err
 	}
 
@@ -1664,7 +1746,7 @@ func (r *uiTx) Switches(pagination ui.Pagination) (sw []*ui.Switch, err error) {
 	return sw, nil
 }
 
-func (r *uiTx) AddSwitch(dpid uint64, nPorts, firstPort, firstPrintedPort uint16, desc string) (sw *ui.Switch, duplicated bool, err error) {
+func (r *uiTx) AddSwitch(requesterID, dpid uint64, nPorts, firstPort, firstPrintedPort uint16, desc string) (sw *ui.Switch, duplicated bool, err error) {
 	id, err := addSwitch(r.handle, dpid, nPorts, firstPort, firstPrintedPort, desc)
 	if err != nil {
 		// No error.
@@ -1680,6 +1762,10 @@ func (r *uiTx) AddSwitch(dpid uint64, nPorts, firstPort, firstPrintedPort uint16
 
 	sw, err = getSwitch(r.handle, id)
 	if err != nil {
+		return nil, false, err
+	}
+
+	if err := r.log(requesterID, logTypeSwitch, logMethodAdd, sw); err != nil {
 		return nil, false, err
 	}
 
@@ -1729,8 +1815,8 @@ func getSwitch(tx *sql.Tx, id uint64) (*ui.Switch, error) {
 	return v, nil
 }
 
-func (r *uiTx) RemoveSwitch(id uint64) (sw *ui.Switch, err error) {
-	sw, err = getSwitch(r.handle, id)
+func (r *uiTx) RemoveSwitch(requesterID, swID uint64) (sw *ui.Switch, err error) {
+	sw, err = getSwitch(r.handle, swID)
 	if err != nil {
 		// Not found switch to remove.
 		if err == sql.ErrNoRows {
@@ -1739,10 +1825,14 @@ func (r *uiTx) RemoveSwitch(id uint64) (sw *ui.Switch, err error) {
 		return nil, err
 	}
 
-	if _, err := r.handle.Exec("DELETE FROM `switch` WHERE `id` = ?", id); err != nil {
+	if _, err := r.handle.Exec("DELETE FROM `switch` WHERE `id` = ?", swID); err != nil {
 		if isForeignkeyErr(err) {
 			return nil, errors.New("failed to remove a switch: it has child hosts connected to this switch")
 		}
+		return nil, err
+	}
+
+	if err := r.log(requesterID, logTypeSwitch, logMethodRemove, sw); err != nil {
 		return nil, err
 	}
 
@@ -1790,7 +1880,7 @@ func (r *uiTx) Users(pagination ui.Pagination) (user []*ui.User, err error) {
 	return user, nil
 }
 
-func (r *uiTx) AddUser(name, password string) (user *ui.User, duplicated bool, err error) {
+func (r *uiTx) AddUser(requesterID uint64, name, password string) (user *ui.User, duplicated bool, err error) {
 	qry := "INSERT INTO `user` (`name`, `password`, `enabled`, `admin`, `timestamp`) "
 	qry += "VALUES (?, SHA2(?, 256), TRUE, FALSE, NOW())"
 	result, err := r.handle.Exec(qry, name, name+password)
@@ -1811,6 +1901,10 @@ func (r *uiTx) AddUser(name, password string) (user *ui.User, duplicated bool, e
 		return nil, false, err
 	}
 
+	if err := r.log(requesterID, logTypeUser, logMethodAdd, user); err != nil {
+		return nil, false, err
+	}
+
 	return user, false, nil
 }
 
@@ -1827,7 +1921,7 @@ func getUser(tx *sql.Tx, id uint64) (*ui.User, error) {
 	return v, nil
 }
 
-func (r *uiTx) UpdateUser(id uint64, password *string, admin *bool) (user *ui.User, err error) {
+func (r *uiTx) UpdateUser(requesterID, userID uint64, password *string, admin *bool) (user *ui.User, err error) {
 	set := []string{}
 	args := []interface{}{}
 
@@ -1843,7 +1937,7 @@ func (r *uiTx) UpdateUser(id uint64, password *string, admin *bool) (user *ui.Us
 		return nil, nil
 	}
 
-	qry := fmt.Sprintf("UPDATE `user` SET %v WHERE `id` = %v", strings.Join(set, ","), id)
+	qry := fmt.Sprintf("UPDATE `user` SET %v WHERE `id` = %v", strings.Join(set, ","), userID)
 	result, err := r.handle.Exec(qry, args...)
 	if err != nil {
 		return nil, err
@@ -1857,17 +1951,21 @@ func (r *uiTx) UpdateUser(id uint64, password *string, admin *bool) (user *ui.Us
 		return nil, nil
 	}
 
-	user, err = getUser(r.handle, id)
+	user, err = getUser(r.handle, userID)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := r.log(requesterID, logTypeUser, logMethodUpdate, user); err != nil {
 		return nil, err
 	}
 
 	return user, nil
 }
 
-func (r *uiTx) ActivateUser(id uint64) (user *ui.User, err error) {
+func (r *uiTx) ActivateUser(requesterID, userID uint64) (user *ui.User, err error) {
 	qry := "UPDATE `user` SET `enabled` = TRUE WHERE `id` = ?"
-	result, err := r.handle.Exec(qry, id)
+	result, err := r.handle.Exec(qry, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -1880,17 +1978,21 @@ func (r *uiTx) ActivateUser(id uint64) (user *ui.User, err error) {
 		return nil, nil
 	}
 
-	user, err = getUser(r.handle, id)
+	user, err = getUser(r.handle, userID)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := r.log(requesterID, logTypeUser, logMethodUpdate, user); err != nil {
 		return nil, err
 	}
 
 	return user, nil
 }
 
-func (r *uiTx) DeactivateUser(id uint64) (user *ui.User, err error) {
+func (r *uiTx) DeactivateUser(requesterID, userID uint64) (user *ui.User, err error) {
 	qry := "UPDATE `user` SET `enabled` = FALSE WHERE `id` = ?"
-	result, err := r.handle.Exec(qry, id)
+	result, err := r.handle.Exec(qry, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -1903,8 +2005,12 @@ func (r *uiTx) DeactivateUser(id uint64) (user *ui.User, err error) {
 		return nil, nil
 	}
 
-	user, err = getUser(r.handle, id)
+	user, err = getUser(r.handle, userID)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := r.log(requesterID, logTypeUser, logMethodUpdate, user); err != nil {
 		return nil, err
 	}
 
@@ -1984,7 +2090,7 @@ func (r *uiTx) getVIPs(pagination ui.Pagination) (vip []registeredVIP, err error
 	return vip, nil
 }
 
-func (r *uiTx) AddVIP(ipID, activeID, standbyID uint64, desc string) (vip *ui.VIP, duplicated bool, err error) {
+func (r *uiTx) AddVIP(requesterID, ipID, activeID, standbyID uint64, desc string) (vip *ui.VIP, duplicated bool, err error) {
 	ok, err := isAvailableIP(r.handle, ipID)
 	if err != nil {
 		return nil, false, err
@@ -2000,6 +2106,10 @@ func (r *uiTx) AddVIP(ipID, activeID, standbyID uint64, desc string) (vip *ui.VI
 	}
 	vip, err = getVIP(r.handle, id)
 	if err != nil {
+		return nil, false, err
+	}
+
+	if err := r.log(requesterID, logTypeVIP, logMethodAdd, vip); err != nil {
 		return nil, false, err
 	}
 
@@ -2085,8 +2195,8 @@ func getVIP(tx *sql.Tx, id uint64) (vip *ui.VIP, err error) {
 	}, nil
 }
 
-func (r *uiTx) RemoveVIP(id uint64) (vip *ui.VIP, err error) {
-	vip, err = getVIP(r.handle, id)
+func (r *uiTx) RemoveVIP(requesterID, vipID uint64) (vip *ui.VIP, err error) {
+	vip, err = getVIP(r.handle, vipID)
 	if err != nil {
 		// Not found VIP to remove.
 		if err == sql.ErrNoRows {
@@ -2095,18 +2205,22 @@ func (r *uiTx) RemoveVIP(id uint64) (vip *ui.VIP, err error) {
 		return nil, err
 	}
 
-	if err := updateARPTableEntryByVIP(r.handle, id, true); err != nil {
+	if err := updateARPTableEntryByVIP(r.handle, vipID, true); err != nil {
 		return nil, err
 	}
-	if _, err := r.handle.Exec("DELETE FROM `vip` WHERE `id` = ?", id); err != nil {
+	if _, err := r.handle.Exec("DELETE FROM `vip` WHERE `id` = ?", vipID); err != nil {
+		return nil, err
+	}
+
+	if err := r.log(requesterID, logTypeVIP, logMethodRemove, vip); err != nil {
 		return nil, err
 	}
 
 	return vip, nil
 }
 
-func (r *uiTx) ToggleVIP(id uint64) (res *ui.VIP, err error) {
-	v, err := getVIP(r.handle, id)
+func (r *uiTx) ToggleVIP(requesterID, vipID uint64) (res *ui.VIP, err error) {
+	v, err := getVIP(r.handle, vipID)
 	if err != nil {
 		// Not found VIP to toggle.
 		if err == sql.ErrNoRows {
@@ -2129,10 +2243,123 @@ func (r *uiTx) ToggleVIP(id uint64) (res *ui.VIP, err error) {
 		return nil, err
 	}
 
-	res, err = getVIP(r.handle, id)
+	res, err = getVIP(r.handle, vipID)
 	if err != nil {
 		return nil, err
 	}
 
+	if err := r.log(requesterID, logTypeVIP, logMethodUpdate, res); err != nil {
+		return nil, err
+	}
+
 	return res, nil
+}
+
+func (r *uiTx) QueryLog(search *ui.Search, pagination ui.Pagination) (log []*ui.Log, err error) {
+	qry, args := buildLogsQuery(search, pagination)
+	rows, err := r.handle.Query(qry, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	log = []*ui.Log{}
+	for rows.Next() {
+		v := new(ui.Log)
+		if err := rows.Scan(&v.ID, &v.User, &v.Type, &v.Method, &v.Data, &v.Timestamp); err != nil {
+			return nil, err
+		}
+		log = append(log, v)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return log, nil
+}
+
+func buildLogsQuery(search *ui.Search, pagination ui.Pagination) (qry string, args []interface{}) {
+	qry = "SELECT `log`.`id`, "       // ID
+	qry += "      `user`.`name`, "    // User
+	qry += "      `log`.`type`, "     // Type
+	qry += "      `log`.`method`, "   // Method
+	qry += "      `log`.`data`, "     // Data
+	qry += "      `log`.`timestamp` " // Timestamp
+	qry += "FROM `log` "
+	qry += "JOIN `user` ON `log`.`user_id` = `user`.`id` "
+
+	if search != nil {
+		switch search.Key {
+		case ui.ColumnUser:
+			qry += fmt.Sprintf("WHERE `user`.`name` LIKE CONCAT(?, '%%') ")
+		case ui.ColumnLogType:
+			qry += fmt.Sprintf("WHERE `log`.`type` = ? ")
+		case ui.ColumnLogMethod:
+			qry += fmt.Sprintf("WHERE `log`.`method` = ? ")
+		default:
+			panic(fmt.Sprintf("invalid search key: %v", search.Key))
+		}
+		args = append(args, search.Value)
+	}
+
+	qry += "ORDER BY `log`.`id` DESC "
+	qry += "LIMIT ?, ?"
+	args = append(args, pagination.Offset)
+	args = append(args, pagination.Limit)
+
+	return qry, args
+}
+
+type logType int
+
+const (
+	logTypeInvalid logType = iota
+	logTypeUser
+	logTypeGroup
+	logTypeSwitch
+	logTypeNetwork
+	logTypeHost
+	logTypeVIP
+)
+
+func (r logType) validate() error {
+	if r <= logTypeInvalid || r > logTypeVIP {
+		return fmt.Errorf("invalid log type: %v", r)
+	}
+
+	return nil
+}
+
+type logMethod int
+
+const (
+	logMethodInvalid logMethod = iota
+	logMethodAdd
+	logMethodUpdate
+	logMethodRemove
+)
+
+func (r logMethod) validate() error {
+	if r <= logMethodInvalid || r > logMethodRemove {
+		return fmt.Errorf("invalid log method: %v", r)
+	}
+
+	return nil
+}
+
+func (r *uiTx) log(userID uint64, t logType, m logMethod, data interface{}) error {
+	if err := t.validate(); err != nil {
+		return err
+	}
+	if err := m.validate(); err != nil {
+		return err
+	}
+
+	b, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+	qry := "INSERT INTO `log` (`user_id`, `type`, `method`, `data`, `timestamp`) VALUES (?, ?, ?, ?, NOW())"
+	_, err = r.handle.Exec(qry, userID, t, m, b)
+	return err
 }

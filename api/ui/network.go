@@ -40,9 +40,9 @@ import (
 type NetworkTransaction interface {
 	// Networks returns a list of registered networks. Pagination limit can be 0 that means no pagination.
 	Networks(Pagination) ([]*Network, error)
-	AddNetwork(addr net.IP, mask net.IPMask) (network *Network, duplicated bool, err error)
+	AddNetwork(requesterID uint64, addr net.IP, mask net.IPMask) (network *Network, duplicated bool, err error)
 	// RemoveNetwork removes a network specified by id and then returns information of the network before removing. It returns nil if the network does not exist.
-	RemoveNetwork(id uint64) (*Network, error)
+	RemoveNetwork(requesterID, netID uint64) (*Network, error)
 }
 
 type Network struct {
@@ -112,7 +112,8 @@ func (r *API) addNetwork(w api.ResponseWriter, req *rest.Request) {
 	}
 	logger.Debugf("addNetwork request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
-	if _, ok := r.session.Get(p.SessionID); ok == false {
+	session, ok := r.session.Get(p.SessionID)
+	if ok == false {
 		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
@@ -120,7 +121,7 @@ func (r *API) addNetwork(w api.ResponseWriter, req *rest.Request) {
 	var network *Network
 	var duplicated bool
 	f := func(tx Transaction) (err error) {
-		network, duplicated, err = tx.AddNetwork(p.Address, p.Mask)
+		network, duplicated, err = tx.AddNetwork(session.(*User).ID, p.Address, p.Mask)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
@@ -179,14 +180,15 @@ func (r *API) removeNetwork(w api.ResponseWriter, req *rest.Request) {
 	}
 	logger.Debugf("removeNetwork request from %v: %v", req.RemoteAddr, spew.Sdump(p))
 
-	if _, ok := r.session.Get(p.SessionID); ok == false {
+	session, ok := r.session.Get(p.SessionID)
+	if ok == false {
 		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
 
 	var network *Network
 	f := func(tx Transaction) (err error) {
-		network, err = tx.RemoveNetwork(p.ID)
+		network, err = tx.RemoveNetwork(session.(*User).ID, p.ID)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
