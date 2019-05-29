@@ -1598,7 +1598,7 @@ func (r *uiTx) IPAddrs(networkID uint64) (address []*ui.IP, err error) {
 }
 
 func (r *uiTx) Networks(address *string, pagination ui.Pagination) (network []*ui.Network, err error) {
-	qry := "SELECT `id`, INET_NTOA(`address`), `mask` "
+	qry := "SELECT `id`, INET_NTOA(`address`), `mask`, INET_NTOA(`gateway`) "
 	qry += "FROM `network` "
 	if address != nil {
 		start, end := rangeIP(*address)
@@ -1618,7 +1618,7 @@ func (r *uiTx) Networks(address *string, pagination ui.Pagination) (network []*u
 	network = []*ui.Network{}
 	for rows.Next() {
 		v := new(ui.Network)
-		if err := rows.Scan(&v.ID, &v.Address, &v.Mask); err != nil {
+		if err := rows.Scan(&v.ID, &v.Address, &v.Mask, &v.Gateway); err != nil {
 			return nil, err
 		}
 		network = append(network, v)
@@ -1630,8 +1630,8 @@ func (r *uiTx) Networks(address *string, pagination ui.Pagination) (network []*u
 	return network, nil
 }
 
-func (r *uiTx) AddNetwork(requesterID uint64, addr net.IP, mask net.IPMask) (network *ui.Network, duplicated bool, err error) {
-	id, err := addNetwork(r.handle, addr, mask)
+func (r *uiTx) AddNetwork(requesterID uint64, addr net.IP, mask net.IPMask, gateway net.IP) (network *ui.Network, duplicated bool, err error) {
+	id, err := addNetwork(r.handle, addr, mask, gateway)
 	if err != nil {
 		// No error.
 		if isDuplicated(err) {
@@ -1655,10 +1655,10 @@ func (r *uiTx) AddNetwork(requesterID uint64, addr net.IP, mask net.IPMask) (net
 	return network, false, nil
 }
 
-func addNetwork(tx *sql.Tx, addr net.IP, mask net.IPMask) (netID uint64, err error) {
-	qry := "INSERT INTO network (address, mask) VALUES (INET_ATON(?), ?)"
+func addNetwork(tx *sql.Tx, addr net.IP, mask net.IPMask, gateway net.IP) (netID uint64, err error) {
+	qry := "INSERT INTO network (address, mask, gateway) VALUES (INET_ATON(?), ?, INET_ATON(?))"
 	ones, _ := mask.Size()
-	result, err := tx.Exec(qry, addr.String(), ones)
+	result, err := tx.Exec(qry, addr.String(), ones, gateway.String())
 	if err != nil {
 		return 0, err
 	}
@@ -1709,12 +1709,12 @@ func calculateIP(network net.IP, n uint32) net.IP {
 }
 
 func getNetwork(tx *sql.Tx, id uint64) (*ui.Network, error) {
-	qry := "SELECT `id`, INET_NTOA(`address`), `mask` "
+	qry := "SELECT `id`, INET_NTOA(`address`), `mask`, INET_NTOA(`gateway`) "
 	qry += "FROM `network` "
 	qry += "WHERE `id` = ?"
 
 	v := new(ui.Network)
-	if err := tx.QueryRow(qry, id).Scan(&v.ID, &v.Address, &v.Mask); err != nil {
+	if err := tx.QueryRow(qry, id).Scan(&v.ID, &v.Address, &v.Mask, &v.Gateway); err != nil {
 		return nil, err
 	}
 

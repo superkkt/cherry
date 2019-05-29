@@ -40,7 +40,7 @@ import (
 type NetworkTransaction interface {
 	// Networks returns a list of registered networks. Address can be nil that means no address search. Pagination limit can be 0 that means no pagination.
 	Networks(address *string, pagination Pagination) ([]*Network, error)
-	AddNetwork(requesterID uint64, addr net.IP, mask net.IPMask) (network *Network, duplicated bool, err error)
+	AddNetwork(requesterID uint64, addr net.IP, mask net.IPMask, gateway net.IP) (network *Network, duplicated bool, err error)
 	// RemoveNetwork removes a network specified by id and then returns information of the network before removing. It returns nil if the network does not exist.
 	RemoveNetwork(requesterID, netID uint64) (*Network, error)
 }
@@ -49,6 +49,7 @@ type Network struct {
 	ID      uint64 `json:"id"`
 	Address string `json:"address"` // FIXME: Use a native type.
 	Mask    uint8  `json:"mask"`    // FIXME: Use a native type.
+	Gateway string `json:"gateway"` // FIXME: Use a native type.
 }
 
 func (r *API) listNetwork(w api.ResponseWriter, req *rest.Request) {
@@ -128,7 +129,7 @@ func (r *API) addNetwork(w api.ResponseWriter, req *rest.Request) {
 	var network *Network
 	var duplicated bool
 	f := func(tx Transaction) (err error) {
-		network, duplicated, err = tx.AddNetwork(session.(*User).ID, p.Address, p.Mask)
+		network, duplicated, err = tx.AddNetwork(session.(*User).ID, p.Address, p.Mask, p.Gateway)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
@@ -149,6 +150,7 @@ type addNetworkParam struct {
 	SessionID string
 	Address   net.IP
 	Mask      net.IPMask
+	Gateway   net.IP
 }
 
 func (r *addNetworkParam) UnmarshalJSON(data []byte) error {
@@ -156,6 +158,7 @@ func (r *addNetworkParam) UnmarshalJSON(data []byte) error {
 		SessionID string `json:"session_id"`
 		Address   string `json:"address"`
 		Mask      uint8  `json:"mask"`
+		Gateway   string `json:"gateway"`
 	}{}
 	if err := json.Unmarshal(data, &v); err != nil {
 		return err
@@ -164,17 +167,42 @@ func (r *addNetworkParam) UnmarshalJSON(data []byte) error {
 	if len(v.SessionID) != 64 {
 		return errors.New("invalid session id")
 	}
-	addr := net.ParseIP(v.Address)
-	if addr == nil || addr.To4() == nil {
-		return fmt.Errorf("invalid network address: %v", v.Address)
-	}
 	if v.Mask < 24 || v.Mask > 30 {
 		return fmt.Errorf("invalid network mask: %v", v.Mask)
 	}
+	_, network, err := net.ParseCIDR(fmt.Sprintf("%v/%v", v.Address, v.Mask))
+	if err != nil || network == nil {
+		return fmt.Errorf("invalid network address: %v", v.Address)
+	}
+	gateway := net.ParseIP(v.Gateway)
+	if gateway == nil {
+		return fmt.Errorf("invalid network gateway: %v", v.Gateway)
+	}
+	if err := validateGateway(network, gateway); err != nil {
+		return err
+	}
 
 	r.SessionID = v.SessionID
-	r.Mask = net.CIDRMask(int(v.Mask), 32)
-	r.Address = addr.Mask(r.Mask)
+	r.Mask = network.Mask
+	r.Address = network.IP
+	r.Gateway = gateway
+
+	return nil
+}
+
+func validateGateway(network *net.IPNet, gateway net.IP) error {
+	invalid := fmt.Errorf("invalid network gateway: %v", gateway)
+	broadcast := net.IP(make([]byte, 4))
+	for i := range network.IP.To4() {
+		broadcast[i] = network.IP.To4()[i] | ^network.Mask[i]
+	}
+
+	if network.Contains(gateway) == false {
+		return invalid
+	}
+	if gateway.Equal(network.IP) || gateway.Equal(broadcast) {
+		return invalid
+	}
 
 	return nil
 }
