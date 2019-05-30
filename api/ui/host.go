@@ -50,7 +50,8 @@ type HostTransaction interface {
 	// Hosts returns a list of registered hosts. Search can be nil that means no search. Pagination limit can be 0 that means no pagination.
 	Hosts(*Search, Sort, Pagination) ([]*Host, error)
 	AddHost(requesterID, ipID uint64, groupID *uint64, mac net.HardwareAddr, desc string, spec []SpecParam) (host *Host, duplicated bool, err error)
-	UpdateHost(requesterID, hostID, ipID uint64, groupID *uint64, mac net.HardwareAddr, desc string, spec []SpecParam) (host *Host, duplicated bool, err error)
+	// UpdateHost updates a host specified by id and then returns information of the host. The parameters used for update can be nil that means no update about the parameters.
+	UpdateHost(requesterID, hostID uint64, ipID, groupID *uint64, mac net.HardwareAddr, description *string, spec []SpecParam) (host *Host, duplicated bool, err error)
 	// ActivateHost enables a host specified by id and then returns information of the host. It returns nil if the host does not exist.
 	ActivateHost(requesterID, hostID uint64) (*Host, error)
 	// DeactivateHost disables a host specified by id and then returns information of the host. It returns nil if the host does not exist.
@@ -438,10 +439,10 @@ func (r *API) updateHost(w api.ResponseWriter, req *rest.Request) {
 type updateHostParam struct {
 	SessionID   string
 	ID          uint64
-	IPID        uint64
+	IPID        *uint64
 	GroupID     *uint64
 	MAC         net.HardwareAddr
-	Description string
+	Description *string
 	Spec        []SpecParam
 }
 
@@ -449,10 +450,10 @@ func (r *updateHostParam) UnmarshalJSON(data []byte) error {
 	v := struct {
 		SessionID   string      `json:"session_id"`
 		ID          uint64      `json:"id"`
-		IPID        uint64      `json:"ip_id"`
+		IPID        *uint64     `json:"ip_id"`
 		GroupID     *uint64     `json:"group_id"`
-		MAC         string      `json:"mac"`
-		Description string      `json:"description"`
+		MAC         *string     `json:"mac"`
+		Description *string     `json:"description"`
 		Spec        []SpecParam `json:"spec"`
 	}{}
 	if err := json.Unmarshal(data, &v); err != nil {
@@ -465,15 +466,17 @@ func (r *updateHostParam) UnmarshalJSON(data []byte) error {
 	if v.ID == 0 {
 		return errors.New("invalid host id")
 	}
-	if v.IPID == 0 {
+	if v.IPID == nil && v.GroupID == nil && v.MAC == nil && v.Description == nil && v.Spec == nil {
+		return errors.New("not exist value to update")
+	}
+	if v.IPID != nil && *v.IPID == 0 {
 		return errors.New("invalid ip id")
 	}
-	if len(v.Description) > 255 {
-		return errors.New("too long description")
+	if v.GroupID != nil && *v.GroupID == 0 {
+		return errors.New("invalid group id")
 	}
-	mac, err := net.ParseMAC(v.MAC)
-	if err != nil {
-		return err
+	if v.Description != nil && len(*v.Description) > 255 {
+		return errors.New("too long description")
 	}
 	for _, v := range r.Spec {
 		if err := v.Validate(); err != nil {
@@ -481,11 +484,18 @@ func (r *updateHostParam) UnmarshalJSON(data []byte) error {
 		}
 	}
 
+	if v.MAC != nil {
+		v, err := net.ParseMAC(*v.MAC)
+		if err != nil {
+			return err
+		}
+		r.MAC = v
+	}
+
 	r.SessionID = v.SessionID
 	r.ID = v.ID
 	r.IPID = v.IPID
 	r.GroupID = v.GroupID
-	r.MAC = mac
 	r.Description = v.Description
 	r.Spec = v.Spec
 

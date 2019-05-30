@@ -1277,7 +1277,7 @@ func rangeMAC(mac string) (start, end string) {
 }
 
 func (r *uiTx) Host(id uint64) (host *ui.Host, err error) {
-	host, err = getHost(r.handle, id)
+	h, err := getHost(r.handle, id)
 	if err != nil {
 		// Ignore the no rows error.
 		if err == sql.ErrNoRows {
@@ -1286,49 +1286,108 @@ func (r *uiTx) Host(id uint64) (host *ui.Host, err error) {
 		return nil, err
 	}
 
-	return host, nil
+	return h.convert(), nil
 }
 
-func getHost(tx *sql.Tx, id uint64) (*ui.Host, error) {
-	qry := "SELECT A.`id`, CONCAT(INET_NTOA(B.`address`), '/', E.`mask`), "
-	qry += "IFNULL(CONCAT(D.`description`, '/', C.`number` - D.`first_port` + D.`first_printed_port`), ''), "
-	qry += "IFNULL(F.`name`, ''), HEX(A.`mac`), A.`description`, A.`enabled`, A.`last_updated_timestamp`, A.`timestamp` "
-	qry += "FROM `host` A "
-	qry += "JOIN `ip` B ON A.`ip_id` = B.`id` "
-	qry += "LEFT JOIN `port` C ON A.`port_id` = C.`id` "
-	qry += "LEFT JOIN `switch` D ON C.`switch_id` = D.`id` "
-	qry += "JOIN `network` E ON B.`network_id` = E.`id` "
-	qry += "LEFT JOIN `group` F ON A.`group_id` = F.`id` "
-	qry += "WHERE A.`id` = ?"
+func getHost(tx *sql.Tx, id uint64) (*host, error) {
+	qry := "SELECT `host`.`id`, "                                                                                                              // ID
+	qry += "       `host`.`ip_id`, "                                                                                                           // IP ID
+	qry += "       CONCAT(INET_NTOA(`ip`.`address`), '/', `network`.`mask`), "                                                                 // IP Address
+	qry += "       IFNULL(CONCAT(`switch`.`description`, '/', `port`.`number` - `switch`.`first_port` + `switch`.`first_printed_port`), ''), " // Port
+	qry += "       `host`.`group_id`, "                                                                                                        // Group ID
+	qry += "       IFNULL(`group`.`name`, ''), "                                                                                               // Group Name
+	qry += "       HEX(`host`.`mac`), "                                                                                                        // MAC
+	qry += "       `host`.`description`, "                                                                                                     // Description
+	qry += "       `host`.`enabled`, "                                                                                                         // Enabled
+	qry += "       `host`.`last_updated_timestamp`, "                                                                                          // Stale
+	qry += "       `host`.`timestamp` "                                                                                                        // Timestamp
+	qry += "FROM `host` "
+	qry += "JOIN `ip` ON `host`.`ip_id` = `ip`.`id` "
+	qry += "LEFT JOIN `port` ON `host`.`port_id` = `port`.`id` "
+	qry += "LEFT JOIN `switch` ON `port`.`switch_id` = `switch`.`id` "
+	qry += "JOIN `network` ON `ip`.`network_id` = `network`.`id` "
+	qry += "LEFT JOIN `group` ON `host`.`group_id` = `group`.`id` "
+	qry += "WHERE `host`.`id` = ?"
 
-	v := new(ui.Host)
+	v := new(host)
 	var timestamp time.Time
-	if err := tx.QueryRow(qry, id).Scan(&v.ID, &v.IP, &v.Port, &v.Group, &v.MAC, &v.Description, &v.Enabled, &timestamp, &v.Timestamp); err != nil {
+	var mac string
+	if err := tx.QueryRow(qry, id).Scan(&v.id, &v.ip.id, &v.ip.address, &v.port, &v.group.id, &v.group.name, &mac, &v.description, &v.enabled, &timestamp, &v.timestamp); err != nil {
 		return nil, err
 	}
 
 	// Parse the MAC address.
-	mac, err := decodeMAC(v.MAC)
+	var err error
+	v.mac, err = decodeMAC(mac)
 	if err != nil {
 		return nil, err
 	}
-	v.MAC = mac.String()
 	// Check its freshness.
 	if time.Now().Sub(timestamp) > discovery.ProbeInterval*2 {
-		v.Stale = true
+		v.stale = true
 	}
 
 	spec, err := getSpec(tx, id)
 	if err != nil {
 		return nil, err
 	}
-	v.Spec = spec
+	v.spec = spec
 
 	return v, nil
 }
 
+type host struct {
+	id uint64
+	ip struct {
+		id      uint64
+		address string
+	}
+	port  string
+	group struct {
+		id   *uint64
+		name string
+	}
+	mac         net.HardwareAddr
+	description string
+	enabled     bool
+	stale       bool
+	spec        []*ui.Spec
+	timestamp   time.Time
+}
+
+func (r *host) convert() *ui.Host {
+	return &ui.Host{
+		ID:          r.id,
+		IP:          r.ip.address,
+		Port:        r.port,
+		Group:       r.group.name,
+		MAC:         r.mac.String(),
+		Description: r.description,
+		Enabled:     r.enabled,
+		Stale:       r.stale,
+		Spec:        r.spec,
+		Timestamp:   r.timestamp,
+	}
+}
+
 func (r *uiTx) AddHost(requesterID, ipID uint64, groupID *uint64, mac net.HardwareAddr, desc string, spec []ui.SpecParam) (host *ui.Host, duplicated bool, err error) {
-	ok, err := isAvailableIP(r.handle, ipID)
+	h, duplicated, err := addNewHost(r.handle, ipID, groupID, mac, desc, spec)
+	if err != nil {
+		return nil, false, err
+	}
+	if duplicated {
+		return nil, true, nil
+	}
+
+	if err := r.log(requesterID, logTypeHost, logMethodAdd, h.convert()); err != nil {
+		return nil, false, err
+	}
+
+	return h.convert(), false, nil
+}
+
+func addNewHost(tx *sql.Tx, ipID uint64, groupID *uint64, mac net.HardwareAddr, desc string, spec []ui.SpecParam) (host *host, duplicated bool, err error) {
+	ok, err := isAvailableIP(tx, ipID)
 	if err != nil {
 		return nil, false, err
 	}
@@ -1336,46 +1395,34 @@ func (r *uiTx) AddHost(requesterID, ipID uint64, groupID *uint64, mac net.Hardwa
 		return nil, true, nil
 	}
 
-	id, err := addNewHost(r.handle, ipID, groupID, mac, desc, spec)
-	if err != nil {
-		return nil, false, err
-	}
-	host, err = getHost(r.handle, id)
-	if err != nil {
-		return nil, false, err
-	}
-
-	if err := r.log(requesterID, logTypeHost, logMethodAdd, host); err != nil {
-		return nil, false, err
-	}
-
-	return host, false, nil
-}
-
-func addNewHost(tx *sql.Tx, ipID uint64, groupID *uint64, mac net.HardwareAddr, desc string, spec []ui.SpecParam) (uint64, error) {
 	qry := "INSERT INTO `host` (`ip_id`, `group_id`, `mac`, `description`, `last_updated_timestamp`, `enabled`, `timestamp`) VALUES (?, ?, UNHEX(?), ?, NOW(), TRUE, NOW())"
 	result, err := tx.Exec(qry, ipID, groupID, encodeMAC(mac), desc)
 	if err != nil {
-		return 0, err
+		return nil, false, err
 	}
 	id, err := result.LastInsertId()
 	if err != nil {
-		return 0, err
+		return nil, false, err
 	}
 
 	if spec != nil {
 		for _, v := range spec {
 			if err := addSpec(tx, uint64(id), v.ComponentID, v.Count); err != nil {
-				return 0, err
+				return nil, false, err
 			}
 		}
 	}
 
 	if err := updateARPTableEntryByHost(tx, uint64(id), false); err != nil {
-		return 0, err
+		return nil, false, err
 	}
 
-	return uint64(id), nil
+	host, err = getHost(tx, uint64(id))
+	if err != nil {
+		return nil, false, err
+	}
+
+	return host, false, nil
 }
 
 func isAvailableIP(tx *sql.Tx, id uint64) (bool, error) {
@@ -1414,7 +1461,7 @@ func decodeMAC(s string) (net.HardwareAddr, error) {
 	return net.HardwareAddr(v), nil
 }
 
-func (r *uiTx) UpdateHost(requesterID, hostID, ipID uint64, groupID *uint64, mac net.HardwareAddr, desc string, spec []ui.SpecParam) (host *ui.Host, duplicated bool, err error) {
+func (r *uiTx) UpdateHost(requesterID, hostID uint64, ipID, groupID *uint64, mac net.HardwareAddr, desc *string, spec []ui.SpecParam) (host *ui.Host, duplicated bool, err error) {
 	old, err := getHost(r.handle, hostID)
 	if err != nil {
 		// Not found host to update.
@@ -1424,39 +1471,55 @@ func (r *uiTx) UpdateHost(requesterID, hostID, ipID uint64, groupID *uint64, mac
 		return nil, false, err
 	}
 
-	if err := removeHost(r.handle, hostID); err != nil {
-		return nil, false, err
-	}
-
-	ok, err := isAvailableIP(r.handle, ipID)
+	new, duplicated, err := updateHost(r.handle, old, ipID, groupID, mac, desc, spec)
 	if err != nil {
 		return nil, false, err
 	}
-	if ok == false {
+	if duplicated {
 		return nil, true, nil
-	}
-
-	newID, err := addNewHost(r.handle, ipID, groupID, mac, desc, spec)
-	if err != nil {
-		return nil, false, err
-	}
-	new, err := getHost(r.handle, newID)
-	if err != nil {
-		return nil, false, err
 	}
 
 	err = r.log(requesterID, logTypeHost, logMethodUpdate, &struct {
 		Old *ui.Host `json:"old"`
 		New *ui.Host `json:"new"`
 	}{
-		Old: old,
-		New: new,
+		Old: old.convert(),
+		New: new.convert(),
 	})
 	if err != nil {
 		return nil, false, err
 	}
 
-	return new, false, nil
+	return new.convert(), false, nil
+}
+
+func updateHost(tx *sql.Tx, old *host, ipID, groupID *uint64, mac net.HardwareAddr, desc *string, spec []ui.SpecParam) (new *host, duplicated bool, err error) {
+	if err := removeHost(tx, old.id); err != nil {
+		return nil, false, err
+	}
+
+	if ipID == nil {
+		ipID = &old.ip.id
+	}
+	if groupID == nil {
+		groupID = old.group.id
+	}
+	if mac == nil {
+		mac = old.mac
+	}
+	if desc == nil {
+		desc = &old.description
+	}
+	if spec == nil {
+		for _, v := range old.spec {
+			spec = append(spec, ui.SpecParam{
+				ComponentID: v.Component.ID,
+				Count:       v.Count,
+			})
+		}
+	}
+
+	return addNewHost(tx, *ipID, groupID, mac, *desc, spec)
 }
 
 func (r *uiTx) ActivateHost(requesterID, hostID uint64) (host *ui.Host, err error) {
@@ -1478,16 +1541,16 @@ func (r *uiTx) ActivateHost(requesterID, hostID uint64) (host *ui.Host, err erro
 		return nil, err
 	}
 
-	host, err = getHost(r.handle, hostID)
+	h, err := getHost(r.handle, hostID)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := r.log(requesterID, logTypeHost, logMethodUpdate, host); err != nil {
+	if err := r.log(requesterID, logTypeHost, logMethodUpdate, h.convert()); err != nil {
 		return nil, err
 	}
 
-	return host, nil
+	return h.convert(), nil
 }
 
 func (r *uiTx) DeactivateHost(requesterID, hostID uint64) (host *ui.Host, err error) {
@@ -1509,16 +1572,16 @@ func (r *uiTx) DeactivateHost(requesterID, hostID uint64) (host *ui.Host, err er
 		return nil, err
 	}
 
-	host, err = getHost(r.handle, hostID)
+	h, err := getHost(r.handle, hostID)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := r.log(requesterID, logTypeHost, logMethodUpdate, host); err != nil {
+	if err := r.log(requesterID, logTypeHost, logMethodUpdate, h.convert()); err != nil {
 		return nil, err
 	}
 
-	return host, nil
+	return h.convert(), nil
 }
 
 func (r *uiTx) CountVIPByHostID(id uint64) (count uint64, err error) {
@@ -1531,7 +1594,7 @@ func (r *uiTx) CountVIPByHostID(id uint64) (count uint64, err error) {
 }
 
 func (r *uiTx) RemoveHost(requesterID, hostID uint64) (host *ui.Host, err error) {
-	host, err = getHost(r.handle, hostID)
+	h, err := getHost(r.handle, hostID)
 	if err != nil {
 		// Not found host to remove.
 		if err == sql.ErrNoRows {
@@ -1544,11 +1607,11 @@ func (r *uiTx) RemoveHost(requesterID, hostID uint64) (host *ui.Host, err error)
 		return nil, err
 	}
 
-	if err := r.log(requesterID, logTypeHost, logMethodRemove, host); err != nil {
+	if err := r.log(requesterID, logTypeHost, logMethodRemove, h.convert()); err != nil {
 		return nil, err
 	}
 
-	return host, nil
+	return h.convert(), nil
 }
 
 func removeHost(tx *sql.Tx, id uint64) error {
@@ -2231,8 +2294,8 @@ func getVIP(tx *sql.Tx, id uint64) (vip *ui.VIP, err error) {
 	return &ui.VIP{
 		ID:          v.id,
 		IP:          v.address,
-		ActiveHost:  *active,
-		StandbyHost: *standby,
+		ActiveHost:  *active.convert(),
+		StandbyHost: *standby.convert(),
 		Description: v.description,
 	}, nil
 }
