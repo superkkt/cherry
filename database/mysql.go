@@ -1946,8 +1946,8 @@ func (r *uiTx) RemoveSwitch(requesterID, swID uint64) (sw *ui.Switch, err error)
 
 func (r *uiTx) Auth(name, password string) (*ui.User, error) {
 	v := new(ui.User)
-	qry := "SELECT `id`, `name`, `enabled`, `admin`, `timestamp` FROM `user` WHERE `name` = ? AND `password` = SHA2(?, 256)"
-	if err := r.handle.QueryRow(qry, name, name+password).Scan(&v.ID, &v.Name, &v.Enabled, &v.Admin, &v.Timestamp); err != nil {
+	qry := "SELECT `id`, `name`, `key`, `enabled`, `admin`, `timestamp` FROM `user` WHERE `name` = ? AND `password` = SHA2(?, 256)"
+	if err := r.handle.QueryRow(qry, name, name+password).Scan(&v.ID, &v.Name, &v.Key, &v.Enabled, &v.Admin, &v.Timestamp); err != nil {
 		if err == sql.ErrNoRows {
 			// Incorrect credential or not exist.
 			return nil, nil
@@ -1959,7 +1959,7 @@ func (r *uiTx) Auth(name, password string) (*ui.User, error) {
 }
 
 func (r *uiTx) Users(pagination ui.Pagination) (user []*ui.User, err error) {
-	qry := "SELECT `id`, `name`, `enabled`, `admin`, `timestamp` "
+	qry := "SELECT `id`, `name`, `key`, `enabled`, `admin`, `timestamp` "
 	qry += "FROM `user` "
 	qry += "ORDER BY `id` DESC "
 	qry += "LIMIT ?, ?"
@@ -1973,7 +1973,7 @@ func (r *uiTx) Users(pagination ui.Pagination) (user []*ui.User, err error) {
 	user = []*ui.User{}
 	for rows.Next() {
 		v := new(ui.User)
-		if err := rows.Scan(&v.ID, &v.Name, &v.Enabled, &v.Admin, &v.Timestamp); err != nil {
+		if err := rows.Scan(&v.ID, &v.Name, &v.Key, &v.Enabled, &v.Admin, &v.Timestamp); err != nil {
 			return nil, err
 		}
 		user = append(user, v)
@@ -1985,10 +1985,10 @@ func (r *uiTx) Users(pagination ui.Pagination) (user []*ui.User, err error) {
 	return user, nil
 }
 
-func (r *uiTx) AddUser(requesterID uint64, name, password string) (user *ui.User, duplicated bool, err error) {
-	qry := "INSERT INTO `user` (`name`, `password`, `enabled`, `admin`, `timestamp`) "
-	qry += "VALUES (?, SHA2(?, 256), TRUE, FALSE, NOW())"
-	result, err := r.handle.Exec(qry, name, name+password)
+func (r *uiTx) AddUser(requesterID uint64, name, password, key string) (user *ui.User, duplicated bool, err error) {
+	qry := "INSERT INTO `user` (`name`, `password`, `key`, `enabled`, `admin`, `timestamp`) "
+	qry += "VALUES (?, SHA2(?, 256), ?, TRUE, FALSE, NOW())"
+	result, err := r.handle.Exec(qry, name, name+password, key)
 	if err != nil {
 		// No error.
 		if isDuplicated(err) {
@@ -2014,12 +2014,12 @@ func (r *uiTx) AddUser(requesterID uint64, name, password string) (user *ui.User
 }
 
 func getUser(tx *sql.Tx, id uint64) (*ui.User, error) {
-	qry := "SELECT `id`, `name`, `enabled`, `admin`, `timestamp` "
+	qry := "SELECT `id`, `name`, `key`, `enabled`, `admin`, `timestamp` "
 	qry += "FROM `user` "
 	qry += "WHERE `id` = ?"
 
 	v := new(ui.User)
-	if err := tx.QueryRow(qry, id).Scan(&v.ID, &v.Name, &v.Enabled, &v.Admin, &v.Timestamp); err != nil {
+	if err := tx.QueryRow(qry, id).Scan(&v.ID, &v.Name, &v.Key, &v.Enabled, &v.Admin, &v.Timestamp); err != nil {
 		return nil, err
 	}
 
@@ -2120,6 +2120,23 @@ func (r *uiTx) DeactivateUser(requesterID, userID uint64) (user *ui.User, err er
 	}
 
 	return user, nil
+}
+
+func (r *uiTx) ResetOTPKey(name, key string) (ok bool, err error) {
+	result, err := r.handle.Exec("UPDATE `user` SET `key` = ? WHERE `name` = ?", key, name)
+	if err != nil {
+		return false, err
+	}
+	nRows, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	// Not found user to reset OTP.
+	if nRows == 0 {
+		return false, nil
+	}
+
+	return true, nil
 }
 
 func (r *uiTx) VIPs(pagination ui.Pagination) (vip []*ui.VIP, err error) {

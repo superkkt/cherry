@@ -226,6 +226,7 @@ func (r *API) Serve() error {
 		rest.Post("/api/v1/user/update", api.ResponseHandler(r.updateUser)),
 		rest.Post("/api/v1/user/activate", api.ResponseHandler(r.activateUser)),
 		rest.Post("/api/v1/user/deactivate", api.ResponseHandler(r.deactivateUser)),
+		rest.Post("/api/v1/user/reset", api.ResponseHandler(r.resetOTP)),
 		rest.Post("/api/v1/group/list", api.ResponseHandler(r.listGroup)),
 		rest.Post("/api/v1/group/add", api.ResponseHandler(r.addGroup)),
 		rest.Post("/api/v1/group/update", api.ResponseHandler(r.updateGroup)),

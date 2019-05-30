@@ -35,24 +35,28 @@ import (
 
 	"github.com/ant0ine/go-json-rest/rest"
 	"github.com/davecgh/go-spew/spew"
+	"github.com/pquerna/otp"
+	"github.com/pquerna/otp/totp"
 )
 
 type UserTransaction interface {
 	// Auth returns information for a user if name and password match. Otherwise, it returns nil.
 	Auth(name, password string) (*User, error)
 	Users(Pagination) ([]*User, error)
-	AddUser(requesterID uint64, name, password string) (user *User, duplicated bool, err error)
+	AddUser(requesterID uint64, name, password, key string) (user *User, duplicated bool, err error)
 	// UpdateUser updates password and admin authorization of a user specified by id and then returns information of the user. It returns nil if the user does not exist.
 	UpdateUser(requesterID, userID uint64, password *string, admin *bool) (*User, error)
 	// ActivateUser enables a user specified by id and then returns information of the user. It returns nil if the user does not exist.
 	ActivateUser(requesterID, userID uint64) (*User, error)
 	// DeactivateUser disables a user specified by id and then returns information of the user. It returns nil if the user does not exist.
 	DeactivateUser(requesterID, userID uint64) (*User, error)
+	ResetOTPKey(name, key string) (ok bool, err error)
 }
 
 type User struct {
 	ID        uint64
 	Name      string
+	Key       string // Key used in OTP Authentication.
 	Enabled   bool
 	Admin     bool
 	Timestamp time.Time
@@ -101,6 +105,11 @@ func (r *API) login(w api.ResponseWriter, req *rest.Request) {
 		return
 	}
 
+	if ok := totp.Validate(p.Code, user.Key); ok == false {
+		w.Write(api.Response{Status: api.StatusIncorrectCredential, Message: fmt.Sprintf("incorrect OTP code: %v", p.Code)})
+		return
+	}
+
 	id := r.session.Add(user)
 	logger.Debugf("login success: user=%v, sessionID=%v", spew.Sdump(user), id)
 
@@ -121,12 +130,14 @@ func (r *API) login(w api.ResponseWriter, req *rest.Request) {
 type loginParam struct {
 	Name     string
 	Password string
+	Code     string // OTP Authentication Code.
 }
 
 func (r *loginParam) UnmarshalJSON(data []byte) error {
 	v := struct {
 		Name     string `json:"name"`
 		Password string `json:"password"`
+		Code     string `json:"code"`
 	}{}
 	if err := json.Unmarshal(data, &v); err != nil {
 		return err
@@ -142,6 +153,9 @@ func (r *loginParam) validate() error {
 	}
 	if len(r.Password) < 8 || len(r.Password) > 64 {
 		return fmt.Errorf("invalid password: %v", r.Password)
+	}
+	if len(r.Code) != 6 {
+		return fmt.Errorf("invalid OTP code: %v", r.Code)
 	}
 
 	return nil
@@ -267,10 +281,16 @@ func (r *API) addUser(w api.ResponseWriter, req *rest.Request) {
 		return
 	}
 
+	key, err := generateOTPKey(p.Name)
+	if err != nil {
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to generate OTP key: %v", err)})
+		return
+	}
+
 	var user *User
 	var duplicated bool
 	f := func(tx Transaction) (err error) {
-		user, duplicated, err = tx.AddUser(session.(*User).ID, p.Name, p.Password)
+		user, duplicated, err = tx.AddUser(session.(*User).ID, p.Name, p.Password, key.Secret())
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
@@ -284,7 +304,16 @@ func (r *API) addUser(w api.ResponseWriter, req *rest.Request) {
 	}
 	logger.Debugf("added the user account: %v", spew.Sdump(user))
 
-	w.Write(api.Response{Status: api.StatusOkay, Data: user})
+	w.Write(api.Response{
+		Status: api.StatusOkay,
+		Data: &struct {
+			User *User  `json:"user"`
+			OTP  string `json:"otp"`
+		}{
+			User: user,
+			OTP:  key.String(),
+		},
+	})
 }
 
 type addUserParam struct {
@@ -319,6 +348,13 @@ func (r *addUserParam) validate() error {
 	}
 
 	return nil
+}
+
+func generateOTPKey(account string) (*otp.Key, error) {
+	return totp.Generate(totp.GenerateOpts{
+		Issuer:      "Cherry",
+		AccountName: account,
+	})
 }
 
 func (r *API) updateUser(w api.ResponseWriter, req *rest.Request) {
@@ -529,6 +565,77 @@ func (r *deactivateUserParam) validate() error {
 	}
 	if r.ID == 0 {
 		return errors.New("invalid user id")
+	}
+
+	return nil
+}
+
+func (r *API) resetOTP(w api.ResponseWriter, req *rest.Request) {
+	p := new(resetOTPParam)
+	if err := req.DecodeJsonPayload(p); err != nil {
+		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode params: %v", err.Error())})
+		return
+	}
+	logger.Debugf("resetOTP request from %v: %v", req.RemoteAddr, spew.Sdump(p))
+
+	session, ok := r.session.Get(p.SessionID)
+	if ok == false {
+		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
+		return
+	}
+	if session.(*User).Admin == false {
+		w.Write(api.Response{Status: api.StatusPermissionDenied, Message: fmt.Sprintf("not allowed session id: %v", p.SessionID)})
+		return
+	}
+
+	key, err := generateOTPKey(p.Name)
+	if err != nil {
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to generate OTP key: %v", err)})
+		return
+	}
+
+	f := func(tx Transaction) (err error) {
+		ok, err = tx.ResetOTPKey(p.Name, key.Secret())
+		return err
+	}
+	if err := r.DB.Exec(f); err != nil {
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to reset OTP of a user account: %v", err.Error())})
+		return
+	}
+
+	if ok == false {
+		w.Write(api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found user to reset OTP: %v", p.Name)})
+		return
+	}
+	logger.Debugf("reset OTP of the user account: %v", p.Name)
+
+	w.Write(api.Response{Status: api.StatusOkay, Data: key.String()})
+}
+
+type resetOTPParam struct {
+	SessionID string
+	Name      string
+}
+
+func (r *resetOTPParam) UnmarshalJSON(data []byte) error {
+	v := struct {
+		SessionID string `json:"session_id"`
+		Name      string `json:"name"`
+	}{}
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	*r = resetOTPParam(v)
+
+	return r.validate()
+}
+
+func (r *resetOTPParam) validate() error {
+	if len(r.SessionID) != 64 {
+		return errors.New("invalid session id")
+	}
+	if len(r.Name) == 0 {
+		return errors.New("empty name")
 	}
 
 	return nil
