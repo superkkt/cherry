@@ -32,6 +32,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/superkkt/cherry/api"
 
@@ -206,7 +207,7 @@ func (r *addSwitchParam) UnmarshalJSON(data []byte) error {
 	if v.NumPorts > 512 {
 		return errors.New("too many ports")
 	}
-	if len(v.Description) > 255 {
+	if utf8.RuneCountInString(v.Description) > 255 {
 		return errors.New("too long description")
 	}
 	if uint32(v.FirstPort)+uint32(v.NumPorts) > 0xFFFF {
