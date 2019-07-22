@@ -31,6 +31,7 @@ import (
 	"fmt"
 	"net"
 	"time"
+	"unicode/utf8"
 
 	"github.com/superkkt/cherry/api"
 	"github.com/superkkt/cherry/network"
@@ -323,7 +324,7 @@ func (r *addHostParam) UnmarshalJSON(data []byte) error {
 			return errors.New("invalid ip id")
 		}
 	}
-	if len(v.Description) > 255 {
+	if utf8.RuneCountInString(v.Description) > 255 {
 		return errors.New("too long description")
 	}
 	mac, err := net.ParseMAC(v.MAC)
@@ -475,7 +476,7 @@ func (r *updateHostParam) UnmarshalJSON(data []byte) error {
 	if v.GroupID != nil && *v.GroupID == 0 {
 		return errors.New("invalid group id")
 	}
-	if v.Description != nil && len(*v.Description) > 255 {
+	if v.Description != nil && utf8.RuneCountInString(*v.Description) > 255 {
 		return errors.New("too long description")
 	}
 	for _, v := range r.Spec {

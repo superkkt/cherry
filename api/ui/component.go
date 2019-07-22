@@ -30,6 +30,7 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	"unicode/utf8"
 
 	"github.com/superkkt/cherry/api"
 
@@ -187,7 +188,7 @@ func (r *addComponentParam) validate() error {
 	if r.CategoryID == 0 {
 		return errors.New("invalid category id")
 	}
-	if len(r.Name) < 2 || len(r.Name) > 255 {
+	if utf8.RuneCountInString(r.Name) < 2 || utf8.RuneCountInString(r.Name) > 255 {
 		return fmt.Errorf("invalid name: %v", r.Name)
 	}
 
@@ -259,7 +260,7 @@ func (r *updateComponentParam) validate() error {
 	if r.ID == 0 {
 		return errors.New("invalid component id")
 	}
-	if len(r.Name) < 2 || len(r.Name) > 255 {
+	if utf8.RuneCountInString(r.Name) < 2 || utf8.RuneCountInString(r.Name) > 255 {
 		return fmt.Errorf("invalid name: %v", r.Name)
 	}
 

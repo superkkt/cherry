@@ -30,6 +30,7 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	"unicode/utf8"
 
 	"github.com/superkkt/cherry/api"
 
@@ -174,7 +175,7 @@ func (r *addGroupParam) validate() error {
 	if len(r.SessionID) != 64 {
 		return errors.New("invalid session id")
 	}
-	if len(r.Name) < 2 || len(r.Name) > 25 {
+	if utf8.RuneCountInString(r.Name) < 2 || utf8.RuneCountInString(r.Name) > 25 {
 		return fmt.Errorf("invalid name: %v", r.Name)
 	}
 
@@ -246,7 +247,7 @@ func (r *updateGroupParam) validate() error {
 	if r.ID == 0 {
 		return errors.New("invalid group id")
 	}
-	if len(r.Name) < 2 || len(r.Name) > 25 {
+	if utf8.RuneCountInString(r.Name) < 2 || utf8.RuneCountInString(r.Name) > 25 {
 		return fmt.Errorf("invalid name: %v", r.Name)
 	}
 

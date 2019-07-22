@@ -29,6 +29,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"unicode/utf8"
 
 	"github.com/superkkt/cherry/api"
 	"github.com/superkkt/cherry/network"
@@ -186,7 +187,7 @@ func (r *addVIPParam) validate() error {
 	if r.ActiveHostID == r.StandbyHostID {
 		return errors.New("same host for the active and standby")
 	}
-	if len(r.Description) > 255 {
+	if utf8.RuneCountInString(r.Description) > 255 {
 		return errors.New("too long description")
 	}
 
