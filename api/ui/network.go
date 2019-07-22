@@ -32,6 +32,7 @@ import (
 	"net"
 
 	"github.com/superkkt/cherry/api"
+	"github.com/superkkt/cherry/network"
 
 	"github.com/ant0ine/go-json-rest/rest"
 	"github.com/davecgh/go-spew/spew"
@@ -178,7 +179,7 @@ func (r *addNetworkParam) UnmarshalJSON(data []byte) error {
 	if gateway == nil {
 		return fmt.Errorf("invalid network gateway: %v", v.Gateway)
 	}
-	if err := validateGateway(network, gateway); err != nil {
+	if err := validateGateway(*network, gateway); err != nil {
 		return err
 	}
 
@@ -190,17 +191,22 @@ func (r *addNetworkParam) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func validateGateway(network *net.IPNet, gateway net.IP) error {
-	invalid := fmt.Errorf("invalid network gateway: %v", gateway)
+func validateGateway(n net.IPNet, g net.IP) error {
+	invalid := fmt.Errorf("invalid network gateway: %v", g)
 	broadcast := net.IP(make([]byte, 4))
-	for i := range network.IP.To4() {
-		broadcast[i] = network.IP.To4()[i] | ^network.Mask[i]
+	for i := range n.IP.To4() {
+		broadcast[i] = n.IP.To4()[i] | ^n.Mask[i]
 	}
 
-	if network.Contains(gateway) == false {
+	reserved, err := network.ReservedIP(n)
+	if err != nil {
+		return err
+	}
+
+	if n.Contains(g) == false {
 		return invalid
 	}
-	if gateway.Equal(network.IP) || gateway.Equal(broadcast) {
+	if g.Equal(n.IP) || g.Equal(broadcast) || g.Equal(reserved) {
 		return invalid
 	}
 
