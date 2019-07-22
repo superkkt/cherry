@@ -12,6 +12,18 @@
   revision = "3a807d6d8d36e0f9175d6c292030fce09bcbb2db"
 
 [[projects]]
+  digest = "1:7b94d37d65c0445053c6f3e73090e3966c1c29127035492c349e14f25c440359"
+  name = "github.com/boombuler/barcode"
+  packages = [
+    ".",
+    "qr",
+    "utils",
+  ]
+  pruneopts = "UT"
+  revision = "3cfea5ab600ae37946be2b763b8ec2c1cf2d272d"
+  version = "v1.0.0"
+
+[[projects]]
   digest = "1:ffe9824d294da03b391f44e1ae8281281b4afc1bdaa9588c9097785e3af10cec"
   name = "github.com/davecgh/go-spew"
   packages = ["spew"]
@@ -115,6 +127,18 @@
   version = "v0.7.1"
 
 [[projects]]
+  digest = "1:dc56e7178a82f8e84960ed9efa7d4ebd0a6d7864894bfc46f8a35ee5eae7153a"
+  name = "github.com/pquerna/otp"
+  packages = [
+    ".",
+    "hotp",
+    "totp",
+  ]
+  pruneopts = "UT"
+  revision = "be78767b3e392ce45ea73444451022a6fc32ad0d"
+  version = "v1.1.0"
+
+[[projects]]
   digest = "1:52a2ebfbfba82261de225d37a346043fcb663f5dde46b10462e2c305b0b05e3d"
   name = "github.com/spf13/afero"
   packages = [
@@ -209,6 +233,8 @@
     "github.com/google/go-cmp/cmp/cmpopts",
     "github.com/hashicorp/golang-lru",
     "github.com/pkg/errors",
+    "github.com/pquerna/otp",
+    "github.com/pquerna/otp/totp",
     "github.com/superkkt/go-logging",
     "github.com/superkkt/viper",
   ]
