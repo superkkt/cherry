@@ -250,7 +250,7 @@ CREATE TABLE IF NOT EXISTS `host` (
   `description` varchar(255) NOT NULL,
   `last_updated_timestamp` datetime NOT NULL,
   `enabled` tinyint(1) NOT NULL DEFAULT '1',
-  `timestamp` datetime NOT NULL,
+  `timestamp` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `ip` (`ip_id`),
   KEY `port_id` (`port_id`),
