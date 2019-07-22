@@ -24,7 +24,6 @@
 CREATE TABLE IF NOT EXISTS `user` (
   `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   `name` varchar(255) NOT NULL,
-  `password` char(64) NOT NULL,
   `key` char(32) NOT NULL,
   `enabled` tinyint(1) NOT NULL DEFAULT '0',
   `admin` tinyint(1) NOT NULL DEFAULT '0',

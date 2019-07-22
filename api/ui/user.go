@@ -40,16 +40,11 @@ import (
 )
 
 type UserTransaction interface {
-	// Auth returns information for a user if name and password match. Otherwise, it returns nil.
-	Auth(name, password string) (*User, error)
+	User(name string) (*User, error)
 	Users(Pagination) ([]*User, error)
-	AddUser(requesterID uint64, name, password, key string) (user *User, duplicated bool, err error)
-	// UpdateUser updates password and admin authorization of a user specified by id and then returns information of the user. It returns nil if the user does not exist.
-	UpdateUser(requesterID, userID uint64, password *string, admin *bool) (*User, error)
-	// ActivateUser enables a user specified by id and then returns information of the user. It returns nil if the user does not exist.
-	ActivateUser(requesterID, userID uint64) (*User, error)
-	// DeactivateUser disables a user specified by id and then returns information of the user. It returns nil if the user does not exist.
-	DeactivateUser(requesterID, userID uint64) (*User, error)
+	AddUser(requesterID uint64, name, key string) (user *User, duplicated bool, err error)
+	// UpdateUser updates enabled and admin authorization of a user specified by id and then returns information of the user. It returns nil if the user does not exist.
+	UpdateUser(requesterID, userID uint64, enabled, admin *bool) (*User, error)
 	ResetOTPKey(name, key string) (ok bool, err error)
 }
 
@@ -88,20 +83,30 @@ func (r *API) login(w api.ResponseWriter, req *rest.Request) {
 
 	var user *User
 	f := func(tx Transaction) (err error) {
-		user, err = tx.Auth(p.Name, p.Password)
+		user, err = tx.User(p.Name)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
-		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to authenticate an user account: %v", err.Error())})
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to query an user account: %v", err.Error())})
 		return
 	}
 
 	if user == nil {
-		w.Write(api.Response{Status: api.StatusIncorrectCredential, Message: fmt.Sprintf("incorrect username or password: username=%v", p.Name)})
+		w.Write(api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found user to login: %v", p.Name)})
 		return
 	}
 	if user.Enabled == false {
 		w.Write(api.Response{Status: api.StatusBlockedAccount, Message: fmt.Sprintf("login attempt with a blocked account: %v", p.Name)})
+		return
+	}
+
+	ok, err := r.LDAP.Auth(p.Name, p.Password)
+	if err != nil {
+		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to authenticate an user account: %v", err.Error())})
+		return
+	}
+	if ok == false {
+		w.Write(api.Response{Status: api.StatusIncorrectCredential, Message: fmt.Sprintf("incorrect username or password: %v", p.Name)})
 		return
 	}
 
@@ -148,11 +153,11 @@ func (r *loginParam) UnmarshalJSON(data []byte) error {
 }
 
 func (r *loginParam) validate() error {
-	if len(r.Name) < 3 || len(r.Name) > 24 {
-		return fmt.Errorf("invalid name: %v", r.Name)
+	if len(r.Name) == 0 {
+		return errors.New("empty name")
 	}
-	if len(r.Password) < 8 || len(r.Password) > 64 {
-		return fmt.Errorf("invalid password: %v", r.Password)
+	if len(r.Password) == 0 {
+		return errors.New("empty password")
 	}
 	if len(r.Code) != 6 {
 		return fmt.Errorf("invalid OTP code: %v", r.Code)
@@ -290,7 +295,7 @@ func (r *API) addUser(w api.ResponseWriter, req *rest.Request) {
 	var user *User
 	var duplicated bool
 	f := func(tx Transaction) (err error) {
-		user, duplicated, err = tx.AddUser(session.(*User).ID, p.Name, p.Password, key.Secret())
+		user, duplicated, err = tx.AddUser(session.(*User).ID, p.Name, key.Secret())
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
@@ -319,14 +324,12 @@ func (r *API) addUser(w api.ResponseWriter, req *rest.Request) {
 type addUserParam struct {
 	SessionID string
 	Name      string
-	Password  string
 }
 
 func (r *addUserParam) UnmarshalJSON(data []byte) error {
 	v := struct {
 		SessionID string `json:"session_id"`
 		Name      string `json:"name"`
-		Password  string `json:"password"`
 	}{}
 	if err := json.Unmarshal(data, &v); err != nil {
 		return err
@@ -340,11 +343,8 @@ func (r *addUserParam) validate() error {
 	if len(r.SessionID) != 64 {
 		return errors.New("invalid session id")
 	}
-	if len(r.Name) < 3 || len(r.Name) > 24 {
-		return fmt.Errorf("invalid name: %v", r.Name)
-	}
-	if len(r.Password) < 8 || len(r.Password) > 64 {
-		return fmt.Errorf("invalid password: %v", r.Password)
+	if len(r.Name) == 0 {
+		return errors.New("empty name")
 	}
 
 	return nil
@@ -370,19 +370,14 @@ func (r *API) updateUser(w api.ResponseWriter, req *rest.Request) {
 		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
 		return
 	}
-	if session.(*User).Admin == false && session.(*User).ID != p.ID {
+	if session.(*User).Admin == false {
 		w.Write(api.Response{Status: api.StatusPermissionDenied, Message: fmt.Sprintf("not allowed session id: %v", p.SessionID)})
 		return
 	}
 
-	// Non-admin users can modify only password.
-	if session.(*User).Admin == false {
-		p.Admin = nil
-	}
-
 	var user *User
 	f := func(tx Transaction) (err error) {
-		user, err = tx.UpdateUser(session.(*User).ID, p.ID, p.Password, p.Admin)
+		user, err = tx.UpdateUser(session.(*User).ID, p.ID, p.Enabled, p.Admin)
 		return err
 	}
 	if err := r.DB.Exec(f); err != nil {
@@ -402,16 +397,16 @@ func (r *API) updateUser(w api.ResponseWriter, req *rest.Request) {
 type updateUserParam struct {
 	SessionID string
 	ID        uint64
-	Password  *string
+	Enabled   *bool
 	Admin     *bool
 }
 
 func (r *updateUserParam) UnmarshalJSON(data []byte) error {
 	v := struct {
-		SessionID string  `json:"session_id"`
-		ID        uint64  `json:"id"`
-		Password  *string `json:"password"`
-		Admin     *bool   `json:"admin"`
+		SessionID string `json:"session_id"`
+		ID        uint64 `json:"id"`
+		Enabled   *bool  `json:"enabled"`
+		Admin     *bool  `json:"admin"`
 	}{}
 	if err := json.Unmarshal(data, &v); err != nil {
 		return err
@@ -428,143 +423,8 @@ func (r *updateUserParam) validate() error {
 	if r.ID == 0 {
 		return errors.New("invalid user ID")
 	}
-	if r.Password == nil && r.Admin == nil {
+	if r.Enabled == nil && r.Admin == nil {
 		return errors.New("empty parameter")
-	}
-	if r.Password != nil && (len(*r.Password) < 8 || len(*r.Password) > 64) {
-		return fmt.Errorf("invalid password: %v", *r.Password)
-	}
-
-	return nil
-}
-
-func (r *API) activateUser(w api.ResponseWriter, req *rest.Request) {
-	p := new(activateUserParam)
-	if err := req.DecodeJsonPayload(p); err != nil {
-		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode params: %v", err.Error())})
-		return
-	}
-	logger.Debugf("activateUser request from %v: %v", req.RemoteAddr, spew.Sdump(p))
-
-	session, ok := r.session.Get(p.SessionID)
-	if ok == false {
-		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
-		return
-	}
-	if session.(*User).Admin == false {
-		w.Write(api.Response{Status: api.StatusPermissionDenied, Message: fmt.Sprintf("not allowed session id: %v", p.SessionID)})
-		return
-	}
-
-	var user *User
-	f := func(tx Transaction) (err error) {
-		user, err = tx.ActivateUser(session.(*User).ID, p.ID)
-		return err
-	}
-	if err := r.DB.Exec(f); err != nil {
-		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to activate an user account: %v", err.Error())})
-		return
-	}
-
-	if user == nil {
-		w.Write(api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found user to activate: %v", p.ID)})
-		return
-	}
-	logger.Debugf("activated the user account: %v", spew.Sdump(user))
-
-	w.Write(api.Response{Status: api.StatusOkay})
-}
-
-type activateUserParam struct {
-	SessionID string
-	ID        uint64
-}
-
-func (r *activateUserParam) UnmarshalJSON(data []byte) error {
-	v := struct {
-		SessionID string `json:"session_id"`
-		ID        uint64 `json:"id"`
-	}{}
-	if err := json.Unmarshal(data, &v); err != nil {
-		return err
-	}
-	*r = activateUserParam(v)
-
-	return r.validate()
-}
-
-func (r *activateUserParam) validate() error {
-	if len(r.SessionID) != 64 {
-		return errors.New("invalid session id")
-	}
-	if r.ID == 0 {
-		return errors.New("invalid user id")
-	}
-
-	return nil
-}
-
-func (r *API) deactivateUser(w api.ResponseWriter, req *rest.Request) {
-	p := new(deactivateUserParam)
-	if err := req.DecodeJsonPayload(p); err != nil {
-		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode params: %v", err.Error())})
-		return
-	}
-	logger.Debugf("deactivateUser request from %v: %v", req.RemoteAddr, spew.Sdump(p))
-
-	session, ok := r.session.Get(p.SessionID)
-	if ok == false {
-		w.Write(api.Response{Status: api.StatusUnknownSession, Message: fmt.Sprintf("unknown session id: %v", p.SessionID)})
-		return
-	}
-	if session.(*User).Admin == false {
-		w.Write(api.Response{Status: api.StatusPermissionDenied, Message: fmt.Sprintf("not allowed session id: %v", p.SessionID)})
-		return
-	}
-
-	var user *User
-	f := func(tx Transaction) (err error) {
-		user, err = tx.DeactivateUser(session.(*User).ID, p.ID)
-		return err
-	}
-	if err := r.DB.Exec(f); err != nil {
-		w.Write(api.Response{Status: api.StatusInternalServerError, Message: fmt.Sprintf("failed to deactivate an user account: %v", err.Error())})
-		return
-	}
-
-	if user == nil {
-		w.Write(api.Response{Status: api.StatusNotFound, Message: fmt.Sprintf("not found user to deactivate: %v", p.ID)})
-		return
-	}
-	logger.Debugf("deactivated the user account: %v", spew.Sdump(user))
-
-	w.Write(api.Response{Status: api.StatusOkay})
-}
-
-type deactivateUserParam struct {
-	SessionID string
-	ID        uint64
-}
-
-func (r *deactivateUserParam) UnmarshalJSON(data []byte) error {
-	v := struct {
-		SessionID string `json:"session_id"`
-		ID        uint64 `json:"id"`
-	}{}
-	if err := json.Unmarshal(data, &v); err != nil {
-		return err
-	}
-	*r = deactivateUserParam(v)
-
-	return r.validate()
-}
-
-func (r *deactivateUserParam) validate() error {
-	if len(r.SessionID) != 64 {
-		return errors.New("invalid session id")
-	}
-	if r.ID == 0 {
-		return errors.New("invalid user id")
 	}
 
 	return nil

@@ -36,11 +36,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/superkkt/cherry/api/ui"
-
 	"github.com/superkkt/cherry"
 	"github.com/superkkt/cherry/api"
+	"github.com/superkkt/cherry/api/ui"
 	"github.com/superkkt/cherry/database"
+	"github.com/superkkt/cherry/ldap"
 	"github.com/superkkt/cherry/log"
 
 	"github.com/fsnotify/fsnotify"
@@ -175,6 +175,10 @@ func initCoreSDK() *coreSDK {
 	return client
 }
 
+func initLDAPClient() *ldap.Client {
+	return ldap.New(viper.Sub("ldap"), 5)
+}
+
 func initAPIServer() {
 	go func() {
 		s := api.Server{}
@@ -187,7 +191,7 @@ func initAPIServer() {
 		s.Observer = sdk
 		s.Controller = sdk
 
-		srv := &ui.API{Server: s, DB: initDatabase()}
+		srv := &ui.API{Server: s, DB: initDatabase(), LDAP: initLDAPClient()}
 		if err := srv.Serve(); err != nil {
 			logger.Fatalf("failed to run the API server: %v", err)
 		}

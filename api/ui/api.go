@@ -45,7 +45,8 @@ var (
 
 type API struct {
 	api.Server
-	DB Database
+	DB   Database
+	LDAP LDAP
 
 	session *session
 }
@@ -54,6 +55,10 @@ type Database interface {
 	// Exec executes all queries of f in a single transaction. f should return the error raised from the Transaction
 	// without any change or wrapping it for deadlock protection.
 	Exec(f func(Transaction) error) error
+}
+
+type LDAP interface {
+	Auth(username, password string) (ok bool, err error)
 }
 
 type Transaction interface {
@@ -224,8 +229,6 @@ func (r *API) Serve() error {
 		rest.Post("/api/v1/user/list", api.ResponseHandler(r.listUser)),
 		rest.Post("/api/v1/user/add", api.ResponseHandler(r.addUser)),
 		rest.Post("/api/v1/user/update", api.ResponseHandler(r.updateUser)),
-		rest.Post("/api/v1/user/activate", api.ResponseHandler(r.activateUser)),
-		rest.Post("/api/v1/user/deactivate", api.ResponseHandler(r.deactivateUser)),
 		rest.Post("/api/v1/user/reset", api.ResponseHandler(r.resetOTP)),
 		rest.Post("/api/v1/group/list", api.ResponseHandler(r.listGroup)),
 		rest.Post("/api/v1/group/add", api.ResponseHandler(r.addGroup)),
