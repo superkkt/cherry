@@ -1944,12 +1944,14 @@ func (r *uiTx) RemoveSwitch(requesterID, swID uint64) (sw *ui.Switch, err error)
 	return sw, nil
 }
 
-func (r *uiTx) Auth(name, password string) (*ui.User, error) {
+func (r *uiTx) User(name string) (user *ui.User, err error) {
+	qry := "SELECT `id`, `name`, `key`, `enabled`, `admin`, `timestamp` "
+	qry += "FROM `user` "
+	qry += "WHERE `name` = ?"
+
 	v := new(ui.User)
-	qry := "SELECT `id`, `name`, `key`, `enabled`, `admin`, `timestamp` FROM `user` WHERE `name` = ? AND `password` = SHA2(?, 256)"
-	if err := r.handle.QueryRow(qry, name, name+password).Scan(&v.ID, &v.Name, &v.Key, &v.Enabled, &v.Admin, &v.Timestamp); err != nil {
+	if err := r.handle.QueryRow(qry, name).Scan(&v.ID, &v.Name, &v.Key, &v.Enabled, &v.Admin, &v.Timestamp); err != nil {
 		if err == sql.ErrNoRows {
-			// Incorrect credential or not exist.
 			return nil, nil
 		}
 		return nil, err
@@ -1985,10 +1987,10 @@ func (r *uiTx) Users(pagination ui.Pagination) (user []*ui.User, err error) {
 	return user, nil
 }
 
-func (r *uiTx) AddUser(requesterID uint64, name, password, key string) (user *ui.User, duplicated bool, err error) {
-	qry := "INSERT INTO `user` (`name`, `password`, `key`, `enabled`, `admin`, `timestamp`) "
-	qry += "VALUES (?, SHA2(?, 256), ?, TRUE, FALSE, NOW())"
-	result, err := r.handle.Exec(qry, name, name+password, key)
+func (r *uiTx) AddUser(requesterID uint64, name, key string) (user *ui.User, duplicated bool, err error) {
+	qry := "INSERT INTO `user` (`name`, `key`, `enabled`, `admin`, `timestamp`) "
+	qry += "VALUES (?, ?, TRUE, FALSE, NOW())"
+	result, err := r.handle.Exec(qry, name, key)
 	if err != nil {
 		// No error.
 		if isDuplicated(err) {
@@ -2026,13 +2028,13 @@ func getUser(tx *sql.Tx, id uint64) (*ui.User, error) {
 	return v, nil
 }
 
-func (r *uiTx) UpdateUser(requesterID, userID uint64, password *string, admin *bool) (user *ui.User, err error) {
+func (r *uiTx) UpdateUser(requesterID, userID uint64, enabled, admin *bool) (user *ui.User, err error) {
 	set := []string{}
 	args := []interface{}{}
 
-	if password != nil {
-		set = append(set, "`password` = SHA2(CONCAT(`name`, ?), 256)")
-		args = append(args, *password)
+	if enabled != nil {
+		set = append(set, "`enabled` = ?")
+		args = append(args, *enabled)
 	}
 	if admin != nil {
 		set = append(set, "`admin` = ?")
@@ -2052,60 +2054,6 @@ func (r *uiTx) UpdateUser(requesterID, userID uint64, password *string, admin *b
 		return nil, err
 	}
 	// Not found user to update.
-	if nRows == 0 {
-		return nil, nil
-	}
-
-	user, err = getUser(r.handle, userID)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := r.log(requesterID, logTypeUser, logMethodUpdate, user); err != nil {
-		return nil, err
-	}
-
-	return user, nil
-}
-
-func (r *uiTx) ActivateUser(requesterID, userID uint64) (user *ui.User, err error) {
-	qry := "UPDATE `user` SET `enabled` = TRUE WHERE `id` = ?"
-	result, err := r.handle.Exec(qry, userID)
-	if err != nil {
-		return nil, err
-	}
-	nRows, err := result.RowsAffected()
-	if err != nil {
-		return nil, err
-	}
-	// Not found user to activate.
-	if nRows == 0 {
-		return nil, nil
-	}
-
-	user, err = getUser(r.handle, userID)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := r.log(requesterID, logTypeUser, logMethodUpdate, user); err != nil {
-		return nil, err
-	}
-
-	return user, nil
-}
-
-func (r *uiTx) DeactivateUser(requesterID, userID uint64) (user *ui.User, err error) {
-	qry := "UPDATE `user` SET `enabled` = FALSE WHERE `id` = ?"
-	result, err := r.handle.Exec(qry, userID)
-	if err != nil {
-		return nil, err
-	}
-	nRows, err := result.RowsAffected()
-	if err != nil {
-		return nil, err
-	}
-	// Not found user to deactivate.
 	if nRows == 0 {
 		return nil, nil
 	}

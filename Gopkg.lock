@@ -215,6 +215,22 @@
   version = "v1.5.0"
 
 [[projects]]
+  digest = "1:af07c44dc04418be522bfd4e21ca9130d58169ea084e3a883e23772003a381c4"
+  name = "gopkg.in/asn1-ber.v1"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "f715ec2f112d1e4195b827ad68cf44017a3ef2b1"
+  version = "v1.3"
+
+[[projects]]
+  digest = "1:e9a0fa7c2dfc90e0fae16be5825ad98074d8704f5fcebfdc289a8e8fb0f8e4b5"
+  name = "gopkg.in/ldap.v3"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "9f0d712775a0973b7824a1585a86a4ea1d5263d9"
+  version = "v3.0.3"
+
+[[projects]]
   digest = "1:858458e1fcdb1cb44ded97c2ae2b610ee9336fdb0a8347ea1ad835e6a1db6c76"
   name = "gopkg.in/yaml.v2"
   packages = ["."]
@@ -237,6 +253,7 @@
     "github.com/pquerna/otp/totp",
     "github.com/superkkt/go-logging",
     "github.com/superkkt/viper",
+    "gopkg.in/ldap.v3",
   ]
   solver-name = "gps-cdcl"
   solver-version = 1

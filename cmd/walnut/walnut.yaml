@@ -25,3 +25,12 @@ rest:
     key_file: "/your_tls_key_file"
 
 core_api_url: "http://localhost:7070"
+
+ldap:
+    addr: "localhost:636"
+    base_dn: "DC=direct,DC=co,DC=kr"
+    admin:
+        name: "name"
+        password: "password"
+    attr:
+        login: "sAMAccountName"
