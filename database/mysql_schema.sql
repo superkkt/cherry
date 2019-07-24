@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS `log` (
   `user_id` bigint(20) unsigned NOT NULL,
   `type` ENUM('USER', 'GROUP', 'SWITCH', 'NETWORK', 'HOST', 'VIP', 'CATEGORY', 'COMPONENT') NOT NULL,
   `method` ENUM('ADD', 'UPDATE', 'REMOVE') NOT NULL,
-  `data` JSON NOT NULL,
+  `data` LONGTEXT NOT NULL,
   `timestamp` TIMESTAMP NOT NULL,
   PRIMARY KEY (`id`),
   KEY `type` (`type`),
