@@ -301,10 +301,8 @@ func (r *Device) SetFlow(match openflow.Match, port openflow.OutPort) error {
 	}
 	flow.SetTableID(r.flowTableID)
 	// This idle timeout is actually useless because we update the installed flows
-	// more frequently than this timeout. However, this can be useful if there are
-	// stale flows, which are not deleted even if a delete command has been issued
-	// by the Cherry controller, in the switches.
-	flow.SetHardTimeout(180)
+	// more frequently than this timeout.
+	flow.SetIdleTimeout(90)
 	flow.SetPriority(10)
 	flow.SetFlowMatch(match)
 	flow.SetFlowInstruction(inst)
