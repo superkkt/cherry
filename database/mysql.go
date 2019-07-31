@@ -1174,7 +1174,7 @@ func buildHostsQuery(search *ui.Search, sort ui.Sort, pagination ui.Pagination) 
 	qry += "      `host`.`description`, "                                                                                                     // Description
 	qry += "      `host`.`enabled`, "                                                                                                         // Enabled
 	qry += "      `host`.`last_updated_timestamp`, "                                                                                          // Stale
-	qry += "      `host`.`timestamp` "                                                                                                        // Timestamp
+	qry += "      `host`.`created_timestamp` "                                                                                                // Timestamp
 	qry += "FROM `host` "
 	qry += "JOIN `ip` ON `host`.`ip_id` = `ip`.`id` "
 	qry += "LEFT JOIN `port` ON `host`.`port_id` = `port`.`id` "
@@ -1300,7 +1300,7 @@ func getHost(tx *sql.Tx, id uint64) (*host, error) {
 	qry += "       `host`.`description`, "                                                                                                     // Description
 	qry += "       `host`.`enabled`, "                                                                                                         // Enabled
 	qry += "       `host`.`last_updated_timestamp`, "                                                                                          // Stale
-	qry += "       `host`.`timestamp` "                                                                                                        // Timestamp
+	qry += "       `host`.`created_timestamp` "                                                                                                // Timestamp
 	qry += "FROM `host` "
 	qry += "JOIN `ip` ON `host`.`ip_id` = `ip`.`id` "
 	qry += "LEFT JOIN `port` ON `host`.`port_id` = `port`.`id` "
@@ -1395,7 +1395,7 @@ func addNewHost(tx *sql.Tx, ipID uint64, groupID *uint64, mac net.HardwareAddr, 
 		return nil, true, nil
 	}
 
-	qry := "INSERT INTO `host` (`ip_id`, `group_id`, `mac`, `description`, `last_updated_timestamp`, `enabled`, `timestamp`) VALUES (?, ?, UNHEX(?), ?, NOW(), TRUE, NOW())"
+	qry := "INSERT INTO `host` (`ip_id`, `group_id`, `mac`, `description`, `last_updated_timestamp`, `enabled`, `created_timestamp`) VALUES (?, ?, UNHEX(?), ?, NOW(), TRUE, NOW())"
 	result, err := tx.Exec(qry, ipID, groupID, encodeMAC(mac), desc)
 	if err != nil {
 		return nil, false, err
