@@ -76,6 +76,13 @@ func (r *Server) Serve(routes ...*rest.Route) error {
 	}
 
 	api := rest.NewApi()
+	// Middleware to set the CORS header.
+	api.Use(rest.MiddlewareSimple(func(handler rest.HandlerFunc) rest.HandlerFunc {
+		return func(writer rest.ResponseWriter, request *rest.Request) {
+			writer.Header().Set("Access-Control-Allow-Origin", "*")
+			handler(writer, request)
+		}
+	}))
 	// Middleware to deny the client requests if we are not the master controller.
 	api.Use(rest.MiddlewareSimple(func(handler rest.HandlerFunc) rest.HandlerFunc {
 		return func(writer rest.ResponseWriter, request *rest.Request) {
@@ -83,13 +90,6 @@ func (r *Server) Serve(routes ...*rest.Route) error {
 				writer.WriteJson(Response{Status: StatusServiceUnavailable, Message: "use the master controller server"})
 				return
 			}
-			handler(writer, request)
-		}
-	}))
-	// Middleware to set the CORS header.
-	api.Use(rest.MiddlewareSimple(func(handler rest.HandlerFunc) rest.HandlerFunc {
-		return func(writer rest.ResponseWriter, request *rest.Request) {
-			writer.Header().Set("Access-Control-Allow-Origin", "*")
 			handler(writer, request)
 		}
 	}))
