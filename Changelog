@@ -1,3 +1,59 @@
+* v0.14.0 (2019-08-02)
+
+fad9247 Change ui server middleware order (See #42)
+e02444b Change name of host table timestamp column (See #41)
+7ee607a Revert "Set hard-timeout to clear stale flows"
+71199c6 Change data column type in log table (See #38)
+3b8fe3e Apply LDAP (See #31)
+715f48f Change validation of input length (See #36)
+6a81a12 Change timestamp column option in host table (See #37)
+9cf45b8 Apply TOTP (See #30)
+6f28b01 Prevent gateway from being set as reserved IP (See #35)
+4faeba4 Change host update API (See #26)
+efaab76 Change IP structure (See #27)
+8f0eb70 Add get host API (See #34)
+040d871 Add gateway within network (See #25)
+501c3d3 Add network search (See #24)
+8740e05 Add spec feature within host (See #29)
+2e8ed92 Add Component UI API (See #28)
+3f301a2 Add Category UI API (See #23)
+80606bb Add Log UI API (See #18)
+519ecce Fix a bug to add an invalid IP address to the database when adding a network (See #33)
+c4c6fdf NULL MAC address to disconnect a host from the network (See #32)
+3504fd6 Dedicated IP address for ARP host discovery (See #12)
+cb92e4a Use reserved IP addresses (TEST-NET-1) for DHCP and ARP discovery
+79d95da Validate TCP and UDP packet lengths
+a5415ba Fix the broken UDP checksum
+6ce8b01 Implement a DHCP server
+c01b487 refactoring: apply the custom response writer to the UI API
+cf82a97 revise
+abf5e1a refactoring: apply pagination with structure
+fbf94f0 refactoring: ui transaction returns instance reference
+936f21d Add Host List API (See #20)
+74ff82e fix add, update host
+9e013c9 refactoring: call database logics in a closure
+b9b85d4 refactoring: apply the custom response writer to the core API
+726f009 refactoring: custom response writer with logging
+58362ed Add Host UI API (See #20)
+c31fdaa Add VIP UI API (See #19)
+a13a7dc Refactoring: re-organize the source tree structure of the API package
+5667f06 Add Switch UI API (See #14)
+0090f4b Add Network UI API (See #15)
+1729ffa Add Host group UI API (See #17)
+4e4188f Add User UI API (See #16)
+b10bfa7 Add extra comment for time interval of the flow manager
+a4aaac9 Set hard-timeout to clear stale flows
+0c939a7 ARP announcer (See #22)
+cd32572 Devide UI API server (See #13)
+9af1b5b Fix the broken test case
+e2e8add Replace godep with dep to vendor libraries
+9cddf5f Add extra debug logs for broadcast packets
+b1e6584 Update the buffered socket stream to avoid a potential internal buffer corruption
+ef776e5 Add the GitLab CI
+f4f235f Fix a typo
+1fa1d05 Fix broken test cases
+146b172 Fix the IP conflict by ARP probes (See #12)
+
 * v0.13.5 (2018-05-15)
 
 06fe675 Discovery: workaround for old OSes that have a broken TCP/IP stack (See #6)
