@@ -79,7 +79,13 @@ func (r *API) login(w api.ResponseWriter, req *rest.Request) {
 		w.Write(api.Response{Status: api.StatusInvalidParameter, Message: fmt.Sprintf("failed to decode param: %v", err.Error())})
 		return
 	}
-	logger.Debugf("login request from %v: %v", req.RemoteAddr, spew.Sdump(p))
+	logger.Debugf("login request from %v: %v", req.RemoteAddr, spew.Sdump(&struct {
+		Name string `json:"name"`
+		Code string `json:"code"`
+	}{
+		Name: p.Name,
+		Code: p.Code,
+	}))
 
 	var user *User
 	f := func(tx Transaction) (err error) {
