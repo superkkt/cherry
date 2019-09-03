@@ -1,3 +1,7 @@
+* v0.14.1 (2019-09-03)
+
+b321987 Remove password plain text log (See #43)
+
 * v0.14.0 (2019-08-02)
 
 fad9247 Change ui server middleware order (See #42)
