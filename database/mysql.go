@@ -682,47 +682,21 @@ func (r *MySQL) ResetHostLocationsByDevice(swDPID uint64) error {
 // been updated within expiration. elected will be true if this uid has been
 // elected as the new master or was already elected.
 func (r *MySQL) Elect(uid string, expiration time.Duration) (elected bool, err error) {
-	f := func(tx *sql.Tx) error {
-		var name string
-		var timestamp time.Time
-		qry := "SELECT `name`, `timestamp` "
-		qry += "FROM `election` "
-		qry += "WHERE `type` = 'MASTER' "
-		qry += "FOR UPDATE" // Lock the selected row even if there is a no exsiting one.
-		err = tx.QueryRow(qry).Scan(&name, &timestamp)
-		// Real error?
-		if err != nil && err != sql.ErrNoRows {
-			return err
-		}
-
-		// No existing master?
-		if err == sql.ErrNoRows {
-			// I am the newly elected master!
-			qry = "INSERT INTO `election` (`name`, `type`, `timestamp`) "
-			qry += "VALUES (?, 'MASTER', NOW())"
-			if _, err := tx.Exec(qry, uid); err != nil {
-				return err
-			}
-			elected = true
-		} else {
-			// Already elected or another stale master?
-			if name == uid || time.Now().Sub(timestamp) > expiration {
-				qry = "UPDATE `election` SET `name` = ?, `timestamp` = NOW() WHERE `type` = 'MASTER'"
-				if _, err := tx.Exec(qry, uid); err != nil {
-					return err
-				}
-				elected = true
-			}
-		}
-
-		return nil
-	}
-
-	if err := r.query(f); err != nil {
+	qry := "INSERT INTO `master_election` (`id`, `name`, `timestamp`) VALUES (1, ?, NOW()) "
+	qry += "ON DUPLICATE KEY UPDATE "
+	qry += fmt.Sprintf("`name` = IF (`timestamp` < NOW() - INTERVAL %v SECOND, VALUES(`name`), `name`), ", int(expiration.Seconds()))
+	qry += "`timestamp` = IF (`name` = VALUES(`name`), VALUES(`timestamp`), `timestamp`)"
+	if _, err := r.db.Exec(qry, uid); err != nil {
 		return false, err
 	}
 
-	return elected, nil
+	var count int
+	qry = "SELECT COUNT(*) FROM `master_election` WHERE `id` = 1 AND `name` = ?"
+	if err := r.db.QueryRow(qry, uid).Scan(&count); err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
 }
 
 // MACAddrs returns all the registered MAC addresses.

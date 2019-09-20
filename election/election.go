@@ -75,22 +75,31 @@ func (r *Observer) Run(ctx context.Context) error {
 	ticker := time.Tick(interval)
 	// Infinite loop.
 	for {
+		prev := r.getMaster()
+		elected, err := r.db.Elect(r.uid, interval*15)
+		if err != nil {
+			return err
+		}
+		r.setMaster(elected)
+		logger.Debugf("master election result: prev=%v, elected=%v", prev, elected)
+
+		if prev != elected {
+			if prev == true {
+				// Previous master.
+				logger.Fatal("master controller has been changed: demoted from the master: self shutting down to avoid split-brain")
+			} else {
+				// New master.
+				logger.Warning("master controller has been changed: elected as a new master")
+			}
+		}
+
 		// Wait the context cancels or the ticker rasises.
 		select {
 		case <-ctx.Done():
 			logger.Debug("terminating the election observer...")
 			return nil
 		case <-ticker:
-			prev := r.getMaster()
-			elected, err := r.db.Elect(r.uid, interval*5)
-			if err != nil {
-				return err
-			}
-			r.setMaster(elected)
-
-			if prev != elected {
-				logger.Warningf("master controller has been changed: prev=%v, new=%v", prev, elected)
-			}
+			// Do nothing.
 		}
 	}
 }

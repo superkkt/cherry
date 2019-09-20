@@ -134,18 +134,16 @@ CREATE TABLE IF NOT EXISTS `arp` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Table structure for table `election`
+-- Table structure for table `master_election`
 --
 
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
-CREATE TABLE IF NOT EXISTS `election` (
-  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+CREATE TABLE IF NOT EXISTS `master_election` (
+  `id` tinyint(3) unsigned NOT NULL,
   `name` varchar(255) NOT NULL,
-  `type` enum('MASTER') NOT NULL,
   `timestamp` datetime NOT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `type` (`type`)
+  PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
