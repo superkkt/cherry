@@ -1,3 +1,7 @@
+* v0.14.2 (2019-09-20)
+
+3faead4 Fix the unexpected master change (See #44)
+
 * v0.14.1 (2019-09-03)
 
 b321987 Remove password plain text log (See #43)
